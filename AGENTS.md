@@ -14,6 +14,17 @@
 - `stockfront-app` is the thin composition root and runtime entry point.
 - Dependencies point inward: `app -> adapters -> core`. Core never depends on adapters or app.
 - Add modules and ports only when their first working vertical slice needs them.
+- Organize adapters by responsibility, such as authentication, provider calls, conversion, requests, responses and errors. Do not accumulate an integration in one large file.
+
+## Boundaries and integration types
+
+- Reuse domain read models directly inside the shared API `Response` and `List` envelopes when their meaning and public shape match. Do not add field-for-field response DTO copies; add a response DTO only for material redaction, versioning or shape differences.
+- Keep untrusted transport requests separate from domain queries and commands. Convert them at the adapter boundary with `TryFrom` so validation remains explicit.
+- Prefer `From` and `TryFrom` for provider-to-domain conversions over free `map_*` or `assemble_*` functions. If Rust's orphan rules prevent a direct implementation, use a minimal adapter-local wrapper rather than leaking provider types into core.
+- Reuse canonical ecosystem primitives, such as Alloy addresses, instead of maintaining local equivalents.
+- Generate provider request and response models from a pinned OpenAPI contract when one is available. Keep generated code, authentication and provider-specific models behind the adapter boundary, and do not hand-edit generated files.
+- Do not repeat identity validation for fields already fixed by the request unless the provider can return mixed or ambiguous results.
+- Centralize application configuration in `setting.rs` and deserialize environment-backed secrets declaratively with Serde. Do not scatter `std::env::var` calls through runtime composition code.
 
 ## Rust standards
 
