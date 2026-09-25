@@ -1,10 +1,12 @@
-//! Binance Web3 RWA adapter for the bStock catalog port.
+//! Binance Web3 adapters for bStock market and wallet ports.
 
 mod auth;
+mod balances;
 mod catalog;
+mod client;
 mod mapping;
 
 pub use auth::BinanceConfigurationError;
-pub use catalog::BinanceRwaCatalog;
+pub use client::BinanceWeb3Client;
 
 const BSTOCK_PLATFORM_ID: &str = "bstock";

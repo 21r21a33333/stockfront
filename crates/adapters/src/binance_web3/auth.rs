@@ -42,10 +42,6 @@ impl BinanceWeb3Authentication {
         timestamp: &str,
         nonce: &str,
     ) -> Result<(), AuthenticationError> {
-        if request.method() != reqwest::Method::GET {
-            return Err(AuthenticationError::UnsupportedMethod);
-        }
-
         let mut path_and_query = request.url().path().to_owned();
         if let Some(query) = request.url().query() {
             path_and_query.push('?');
@@ -55,6 +51,12 @@ impl BinanceWeb3Authentication {
         let mut mac = Hmac::<Sha256>::new_from_slice(self.api_secret.as_slice())
             .map_err(|_| AuthenticationError::InvalidSecret)?;
         mac.update(prehash.as_bytes());
+        if let Some(body) = request.body() {
+            let body = body
+                .as_bytes()
+                .ok_or(AuthenticationError::UnsupportedBody)?;
+            mac.update(body);
+        }
         let signature = BASE64_STANDARD.encode(mac.finalize().into_bytes());
 
         let headers = request.headers_mut();
@@ -97,8 +99,8 @@ pub enum BinanceConfigurationError {
 
 #[derive(Debug, Error)]
 enum AuthenticationError {
-    #[error("the bStock market signer only supports GET requests")]
-    UnsupportedMethod,
+    #[error("Binance Web3 request bodies must be buffered before signing")]
+    UnsupportedBody,
     #[error("the Binance Web3 API secret could not initialize HMAC-SHA256")]
     InvalidSecret,
     #[error("a Binance Web3 authentication header was invalid")]
@@ -139,6 +141,28 @@ mod tests {
         assert_eq!(
             request.headers().get("x-oc-nonce"),
             Some(&HeaderValue::from_static("fixed-nonce"))
+        );
+    }
+
+    #[test]
+    fn signer_includes_the_exact_post_body() {
+        let signer = BinanceWeb3Authentication::new("test-key", "test-secret")
+            .unwrap_or_else(|error| panic!("signer setup failed: {error}"));
+        let mut request = reqwest::Client::new()
+            .post("https://web3.binance.com/build/api/v1/dex/balance/token-balances-by-address")
+            .body(r#"{"address":"0x01"}"#)
+            .build()
+            .unwrap_or_else(|error| panic!("request setup failed: {error}"));
+
+        signer
+            .authenticate(&mut request, "2026-06-03T10:20:30.123Z", "fixed-nonce")
+            .unwrap_or_else(|error| panic!("request signing failed: {error}"));
+
+        assert_eq!(
+            request.headers().get("x-oc-sign"),
+            Some(&HeaderValue::from_static(
+                "+x434xxRLGSzV43se2CYXN0Y71X+9EoQWZm52YgHcXw="
+            ))
         );
     }
 }

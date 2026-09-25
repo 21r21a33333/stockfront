@@ -27,6 +27,13 @@ rm -f \
   "$repository_root/crates/binance-web3-rwa/README.md" \
   "$repository_root/crates/binance-web3-rwa/git_push.sh"
 
+cargo clippy --fix \
+  --manifest-path "$repository_root/Cargo.toml" \
+  --package binance-web3-rwa \
+  --allow-dirty \
+  --allow-staged \
+  -- -D warnings
+
 cargo fmt \
   --manifest-path "$repository_root/crates/binance-web3-rwa/Cargo.toml" \
   --package binance-web3-rwa

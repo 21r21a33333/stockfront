@@ -6,6 +6,8 @@
 - Keep work uncommitted until it has been reviewed, unless the user explicitly requests a commit.
 - Allowed working-branch prefixes are `chore/`, `fix/` and `feat/` only.
 - Reuse stable libraries and protocol APIs before writing equivalent infrastructure.
+- Before presenting an integration LLD, inspect the current official documentation, OpenAPI contracts, generated SDKs and existing endpoints for every required capability. Record what will be reused and justify any custom RPC, indexer or equivalent infrastructure only after official options have been ruled out.
+- Re-check provider capabilities immediately before implementation because external APIs and SDKs change.
 
 ## Architecture
 

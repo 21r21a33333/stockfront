@@ -132,5 +132,6 @@ impl From<&str> for ContentType {
 }
 
 pub mod rwa_data_api;
+pub mod wallet_api;
 
 pub mod configuration;

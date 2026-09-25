@@ -5,6 +5,7 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+alloy-primitives = "1.7.3"
 async-trait = "0.1.89"
 axum = "0.8.6"
 base64 = "0.22.1"

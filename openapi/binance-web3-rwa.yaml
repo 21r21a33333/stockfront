@@ -18,7 +18,25 @@ servers:
   - url: https://web3.binance.com/build
 tags:
   - name: RWA data
+  - name: Wallet
 paths:
+  /api/v1/dex/balance/token-balances-by-address:
+    post:
+      operationId: getTokenBalancesByAddress
+      tags: [Wallet]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GetTokenBalancesByAddressRequest'
+      responses:
+        '200':
+          description: Requested token balances or a Binance business error.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetTokenBalancesByAddressResponse'
   /api/v1/dex/market/rwa/tokens:
     get:
       operationId: getRwaTokenList
@@ -127,6 +145,64 @@ components:
           type: integer
           format: int64
         success:
+          type: boolean
+    GetTokenBalancesByAddressRequest:
+      type: object
+      required: [address, tokenContractAddresses]
+      properties:
+        address:
+          type: string
+        tokenContractAddresses:
+          type: array
+          maxItems: 20
+          items:
+            $ref: '#/components/schemas/TokenContractIdentity'
+        excludeRiskToken:
+          type: string
+          enum: ['0', '1']
+          description: '0 excludes risk tokens; 1 includes them.'
+    TokenContractIdentity:
+      type: object
+      required: [binanceChainId, tokenContractAddress]
+      properties:
+        binanceChainId:
+          type: string
+        tokenContractAddress:
+          type: string
+    GetTokenBalancesByAddressResponse:
+      allOf:
+        - $ref: '#/components/schemas/BusinessResponse'
+        - type: object
+          properties:
+            data:
+              type: array
+              items:
+                $ref: '#/components/schemas/TokenBalanceGroup'
+    TokenBalanceGroup:
+      type: object
+      properties:
+        tokenAssets:
+          type: array
+          items:
+            $ref: '#/components/schemas/TokenBalance'
+    TokenBalance:
+      type: object
+      properties:
+        binanceChainId:
+          type: string
+        tokenContractAddress:
+          type: string
+        address:
+          type: string
+        symbol:
+          type: string
+        balance:
+          type: string
+        rawBalance:
+          type: string
+        tokenPrice:
+          type: string
+        isRiskToken:
           type: boolean
     RwaTokenListResponse:
       allOf:
