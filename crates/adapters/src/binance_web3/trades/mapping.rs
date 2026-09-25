@@ -2,10 +2,11 @@ use std::str::FromStr;
 
 use alloy_primitives::Address;
 use binance_web3_rwa::models;
+use rust_decimal::Decimal;
 use stockfront_core::bstock_trade::{
-    PreparedApproval, PreparedTrade, PreparedTransaction, RfqVenue, SubmittedOrder, TokenAmount,
-    TradeExecutionMode, TradeGatewayError, TradeOrderState, TradeOrderStatus, TradeQuote,
-    TradeQuoteRequest, TradeTransactionState, TradeTransactionStatus,
+    PreparedApproval, PreparedTrade, PreparedTransaction, RfqVenue, SettledTokenAmount,
+    SubmittedOrder, TokenAmount, TradeExecutionMode, TradeGatewayError, TradeOrderState,
+    TradeOrderStatus, TradeQuote, TradeQuoteRequest, TradeTransactionState, TradeTransactionStatus,
 };
 use uuid::Uuid;
 
@@ -151,7 +152,7 @@ impl TryFrom<ProviderTransactionStatus> for TradeTransactionStatus {
             sold: parse_token_amounts(status.from_token_details.unwrap_or_default())?,
             bought: parse_token_amounts(status.to_token_details.unwrap_or_default())?,
             block_number: parse_optional(status.height.as_deref())?,
-            executed_at_ms: parse_optional(status.tx_time.as_deref())?,
+            executed_at_ms: parse_optional_seconds_as_millis(status.tx_time.as_deref())?,
             error: status.error_msg,
         })
     }
@@ -204,16 +205,35 @@ fn parse_transaction_state(value: &str) -> TradeTransactionState {
 
 fn parse_token_amounts(
     values: Vec<models::TransactionTokenAmount>,
-) -> Result<Vec<TokenAmount>, TradeGatewayError> {
+) -> Result<Vec<SettledTokenAmount>, TradeGatewayError> {
     values
         .into_iter()
         .map(|value| {
-            Ok(TokenAmount {
+            Ok(SettledTokenAmount {
                 token: parse(&required(value.token_address)?)?,
-                amount: parse(&required(value.amount)?)?,
+                amount: parse_decimal(&required(value.amount)?)?,
             })
         })
         .collect()
+}
+
+fn parse_decimal(value: &str) -> Result<Decimal, TradeGatewayError> {
+    let normalized = if value.contains('.') {
+        value.trim_end_matches('0').trim_end_matches('.')
+    } else {
+        value
+    };
+    parse(normalized)
+}
+
+fn parse_optional_seconds_as_millis(value: Option<&str>) -> Result<Option<i64>, TradeGatewayError> {
+    value
+        .map(|value| {
+            parse::<i64>(value)?
+                .checked_mul(1_000)
+                .ok_or(TradeGatewayError::InvalidData)
+        })
+        .transpose()
 }
 
 fn parse<T>(value: &str) -> Result<T, TradeGatewayError>
@@ -357,10 +377,11 @@ mod tests {
         let bought_token = Address::with_last_byte(7);
         let mut sold = models::TransactionTokenAmount::new();
         sold.token_address = Some(sold_token.to_string());
-        sold.amount = Some("12".to_owned());
+        sold.amount =
+            Some("12.250000000000000000000000000000000000000000000000000000000000".to_owned());
         let mut bought = models::TransactionTokenAmount::new();
         bought.token_address = Some(bought_token.to_string());
-        bought.amount = Some("34".to_owned());
+        bought.amount = Some("34.5".to_owned());
         let mut provider_status = models::TransactionStatus::new();
         provider_status.status = Some("success".to_owned());
         provider_status.height = Some("123".to_owned());
@@ -373,10 +394,10 @@ mod tests {
 
         assert!(matches!(status.state, TradeTransactionState::Succeeded));
         assert_eq!(status.sold[0].token, sold_token);
-        assert_eq!(status.sold[0].amount, U256::from(12));
+        assert_eq!(status.sold[0].amount, Decimal::new(1_225, 2));
         assert_eq!(status.bought[0].token, bought_token);
-        assert_eq!(status.bought[0].amount, U256::from(34));
+        assert_eq!(status.bought[0].amount, Decimal::new(345, 1));
         assert_eq!(status.block_number, Some(123));
-        assert_eq!(status.executed_at_ms, Some(456));
+        assert_eq!(status.executed_at_ms, Some(456_000));
     }
 }

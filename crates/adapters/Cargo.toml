@@ -25,7 +25,8 @@ uuid = { version = "1.18.1", features = ["v4"] }
 zeroize = "1.8.2"
 
 [dev-dependencies]
-tokio = { version = "1.47.1", features = ["macros", "rt"] }
+alloy = { version = "1.8.3", default-features = false, features = ["contract", "provider-http", "reqwest-rustls-tls", "rpc-types", "signer-local"] }
+tokio = { version = "1.47.1", features = ["macros", "rt", "time"] }
 
 [lints]
 workspace = true

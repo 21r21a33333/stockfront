@@ -155,7 +155,7 @@ impl BstockTradeGateway for BinanceWeb3Client {
             }
             error => map_provider_error(error),
         })?;
-        if response.code == Some(404) || response.code == Some(40_404) {
+        if matches!(response.code, Some(40_363 | 404 | 40_404)) {
             return Err(TradeGatewayError::OrderNotFound);
         }
         ensure_business_success(response.code, response.success)?;

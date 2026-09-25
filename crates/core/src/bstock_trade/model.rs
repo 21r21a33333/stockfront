@@ -73,6 +73,14 @@ pub struct TokenAmount {
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct SettledTokenAmount {
+    #[serde(serialize_with = "serialize_address")]
+    pub token: Address,
+    pub amount: Decimal,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct TradeQuote {
     pub route_quote_id: String,
     pub venue: String,
@@ -199,9 +207,9 @@ pub enum TradeTransactionState {
 pub struct TradeTransactionStatus {
     pub state: TradeTransactionState,
     #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub sold: Vec<TokenAmount>,
+    pub sold: Vec<SettledTokenAmount>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub bought: Vec<TokenAmount>,
+    pub bought: Vec<SettledTokenAmount>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub block_number: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
