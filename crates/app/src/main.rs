@@ -5,10 +5,13 @@ use std::{error::Error, sync::Arc, time::Duration};
 use setting::Settings;
 use stockfront_adapters::{
     binance_web3::BinanceWeb3Client,
-    http::{bstock_router, wallet_router},
+    http::{bstock_router, trade_router, wallet_router},
 };
-use stockfront_core::bstock_market::BstockMarketService;
-use stockfront_core::wallet_portfolio::WalletPortfolioService;
+use stockfront_core::{
+    bstock_market::BstockMarketService,
+    bstock_trade::{BstockTradeService, TradePolicy},
+    wallet_portfolio::WalletPortfolioService,
+};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
@@ -17,6 +20,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
         binance_web3_api_secret,
         binance_web3_base_url,
         bind_address,
+        trade_settlement_tokens,
+        max_trade_price_impact_bps,
+        trade_slippage_bps,
     } = Settings::from_env()?;
 
     let binance = BinanceWeb3Client::new(
@@ -29,8 +35,19 @@ async fn main() -> Result<(), Box<dyn Error>> {
     drop(binance_web3_api_secret);
     let binance = Arc::new(binance);
     let bstock_market = Arc::new(BstockMarketService::new(binance.clone()));
-    let wallet_portfolio = Arc::new(WalletPortfolioService::new(binance.clone(), binance));
-    let app = bstock_router(bstock_market).merge(wallet_router(wallet_portfolio));
+    let wallet_portfolio = Arc::new(WalletPortfolioService::new(
+        binance.clone(),
+        binance.clone(),
+    ));
+    let trade_policy = TradePolicy::new(
+        trade_settlement_tokens,
+        max_trade_price_impact_bps,
+        trade_slippage_bps,
+    )?;
+    let bstock_trade = Arc::new(BstockTradeService::new(binance, trade_policy));
+    let app = bstock_router(bstock_market)
+        .merge(wallet_router(wallet_portfolio))
+        .merge(trade_router(bstock_trade));
     let listener = tokio::net::TcpListener::bind(bind_address).await?;
 
     axum::serve(listener, app)

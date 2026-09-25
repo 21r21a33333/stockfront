@@ -24,6 +24,7 @@ pub enum AssetKind {
     Stock,
     PreIpo,
     Etf,
+    Unknown,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]

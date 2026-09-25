@@ -1,17 +1,13 @@
 openapi: 3.0.3
 info:
-  title: Binance Web3 Wallet RWA API compatibility subset
+  title: Binance Web3 API compatibility subset
   version: 1.0.0-stockfront.1
   description: >-
-    Stockfront's narrow compatibility contract for the Binance Web3 Wallet RWA
-    endpoints used by the bStock market slice. Binance does not publish the
-    source OpenAPI document used to generate its official connectors.
+    Stockfront's narrow generated-client contract for the Binance Web3
+    endpoints used by its bStock vertical slices.
   x-stockfront-upstream:
-    repository: https://github.com/binance/binance-web3-connector-python
-    commit: 5f6256f97e55d05dade325cc0d706f67283a13e8
-    package: binance-web3-wallet@7.0.0
-    generated-document-version: 1.0.0
-    reference-path: clients/web3-wallet/src/binance_sdk_web3_wallet/rest_api
+    schema: https://web3.binance.com/en/dev-docs/catalog/web3-wallet/api/rest-api/1.0.0/schema.json
+    document-version: 1.0.0
   license:
     name: MIT
 servers:
@@ -19,6 +15,7 @@ servers:
 tags:
   - name: RWA data
   - name: Wallet
+  - name: Trading
 paths:
   /api/v1/dex/balance/token-balances-by-address:
     post:
@@ -104,6 +101,144 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/RwaUnderlyingMarketDataResponse'
+  /api/v1/dex/aggregator/quote:
+    get:
+      operationId: getAggregatedQuote
+      tags: [Trading]
+      parameters:
+        - $ref: '#/components/parameters/BinanceChainId'
+        - name: amount
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: fromTokenAddress
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: toTokenAddress
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: userWalletAddress
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Aggregated RFQ routes or a Binance business error.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetAggregatedQuoteResponse'
+  /api/v1/dex/aggregator/approve-transaction:
+    get:
+      operationId: getErc20ApproveTransaction
+      tags: [Trading]
+      parameters:
+        - $ref: '#/components/parameters/BinanceChainId'
+        - name: tokenContractAddress
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: approveAmount
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: vendor
+          in: query
+          required: true
+          schema:
+            $ref: '#/components/schemas/RfqVenue'
+      responses:
+        '200':
+          description: Exact ERC-20 approval calldata or a Binance business error.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetErc20ApproveTransactionResponse'
+  /api/v1/dex/aggregator/swap:
+    get:
+      operationId: buildSwapTransaction
+      tags: [Trading]
+      parameters:
+        - $ref: '#/components/parameters/BinanceChainId'
+        - name: amount
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: fromTokenAddress
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: toTokenAddress
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: userWalletAddress
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: quoteId
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: slippagePercent
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: RFQ EIP-712 payload or a Binance business error.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BuildSwapTransactionResponse'
+  /api/v1/dex/aggregator/order/submit:
+    post:
+      operationId: submitRfqOrder
+      tags: [Trading]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SubmitRfqOrderRequest'
+      responses:
+        '200':
+          description: Submitted RFQ order or a Binance business error.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubmitRfqOrderResponse'
+  /api/v1/dex/aggregator/order/{orderId}:
+    get:
+      operationId: getRfqOrderStatus
+      tags: [Trading]
+      parameters:
+        - name: orderId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Current RFQ order status or a Binance business error.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetRfqOrderStatusResponse'
 components:
   parameters:
     BinanceChainId:
@@ -132,6 +267,14 @@ components:
       schema:
         type: string
   schemas:
+    RfqVenue:
+      type: string
+      description: Supported Binance RFQ settlement venue.
+      enum: [InchFusion, CowSwap, PcsXRfq]
+    RfqSigningScheme:
+      type: string
+      description: RFQ wallet signing scheme.
+      enum: [EIP712]
     BusinessResponse:
       type: object
       properties:
@@ -421,3 +564,130 @@ components:
         latestDividend:
           type: string
           nullable: true
+    GetAggregatedQuoteResponse:
+      allOf:
+        - $ref: '#/components/schemas/BusinessResponse'
+        - type: object
+          properties:
+            data:
+              type: array
+              items:
+                $ref: '#/components/schemas/AggregatedQuote'
+    AggregatedQuote:
+      type: object
+      properties:
+        quoteId:
+          type: string
+        vendorName:
+          type: string
+        toTokenAmount:
+          type: string
+        priceImpactPercent:
+          type: string
+          nullable: true
+        executionMode:
+          type: string
+    GetErc20ApproveTransactionResponse:
+      allOf:
+        - $ref: '#/components/schemas/BusinessResponse'
+        - type: object
+          properties:
+            data:
+              type: array
+              items:
+                $ref: '#/components/schemas/ApproveTransaction'
+    ApproveTransaction:
+      type: object
+      required: [data, gasLimit, gasPrice]
+      properties:
+        data:
+          type: string
+        gasLimit:
+          type: string
+        gasPrice:
+          type: string
+    BuildSwapTransactionResponse:
+      allOf:
+        - $ref: '#/components/schemas/BusinessResponse'
+        - type: object
+          properties:
+            data:
+              $ref: '#/components/schemas/BuildSwapTransactionData'
+    BuildSwapTransactionData:
+      type: object
+      required: [rfq]
+      properties:
+        rfq:
+          $ref: '#/components/schemas/RfqOrderPayload'
+    RfqOrderPayload:
+      type: object
+      required: [vendor, orderId, typedDataToSign]
+      properties:
+        vendor:
+          $ref: '#/components/schemas/RfqVenue'
+        orderId:
+          type: string
+        typedDataToSign:
+          type: string
+    SubmitRfqOrderRequest:
+      type: object
+      required: [requestId, userSignature, vendor, quoteId]
+      properties:
+        requestId:
+          type: string
+          format: uuid
+        userSignature:
+          type: string
+        vendor:
+          $ref: '#/components/schemas/RfqVenue'
+        quoteId:
+          type: string
+        signingScheme:
+          $ref: '#/components/schemas/RfqSigningScheme'
+    SubmitRfqOrderResponse:
+      allOf:
+        - $ref: '#/components/schemas/BusinessResponse'
+        - type: object
+          properties:
+            data:
+              $ref: '#/components/schemas/SubmittedRfqOrder'
+    SubmittedRfqOrder:
+      type: object
+      required: [orderId, status, createdAt]
+      properties:
+        orderId:
+          type: string
+        status:
+          type: string
+        createdAt:
+          type: integer
+          format: int64
+    GetRfqOrderStatusResponse:
+      allOf:
+        - $ref: '#/components/schemas/BusinessResponse'
+        - type: object
+          properties:
+            data:
+              $ref: '#/components/schemas/RfqOrderStatus'
+    RfqOrderStatus:
+      type: object
+      required: [status, createdAt]
+      properties:
+        status:
+          type: string
+        txHash:
+          type: string
+          nullable: true
+        fromAmount:
+          type: string
+          nullable: true
+        toAmount:
+          type: string
+          nullable: true
+        filledAt:
+          type: integer
+          format: int64
+          nullable: true
+        createdAt:
+          type: integer
+          format: int64

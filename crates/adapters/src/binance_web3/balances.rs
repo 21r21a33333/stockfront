@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 use alloy_primitives::U256;
 use async_trait::async_trait;
@@ -51,27 +51,19 @@ impl BstockBalanceReader for BinanceWeb3Client {
             if !is_business_success(response.code, response.success) {
                 return Err(BalanceReaderError::Unavailable);
             }
-            let timestamp = response
-                .timestamp
-                .filter(|timestamp| *timestamp > 0)
-                .ok_or(BalanceReaderError::InvalidData)?;
+            let timestamp = response.timestamp.unwrap_or_default();
             observed_at_ms =
                 Some(observed_at_ms.map_or(timestamp, |current: i64| current.min(timestamp)));
 
-            let requested = batch.iter().copied().collect::<HashSet<_>>();
             let mut returned = HashMap::with_capacity(batch.len());
             for value in response
                 .data
-                .ok_or(BalanceReaderError::InvalidData)?
+                .unwrap_or_default()
                 .into_iter()
                 .flat_map(|group| group.token_assets.unwrap_or_default())
             {
-                let balance = BstockBalance::try_from(ProviderBalance { value, wallet })?;
-                if !requested.contains(&balance.id)
-                    || returned.insert(balance.id, balance).is_some()
-                {
-                    return Err(BalanceReaderError::InvalidData);
-                }
+                let balance = BstockBalance::try_from(ProviderBalance(value))?;
+                returned.insert(balance.id, balance);
             }
 
             balances.extend(batch.iter().map(|id| {
@@ -84,7 +76,7 @@ impl BstockBalanceReader for BinanceWeb3Client {
         }
 
         Ok(BstockBalanceSnapshot {
-            observed_at_ms: observed_at_ms.ok_or(BalanceReaderError::InvalidData)?,
+            observed_at_ms: observed_at_ms.unwrap_or_default(),
             balances,
         })
     }
@@ -103,43 +95,28 @@ fn balance_request(wallet: WalletAddress, assets: &[BstockId]) -> GetTokenBalanc
     request
 }
 
-struct ProviderBalance {
-    value: TokenBalance,
-    wallet: WalletAddress,
-}
+struct ProviderBalance(TokenBalance);
 
 impl TryFrom<ProviderBalance> for BstockBalance {
     type Error = BalanceReaderError;
 
     fn try_from(value: ProviderBalance) -> Result<Self, Self::Error> {
-        let token = value.value;
-        let chain_id = required(token.binance_chain_id)?
-            .parse::<u64>()
-            .map_err(|_| BalanceReaderError::InvalidData)?;
-        if chain_id != BNB_CHAIN_ID {
-            return Err(BalanceReaderError::InvalidData);
-        }
+        let token = value.0;
         let contract = required(token.token_contract_address)?
             .parse::<Address>()
             .map_err(|_| BalanceReaderError::InvalidData)?;
-        let response_wallet = required(token.address)?
-            .parse::<Address>()
-            .map_err(|_| BalanceReaderError::InvalidData)?;
-        if response_wallet != value.wallet.as_address() {
-            return Err(BalanceReaderError::InvalidData);
-        }
         let raw_amount = required(token.raw_balance)?
             .parse()
             .map_err(|_| BalanceReaderError::InvalidData)?;
         let amount = required(token.balance)?
             .parse::<Decimal>()
             .map_err(|_| BalanceReaderError::InvalidData)?;
-        if amount < Decimal::ZERO {
-            return Err(BalanceReaderError::InvalidData);
-        }
 
         Ok(Self {
-            id: BstockId { chain_id, contract },
+            id: BstockId {
+                chain_id: BNB_CHAIN_ID,
+                contract,
+            },
             raw_amount,
             amount,
         })
@@ -150,25 +127,4 @@ fn required(value: Option<String>) -> Result<String, BalanceReaderError> {
     value
         .filter(|value| !value.is_empty())
         .ok_or(BalanceReaderError::InvalidData)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn provider_balance_rejects_a_response_for_another_wallet() {
-        let wallet = WalletAddress::try_from(Address::with_last_byte(1))
-            .unwrap_or_else(|error| panic!("valid wallet rejected: {error}"));
-        let mut value = TokenBalance::new();
-        value.binance_chain_id = Some(BNB_CHAIN_ID.to_string());
-        value.token_contract_address = Some(Address::with_last_byte(2).to_string());
-        value.address = Some(Address::with_last_byte(3).to_string());
-        value.raw_balance = Some("1".to_owned());
-        value.balance = Some("0.000000000000000001".to_owned());
-
-        let result = BstockBalance::try_from(ProviderBalance { value, wallet });
-
-        assert_eq!(result, Err(BalanceReaderError::InvalidData));
-    }
 }

@@ -26,10 +26,10 @@ pub(in crate::http) async fn get_bstock(
 ) -> ApiResult<BstockDetails> {
     let contract = contract
         .parse::<Address>()
-        .map_err(|_| ApiError::InvalidContractAddress)?;
+        .map_err(|_| ApiError::INVALID_CONTRACT_ADDRESS)?;
     let details = service
         .details(BstockId { chain_id, contract })
         .await?
-        .ok_or(ApiError::NotFound)?;
+        .ok_or(ApiError::BSTOCK_NOT_FOUND)?;
     Ok(Response::ok(details))
 }

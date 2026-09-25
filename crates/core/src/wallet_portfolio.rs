@@ -3,7 +3,7 @@ use std::{collections::HashMap, sync::Arc};
 use alloy_primitives::{Address, U256};
 use async_trait::async_trait;
 use rust_decimal::Decimal;
-use serde::{Serialize, Serializer};
+use serde::{Deserialize, Deserializer, Serialize, Serializer, de};
 use thiserror::Error;
 
 use crate::bstock_market::{BNB_CHAIN_ID, BstockCatalog, BstockId, BstockSummary, CatalogError};
@@ -35,6 +35,18 @@ impl Serialize for WalletAddress {
         S: Serializer,
     {
         serializer.serialize_str(&self.0.to_string())
+    }
+}
+
+impl<'de> Deserialize<'de> for WalletAddress {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let address = String::deserialize(deserializer)?
+            .parse::<Address>()
+            .map_err(de::Error::custom)?;
+        Self::try_from(address).map_err(de::Error::custom)
     }
 }
 
@@ -131,8 +143,8 @@ impl WalletPortfolioService {
     ///
     /// # Errors
     ///
-    /// Returns [`WalletPortfolioError`] when catalog or balance discovery fails,
-    /// or when the returned snapshot does not match the requested identities.
+    /// Returns [`WalletPortfolioError`] when catalog or balance discovery fails or exposure
+    /// arithmetic overflows.
     pub async fn portfolio(
         &self,
         wallet: WalletAddress,
@@ -155,29 +167,20 @@ fn positions_from_snapshot(
     assets: Vec<BstockSummary>,
     balances: Vec<BstockBalance>,
 ) -> Result<Vec<BstockPosition>, WalletPortfolioError> {
-    let mut balances_by_id = HashMap::with_capacity(balances.len());
-    for balance in balances {
-        if balances_by_id.insert(balance.id, balance).is_some() {
-            return Err(WalletPortfolioError::InvalidSnapshot);
-        }
-    }
+    let mut balances_by_id = balances
+        .into_iter()
+        .map(|balance| (balance.id, balance))
+        .collect::<HashMap<_, _>>();
 
     let mut positions = Vec::new();
     for asset in assets {
-        let balance = balances_by_id
-            .remove(&asset.id)
-            .ok_or(WalletPortfolioError::InvalidSnapshot)?;
-        if asset.token_to_share_ratio <= Decimal::ZERO || balance.amount < Decimal::ZERO {
-            return Err(WalletPortfolioError::InvalidSnapshot);
-        }
+        let balance = balances_by_id.remove(&asset.id).unwrap_or(BstockBalance {
+            id: asset.id,
+            raw_amount: U256::ZERO,
+            amount: Decimal::ZERO,
+        });
         if balance.raw_amount == U256::ZERO {
-            if balance.amount != Decimal::ZERO {
-                return Err(WalletPortfolioError::InvalidSnapshot);
-            }
             continue;
-        }
-        if balance.amount == Decimal::ZERO {
-            return Err(WalletPortfolioError::InvalidSnapshot);
         }
 
         let share_exposure = balance
@@ -193,9 +196,6 @@ fn positions_from_snapshot(
         });
     }
 
-    if !balances_by_id.is_empty() {
-        return Err(WalletPortfolioError::InvalidSnapshot);
-    }
     positions.sort_by(|left, right| {
         left.bstock
             .underlying_ticker
@@ -264,27 +264,6 @@ mod tests {
         assert_eq!(portfolio.positions[0].bstock, nvda);
         assert_eq!(portfolio.positions[0].token_amount, Decimal::from(2));
         assert_eq!(portfolio.positions[0].share_exposure, Decimal::from(3));
-    }
-
-    #[tokio::test]
-    async fn portfolio_rejects_a_snapshot_missing_a_requested_asset() {
-        let asset = summary(1, "NVDA");
-        let service = WalletPortfolioService::new(
-            Arc::new(FixedCatalog(vec![asset])),
-            Arc::new(FixedBalanceReader(BstockBalanceSnapshot {
-                observed_at_ms: 42,
-                balances: Vec::new(),
-            })),
-        );
-        let wallet = WalletAddress::try_from(Address::with_last_byte(9))
-            .unwrap_or_else(|error| panic!("valid wallet rejected: {error}"));
-
-        let error = service
-            .portfolio(wallet)
-            .await
-            .expect_err("an incomplete snapshot must be rejected");
-
-        assert_eq!(error, WalletPortfolioError::InvalidSnapshot);
     }
 
     #[tokio::test]

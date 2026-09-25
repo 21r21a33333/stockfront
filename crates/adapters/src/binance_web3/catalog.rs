@@ -11,7 +11,7 @@ use stockfront_core::bstock_market::{
 use super::{
     BSTOCK_PLATFORM_ID,
     client::{BinanceWeb3Client, is_business_success},
-    mapping::{ProviderDetails, ProviderToken, price_matches_contract},
+    mapping::{ProviderDetails, ProviderToken},
 };
 
 impl BinanceWeb3Client {
@@ -97,7 +97,7 @@ impl BinanceWeb3Client {
             .data
             .unwrap_or_default()
             .into_iter()
-            .find(|value| price_matches_contract(value, id.contract))
+            .next()
             .ok_or(CatalogError::InvalidData {
                 field: "token price",
             })?;

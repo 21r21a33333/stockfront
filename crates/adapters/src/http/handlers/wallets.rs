@@ -17,7 +17,7 @@ pub(in crate::http) async fn portfolio(
 ) -> ApiResult<WalletPortfolio> {
     let address = address
         .parse::<Address>()
-        .map_err(|_| ApiError::InvalidWalletAddress)?;
+        .map_err(|_| ApiError::INVALID_WALLET_ADDRESS)?;
     let wallet = WalletAddress::try_from(address)?;
     let portfolio = service.portfolio(wallet).await?;
     Ok(Response::ok(portfolio))

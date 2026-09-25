@@ -21,11 +21,16 @@
 ## Boundaries and integration types
 
 - Reuse domain read models directly inside the shared API `Response` and `List` envelopes when their meaning and public shape match. Do not add field-for-field response DTO copies; add a response DTO only for material redaction, versioning or shape differences.
-- Keep untrusted transport requests separate from domain queries and commands. Convert them at the adapter boundary with `TryFrom` so validation remains explicit.
+- Reuse domain commands as HTTP request bodies when their meaning and public shape match. Add transport request DTOs only for a material shape, versioning or trust-boundary difference.
+- Trace every public request field to a downstream provider parameter or an explicit Stockfront rule before adding it. A status or lookup endpoint takes its identifier only; never require callers to replay wallet, asset, chain or settlement context solely to revalidate the provider response.
+- Define endpoint-specific commands instead of flattening a broad context object into requests that use only part of it. Use the same field name and representation whenever the same domain value crosses multiple endpoints.
+- Return only data needed for the current result or the next client action. Do not echo request fields, embed a previously returned quote, fabricate expiry metadata or expose provider fields that the client does not use.
 - Prefer `From` and `TryFrom` for provider-to-domain conversions over free `map_*` or `assemble_*` functions. If Rust's orphan rules prevent a direct implementation, use a minimal adapter-local wrapper rather than leaking provider types into core.
 - Reuse canonical ecosystem primitives, such as Alloy addresses, instead of maintaining local equivalents.
-- Generate provider request and response models from a pinned OpenAPI contract when one is available. Keep generated code, authentication and provider-specific models behind the adapter boundary, and do not hand-edit generated files.
+- Generate provider request and response models from a pinned OpenAPI contract when one is available. Keep the compatibility specification limited to endpoints and fields Stockfront actually consumes, delete stale generated files after regeneration, and never hand-edit generated files.
 - Do not repeat identity validation for fields already fixed by the request unless the provider can return mixed or ambiguous results.
+- Treat newly introduced provider enum values as unknown or skip unsupported records when safe; one unfamiliar optional value must not fail an otherwise usable response.
+- Add an independent RPC read, transfer verifier, settlement reader or indexer only when the approved product behavior requires evidence the provider cannot supply. Do not add one defensively around Binance status responses.
 - Centralize application configuration in `setting.rs` and deserialize environment-backed secrets declaratively with Serde. Do not scatter `std::env::var` calls through runtime composition code.
 
 ## Rust standards
@@ -34,6 +39,7 @@
 - Financial amounts and rates must use integer fixed-point or decimal types, never `f32` or `f64`.
 - Prefer named result types over positional tuples when returning multiple domain values.
 - Keep files focused, but do not split code into tiny modules without a clear ownership boundary.
+- Before review, search every newly added field, type, trait, error variant and helper. Remove anything with no concrete call site or invariant; retain a trait only when it is an active hexagonal port and retain an adapter wrapper only when it enables a required boundary conversion.
 - Run `cargo fmt --check`, Clippy with warnings denied and the relevant tests before review.
 
 ## Tests
@@ -53,5 +59,5 @@
 ## Safety
 
 - Never log secrets, signatures, raw private transactions or authorization headers.
-- Treat direct contract state and protocol oracles as authoritative for solvency and execution.
-- Validate externally produced transaction targets, selectors, chain IDs and amounts before returning them to users.
+- Use direct contract state and protocol oracles when an approved feature explicitly owns solvency or execution verification; do not introduce that responsibility into a provider-proxy slice.
+- Treat responses from the pinned Binance Web3 client as provider-owned data. Parse fields required by Stockfront's typed domain model and enforce Stockfront-owned policy, but do not revalidate response identities, calldata semantics or values already fixed by the request.

@@ -37,7 +37,7 @@ impl TryFrom<ProviderToken> for BstockSummary {
             token_decimals,
             underlying_ticker: required(token.underlying_ticker, "underlying ticker")?,
             underlying_name: required(token.underlying_name, "underlying name")?,
-            asset_kind: AssetKind::try_from(ProviderAssetKind(token.asset_type))?,
+            asset_kind: AssetKind::from(ProviderAssetKind(token.asset_type)),
             token_to_share_ratio: parse_decimal(&token_to_share_ratio, "token-to-share ratio")?,
             token_price_usd: parse_optional_decimal(token.token_price.as_deref(), "token price")?,
             reference_price_usd: parse_optional_decimal(
@@ -124,15 +124,13 @@ impl TryFrom<ProviderDetails> for BstockDetails {
 
 struct ProviderAssetKind(Option<i32>);
 
-impl TryFrom<ProviderAssetKind> for AssetKind {
-    type Error = CatalogError;
-
-    fn try_from(value: ProviderAssetKind) -> Result<Self, Self::Error> {
+impl From<ProviderAssetKind> for AssetKind {
+    fn from(value: ProviderAssetKind) -> Self {
         match value.0 {
-            Some(1) => Ok(Self::Stock),
-            Some(2) => Ok(Self::PreIpo),
-            Some(3) => Ok(Self::Etf),
-            _ => Err(invalid_data("asset type")),
+            Some(1) => Self::Stock,
+            Some(2) => Self::PreIpo,
+            Some(3) => Self::Etf,
+            _ => Self::Unknown,
         }
     }
 }
@@ -256,14 +254,6 @@ fn parse_optional_decimal(
 
 fn invalid_data(field: &'static str) -> CatalogError {
     CatalogError::InvalidData { field }
-}
-
-pub(super) fn price_matches_contract(value: &models::RwaTokenPrice, expected: Address) -> bool {
-    value
-        .token_contract_address
-        .as_deref()
-        .and_then(|contract| contract.parse::<Address>().ok())
-        == Some(expected)
 }
 
 #[cfg(test)]

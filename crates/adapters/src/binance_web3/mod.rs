@@ -5,6 +5,7 @@ mod balances;
 mod catalog;
 mod client;
 mod mapping;
+mod trades;
 
 pub use auth::BinanceConfigurationError;
 pub use client::BinanceWeb3Client;

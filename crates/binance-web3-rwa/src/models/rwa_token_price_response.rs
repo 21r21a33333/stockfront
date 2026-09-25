@@ -1,7 +1,7 @@
 /*
- * Binance Web3 Wallet RWA API compatibility subset
+ * Binance Web3 API compatibility subset
  *
- * Stockfront's narrow compatibility contract for the Binance Web3 Wallet RWA endpoints used by the bStock market slice. Binance does not publish the source OpenAPI document used to generate its official connectors.
+ * Stockfront's narrow generated-client contract for the Binance Web3 endpoints used by its bStock vertical slices.
  *
  * The version of the OpenAPI document: 1.0.0-stockfront.1
  *

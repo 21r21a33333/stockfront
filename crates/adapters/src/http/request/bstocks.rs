@@ -2,7 +2,7 @@ use serde::Deserialize;
 use stockfront_core::bstock_market::{ListBstocksQuery, QueryError};
 
 #[derive(Debug, Deserialize)]
-pub(super) struct ListBstocksRequest {
+pub(in crate::http) struct ListBstocksRequest {
     query: Option<String>,
     limit: Option<usize>,
 }
