@@ -5,12 +5,12 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
-axum = "0.8.6"
-serde = { version = "1.0.228", features = ["derive"] }
+axum.workspace = true
+serde = { workspace = true, features = ["derive"] }
 stockfront-adapters = { path = "../adapters" }
-stockfront-core = { path = "../core" }
-thiserror = "2.0.17"
-tokio = { version = "1.47.1", features = ["macros", "net", "rt-multi-thread", "signal"] }
+stockfront-core.workspace = true
+thiserror.workspace = true
+tokio = { workspace = true, features = ["macros", "net", "rt-multi-thread", "signal"] }
 
 [lints]
 workspace = true

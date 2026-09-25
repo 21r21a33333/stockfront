@@ -61,19 +61,11 @@ pub(super) type ApiResult<T> = Result<Response<T>, ApiError>;
 #[serde(rename_all = "camelCase")]
 pub(super) struct List<T> {
     items: Vec<T>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    next_cursor: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    total: Option<u64>,
 }
 
 impl<T> List<T> {
     pub(super) fn all(items: Vec<T>) -> Self {
-        Self {
-            items,
-            next_cursor: None,
-            total: None,
-        }
+        Self { items }
     }
 }
 

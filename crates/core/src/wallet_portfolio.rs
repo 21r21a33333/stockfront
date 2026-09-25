@@ -6,7 +6,10 @@ use rust_decimal::Decimal;
 use serde::{Deserialize, Deserializer, Serialize, Serializer, de};
 use thiserror::Error;
 
-use crate::bstock_market::{BNB_CHAIN_ID, BstockCatalog, BstockId, BstockSummary, CatalogError};
+use crate::{
+    bstock_market::{BNB_CHAIN_ID, BstockCatalog, BstockId, BstockSummary, CatalogError},
+    serialization::serialize_as_string,
+};
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub struct WalletAddress(Address);
@@ -73,7 +76,7 @@ pub struct BstockBalanceSnapshot {
 #[serde(rename_all = "camelCase")]
 pub struct BstockPosition {
     pub bstock: BstockSummary,
-    #[serde(serialize_with = "serialize_u256")]
+    #[serde(serialize_with = "serialize_as_string")]
     pub raw_amount: U256,
     pub token_amount: Decimal,
     pub share_exposure: Decimal,
@@ -86,13 +89,6 @@ pub struct WalletPortfolio {
     pub chain_id: u64,
     pub observed_at_ms: i64,
     pub positions: Vec<BstockPosition>,
-}
-
-fn serialize_u256<S>(value: &U256, serializer: S) -> Result<S::Ok, S::Error>
-where
-    S: Serializer,
-{
-    serializer.collect_str(value)
 }
 
 #[derive(Clone, Copy, Debug, Error, Eq, PartialEq)]
@@ -112,7 +108,7 @@ pub trait BstockBalanceReader: Send + Sync {
     ) -> Result<BstockBalanceSnapshot, BalanceReaderError>;
 }
 
-#[derive(Clone, Debug, Error, Eq, PartialEq)]
+#[derive(Debug, Error, Eq, PartialEq)]
 pub enum WalletPortfolioError {
     #[error(transparent)]
     Catalog(#[from] CatalogError),
@@ -122,7 +118,6 @@ pub enum WalletPortfolioError {
     InvalidSnapshot,
 }
 
-#[derive(Clone)]
 pub struct WalletPortfolioService {
     catalog: Arc<dyn BstockCatalog>,
     balance_reader: Arc<dyn BstockBalanceReader>,

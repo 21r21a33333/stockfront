@@ -1,6 +1,8 @@
 mod support;
+#[path = "support/trade.rs"]
+mod trade_support;
 
-use std::{env, error::Error, io, sync::Arc, time::Duration};
+use std::{env, error::Error, io, time::Duration};
 
 use alloy::{
     network::{EthereumWallet, TransactionBuilder},
@@ -15,18 +17,16 @@ use stockfront_core::{
     bstock_market::BNB_CHAIN_ID,
     bstock_trade::{
         ApprovalRequest, BstockTradeError, BstockTradeService, PrepareTradeRequest, PreparedTrade,
-        TradeExecutionMode, TradeGatewayError, TradePolicy, TradeQuote, TradeQuoteRequest,
+        TradeExecutionMode, TradeGatewayError, TradeQuote, TradeQuoteRequest,
         TradeTransactionState, TradeTransactionStatus,
     },
     wallet_portfolio::WalletAddress,
 };
 use zeroize::Zeroizing;
 
-use support::live_client;
+use trade_support::{NVIDIA_BSTOCK, USDT, live_trade_service};
 
 const DEFAULT_BSC_RPC_URL: &str = "https://bsc-dataseed.bnbchain.org";
-const NVIDIA_BSTOCK: &str = "0x02fca66c1d1afb4e2a7884261eb00f63598a7436";
-const USDT: &str = "0x55d398326f99059ff775485246999027b3197955";
 const SIX_USDT: &str = "6000000000000000000";
 const MINIMUM_BNB_FOR_GAS: &str = "500000000000000";
 const LIVE_TRADE_CONFIRMATION_ENV: &str = "STOCKFRONT_E2E_CONFIRM";
@@ -73,60 +73,54 @@ async fn buys_and_sells_nvidia_bstock_on_bsc() -> Result<(), Box<dyn Error>> {
         return Err(io::Error::other("BSC RPC did not report chain ID 56").into());
     }
 
-    let bstock = NVIDIA_BSTOCK.parse::<Address>()?;
-    let usdt = USDT.parse::<Address>()?;
     let buy_amount = SIX_USDT.parse::<U256>()?;
     let minimum_gas_balance = MINIMUM_BNB_FOR_GAS.parse::<U256>()?;
     let wallet_address = WalletAddress::try_from(wallet_address)?;
-    let client = Arc::new(live_client()?);
-    let policy = TradePolicy::new([usdt], 100, ROUND_TRIP_SLIPPAGE_BPS)?;
-    let service = BstockTradeService::new(client.clone(), client, policy);
+    let service = live_trade_service(USDT, ROUND_TRIP_SLIPPAGE_BPS)?;
 
-    let starting_usdt = token_balance(&provider, usdt, wallet_address.as_address()).await?;
+    let starting_usdt = token_balance(&provider, USDT, wallet_address.as_address()).await?;
     if starting_usdt < buy_amount {
         return Err(io::Error::other("wallet needs at least 6 USDT").into());
     }
     if provider.get_balance(wallet_address.as_address()).await? < minimum_gas_balance {
         return Err(io::Error::other("wallet needs at least 0.0005 BNB for gas").into());
     }
-    let starting_bstock = token_balance(&provider, bstock, wallet_address.as_address()).await?;
+    let starting_bstock =
+        token_balance(&provider, NVIDIA_BSTOCK, wallet_address.as_address()).await?;
     let purchase = buy_bstock(
         &provider,
         &service,
         wallet_address,
-        usdt,
-        bstock,
+        USDT,
+        NVIDIA_BSTOCK,
         buy_amount,
     )
     .await?;
-    let usdt_after_buy = token_balance(&provider, usdt, wallet_address.as_address()).await?;
+    let usdt_after_buy = token_balance(&provider, USDT, wallet_address.as_address()).await?;
     let sale_transaction_hash = sell_bstock(
         &provider,
         &service,
         wallet_address,
-        bstock,
-        usdt,
+        NVIDIA_BSTOCK,
+        USDT,
         purchase.amount,
     )
     .await?;
 
-    let final_bstock = token_balance(&provider, bstock, wallet_address.as_address()).await?;
+    let final_bstock = token_balance(&provider, NVIDIA_BSTOCK, wallet_address.as_address()).await?;
     if final_bstock != starting_bstock {
         return Err(io::Error::other("round trip left an unexpected NVDAB balance").into());
     }
 
-    let final_usdt = token_balance(&provider, usdt, wallet_address.as_address()).await?;
+    let final_usdt = token_balance(&provider, USDT, wallet_address.as_address()).await?;
     if final_usdt <= usdt_after_buy {
         return Err(io::Error::other("sale did not return USDT to the wallet").into());
     }
 
     let purchase_status = wait_for_settlement(&service, purchase.transaction_hash).await?;
-    assert_settlement_direction(&purchase_status, usdt, bstock)?;
+    assert_settlement_direction(&purchase_status, USDT, NVIDIA_BSTOCK)?;
     let sale_status = wait_for_settlement(&service, sale_transaction_hash).await?;
-    assert_settlement_direction(&sale_status, bstock, usdt)?;
-
-    println!("Starting USDT: {starting_usdt}");
-    println!("Final USDT: {final_usdt}");
+    assert_settlement_direction(&sale_status, NVIDIA_BSTOCK, USDT)?;
     Ok(())
 }
 
@@ -139,46 +133,17 @@ async fn buy_bstock(
     amount: U256,
 ) -> Result<PurchasedBstock, Box<dyn Error>> {
     let starting_balance = token_balance(provider, bstock, wallet.as_address()).await?;
-    let request = TradeQuoteRequest {
-        wallet,
-        sell_token: usdt,
-        buy_token: bstock,
-        sell_amount: amount,
-    };
-    let approval_quote = swap_quote(service.quotes(&request).await?, None, None)?;
-    let venue = approval_quote.venue.clone();
-    let approval = service
-        .prepare_approval(&ApprovalRequest {
-            token: usdt,
-            amount,
-            venue: venue.clone(),
-        })
-        .await?;
-    let approval_hash = send_transaction(provider, approval.to, approval.data, U256::ZERO).await?;
-    println!("USDT approval: {approval_hash}");
-
-    let quote = swap_quote(
-        service.quotes(&request).await?,
-        Some(&venue),
-        Some(approval.spender),
-    )?;
-    let prepared = service
-        .prepare_trade(&PrepareTradeRequest {
-            trade: request,
-            route_quote_id: quote.route_quote_id,
-        })
-        .await?;
-    let PreparedTrade::Swap { transaction } = prepared else {
-        return Err(io::Error::other("Binance changed the buy route to RFQ").into());
-    };
-    let transaction_hash = send_transaction(
+    let transaction_hash = execute_swap(
         provider,
-        transaction.to,
-        transaction.data,
-        transaction.value,
+        service,
+        TradeQuoteRequest {
+            wallet,
+            sell_token: usdt,
+            buy_token: bstock,
+            sell_amount: amount,
+        },
     )
     .await?;
-    println!("NVDAB purchase: {transaction_hash}");
 
     let balance = token_balance(provider, bstock, wallet.as_address()).await?;
     let bought = balance
@@ -201,23 +166,34 @@ async fn sell_bstock(
     usdt: Address,
     amount: U256,
 ) -> Result<B256, Box<dyn Error>> {
-    let request = TradeQuoteRequest {
-        wallet,
-        sell_token: bstock,
-        buy_token: usdt,
-        sell_amount: amount,
-    };
+    execute_swap(
+        provider,
+        service,
+        TradeQuoteRequest {
+            wallet,
+            sell_token: bstock,
+            buy_token: usdt,
+            sell_amount: amount,
+        },
+    )
+    .await
+}
+
+async fn execute_swap(
+    provider: &impl Provider,
+    service: &BstockTradeService,
+    request: TradeQuoteRequest,
+) -> Result<B256, Box<dyn Error>> {
     let approval_quote = swap_quote(service.quotes(&request).await?, None, None)?;
-    let venue = approval_quote.venue.clone();
+    let venue = approval_quote.venue;
     let approval = service
         .prepare_approval(&ApprovalRequest {
-            token: bstock,
-            amount,
+            token: request.sell_token,
+            amount: request.sell_amount,
             venue: venue.clone(),
         })
         .await?;
-    let approval_hash = send_transaction(provider, approval.to, approval.data, U256::ZERO).await?;
-    println!("NVDAB approval: {approval_hash}");
+    send_transaction(provider, approval.to, approval.data, U256::ZERO).await?;
 
     let quote = swap_quote(
         service.quotes(&request).await?,
@@ -231,17 +207,15 @@ async fn sell_bstock(
         })
         .await?;
     let PreparedTrade::Swap { transaction } = prepared else {
-        return Err(io::Error::other("Binance changed the sell route to RFQ").into());
+        return Err(io::Error::other("Binance changed the selected route to RFQ").into());
     };
-    let transaction_hash = send_transaction(
+    send_transaction(
         provider,
         transaction.to,
         transaction.data,
         transaction.value,
     )
-    .await?;
-    println!("NVDAB sale: {transaction_hash}");
-    Ok(transaction_hash)
+    .await
 }
 
 fn swap_quote(

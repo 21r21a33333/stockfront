@@ -6,6 +6,8 @@ use rust_decimal::Decimal;
 use serde::{Serialize, Serializer};
 use thiserror::Error;
 
+use crate::serialization::serialize_as_string;
+
 pub const BNB_CHAIN_ID: u64 = 56;
 pub const DEFAULT_LIST_LIMIT: usize = 50;
 pub const MAX_LIST_LIMIT: usize = 100;
@@ -14,7 +16,7 @@ pub const MAX_LIST_LIMIT: usize = 100;
 #[serde(rename_all = "camelCase")]
 pub struct BstockId {
     pub chain_id: u64,
-    #[serde(serialize_with = "serialize_address")]
+    #[serde(serialize_with = "serialize_as_string")]
     pub contract: Address,
 }
 
@@ -160,14 +162,7 @@ pub struct BstockDetails {
     pub price_updated_at_ms: Option<i64>,
 }
 
-fn serialize_address<S>(address: &Address, serializer: S) -> Result<S::Ok, S::Error>
-where
-    S: Serializer,
-{
-    serializer.serialize_str(&address.to_string())
-}
-
-#[derive(Clone, Debug, Error, Eq, PartialEq)]
+#[derive(Debug, Error, Eq, PartialEq)]
 pub enum CatalogError {
     #[error("the market data provider is unavailable")]
     Unavailable,
@@ -182,7 +177,7 @@ pub trait BstockCatalog: Send + Sync {
     async fn find_bstock(&self, id: BstockId) -> Result<Option<BstockDetails>, CatalogError>;
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Debug, Eq, PartialEq)]
 pub struct ListBstocksQuery {
     pub search: Option<String>,
     pub limit: usize,
@@ -214,7 +209,7 @@ pub enum QueryError {
     InvalidLimit,
 }
 
-#[derive(Clone, Debug, Error, Eq, PartialEq)]
+#[derive(Debug, Error, Eq, PartialEq)]
 pub enum BstockMarketError {
     #[error(transparent)]
     Catalog(#[from] CatalogError),
@@ -222,7 +217,6 @@ pub enum BstockMarketError {
     UnsupportedChain,
 }
 
-#[derive(Clone)]
 pub struct BstockMarketService {
     catalog: Arc<dyn BstockCatalog>,
 }

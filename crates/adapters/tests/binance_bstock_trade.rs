@@ -1,25 +1,25 @@
 mod support;
+#[path = "support/trade.rs"]
+mod trade_support;
+#[path = "support/wallet.rs"]
+mod wallet_support;
 
-use std::{error::Error, sync::Arc, time::Duration};
+use std::{error::Error, io, sync::Arc, time::Duration};
 
-use alloy_primitives::{Address, B256, U256};
+use alloy_primitives::{Address, B256, U256, address};
 use rust_decimal::Decimal;
 use stockfront_adapters::binance_web3::BinanceWeb3Client;
-use stockfront_core::{
-    bstock_trade::{
-        ApprovalRequest, BstockTradeError, BstockTradeGateway, BstockTradeService,
-        PrepareTradeRequest, PreparedTrade, TradeExecutionMode, TradeGatewayError, TradePolicy,
-        TradeQuoteRequest, TradeTransactionState,
-    },
-    wallet_portfolio::WalletAddress,
+use stockfront_core::bstock_trade::{
+    ApprovalRequest, BstockTradeError, BstockTradeGateway, BstockTradeService, PrepareTradeRequest,
+    PreparedTrade, TradeExecutionMode, TradeGatewayError, TradePolicy, TradeQuoteRequest,
+    TradeTransactionState,
 };
 
 use support::live_client;
+use trade_support::{NVIDIA_BSTOCK, USDT, live_trade_service};
+use wallet_support::binance_hot_wallet;
 
-const BINANCE_HOT_WALLET: &str = "0x8894e0a0c962cb723c1976a4421c95949be2d4e3";
-const NVIDIA_BSTOCK: &str = "0x02fca66c1d1afb4e2a7884261eb00f63598a7436";
-const USDT: &str = "0x55d398326f99059ff775485246999027b3197955";
-const WBNB: &str = "0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c";
+const WBNB: Address = address!("bb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c");
 const ONE_HUNDRED_USDT: &str = "100000000000000000000";
 const ONE_HUNDRED_ONE_USDT: &str = "101000000000000000000";
 const HALF_NVIDIA_BSTOCK: &str = "500000000000000000";
@@ -41,16 +41,13 @@ fn offline_service(settlement_token: Address) -> Result<BstockTradeService, Box<
 
 #[tokio::test]
 async fn rejects_zero_trade_amount_before_calling_binance() -> Result<(), Box<dyn Error>> {
-    let wallet = BINANCE_HOT_WALLET.parse::<Address>()?;
-    let bstock = NVIDIA_BSTOCK.parse::<Address>()?;
-    let usdt = USDT.parse::<Address>()?;
-    let service = offline_service(usdt)?;
+    let service = offline_service(USDT)?;
 
     let error = service
         .quotes(&TradeQuoteRequest {
-            wallet: WalletAddress::try_from(wallet)?,
-            sell_token: usdt,
-            buy_token: bstock,
+            wallet: binance_hot_wallet()?,
+            sell_token: USDT,
+            buy_token: NVIDIA_BSTOCK,
             sell_amount: U256::ZERO,
         })
         .await
@@ -62,17 +59,13 @@ async fn rejects_zero_trade_amount_before_calling_binance() -> Result<(), Box<dy
 
 #[tokio::test]
 async fn rejects_unsupported_trade_pair_before_calling_binance() -> Result<(), Box<dyn Error>> {
-    let wallet = BINANCE_HOT_WALLET.parse::<Address>()?;
-    let bstock = NVIDIA_BSTOCK.parse::<Address>()?;
-    let usdt = USDT.parse::<Address>()?;
-    let wbnb = WBNB.parse::<Address>()?;
-    let service = offline_service(usdt)?;
+    let service = offline_service(USDT)?;
 
     let error = service
         .quotes(&TradeQuoteRequest {
-            wallet: WalletAddress::try_from(wallet)?,
-            sell_token: wbnb,
-            buy_token: bstock,
+            wallet: binance_hot_wallet()?,
+            sell_token: WBNB,
+            buy_token: NVIDIA_BSTOCK,
             sell_amount: U256::from(1),
         })
         .await
@@ -85,30 +78,37 @@ async fn rejects_unsupported_trade_pair_before_calling_binance() -> Result<(), B
 #[tokio::test]
 #[ignore = "requires live Binance Web3 credentials"]
 async fn prepares_live_bstock_swap_from_binance() -> Result<(), Box<dyn Error>> {
-    let wallet = BINANCE_HOT_WALLET.parse::<Address>()?;
-    let bstock = NVIDIA_BSTOCK.parse::<Address>()?;
-    let usdt = USDT.parse::<Address>()?;
-    let amount = ONE_HUNDRED_USDT.parse::<U256>()?;
-    let client = Arc::new(live_client()?);
-    let policy = TradePolicy::new([usdt], 100, 50)?;
-    let service = BstockTradeService::new(client.clone(), client, policy);
+    assert_prepares_live_swap(USDT, NVIDIA_BSTOCK, ONE_HUNDRED_USDT.parse()?).await
+}
+
+#[tokio::test]
+#[ignore = "requires live Binance Web3 credentials"]
+async fn prepares_live_bstock_sale_from_binance() -> Result<(), Box<dyn Error>> {
+    assert_prepares_live_swap(NVIDIA_BSTOCK, USDT, HALF_NVIDIA_BSTOCK.parse()?).await
+}
+
+async fn assert_prepares_live_swap(
+    sell_token: Address,
+    buy_token: Address,
+    amount: U256,
+) -> Result<(), Box<dyn Error>> {
+    let service = live_trade_service(USDT, 50)?;
     let request = TradeQuoteRequest {
-        wallet: WalletAddress::try_from(wallet)?,
-        sell_token: usdt,
-        buy_token: bstock,
+        wallet: binance_hot_wallet()?,
+        sell_token,
+        buy_token,
         sell_amount: amount,
     };
 
     let quotes = service.quotes(&request).await?;
-
     assert!(
         !quotes.is_empty(),
         "Binance returned no executable bStock quote"
     );
     assert!(quotes.iter().all(|quote| {
-        quote.sell.token == usdt
+        quote.sell.token == sell_token
             && quote.sell.amount == amount
-            && quote.buy.token == bstock
+            && quote.buy.token == buy_token
             && !quote.buy.amount.is_zero()
             && !quote.route_quote_id.is_empty()
             && !quote.venue.is_empty()
@@ -120,15 +120,16 @@ async fn prepares_live_bstock_swap_from_binance() -> Result<(), Box<dyn Error>> 
     let quote = quotes
         .into_iter()
         .find(|quote| matches!(quote.execution_mode, TradeExecutionMode::Swap))
-        .ok_or("Binance returned no SWAP route")?;
+        .ok_or_else(|| io::Error::other("Binance returned no SWAP route"))?;
+
     let approval = service
         .prepare_approval(&ApprovalRequest {
-            token: usdt,
+            token: sell_token,
             amount,
             venue: quote.venue,
         })
         .await?;
-    assert_eq!(approval.to, usdt);
+    assert_eq!(approval.to, sell_token);
     assert_ne!(approval.spender, Address::ZERO);
     assert!(!approval.data.is_empty());
 
@@ -139,63 +140,7 @@ async fn prepares_live_bstock_swap_from_binance() -> Result<(), Box<dyn Error>> 
         })
         .await?;
     let PreparedTrade::Swap { transaction } = prepared else {
-        return Err("Binance changed a SWAP quote into an RFQ payload".into());
-    };
-    assert_ne!(transaction.to, Address::ZERO);
-    assert!(!transaction.data.is_empty());
-    assert!(!transaction.gas_limit.is_zero());
-    assert!(!transaction.min_receive_amount.is_zero());
-
-    Ok(())
-}
-
-#[tokio::test]
-#[ignore = "requires live Binance Web3 credentials"]
-async fn prepares_live_bstock_sale_from_binance() -> Result<(), Box<dyn Error>> {
-    let wallet = BINANCE_HOT_WALLET.parse::<Address>()?;
-    let bstock = NVIDIA_BSTOCK.parse::<Address>()?;
-    let usdt = USDT.parse::<Address>()?;
-    let amount = HALF_NVIDIA_BSTOCK.parse::<U256>()?;
-    let client = Arc::new(live_client()?);
-    let policy = TradePolicy::new([usdt], 100, 50)?;
-    let service = BstockTradeService::new(client.clone(), client, policy);
-    let request = TradeQuoteRequest {
-        wallet: WalletAddress::try_from(wallet)?,
-        sell_token: bstock,
-        buy_token: usdt,
-        sell_amount: amount,
-    };
-
-    let quote = service
-        .quotes(&request)
-        .await?
-        .into_iter()
-        .find(|quote| matches!(quote.execution_mode, TradeExecutionMode::Swap))
-        .ok_or("Binance returned no SWAP route for the bStock sale")?;
-    assert_eq!(quote.sell.token, bstock);
-    assert_eq!(quote.sell.amount, amount);
-    assert_eq!(quote.buy.token, usdt);
-    assert!(!quote.buy.amount.is_zero());
-
-    let approval = service
-        .prepare_approval(&ApprovalRequest {
-            token: bstock,
-            amount,
-            venue: quote.venue,
-        })
-        .await?;
-    assert_eq!(approval.to, bstock);
-    assert_ne!(approval.spender, Address::ZERO);
-    assert!(!approval.data.is_empty());
-
-    let prepared = service
-        .prepare_trade(&PrepareTradeRequest {
-            trade: request,
-            route_quote_id: quote.route_quote_id,
-        })
-        .await?;
-    let PreparedTrade::Swap { transaction } = prepared else {
-        return Err("Binance changed a SWAP quote into an RFQ payload".into());
+        return Err(io::Error::other("Binance changed a SWAP quote into an RFQ payload").into());
     };
     assert_ne!(transaction.to, Address::ZERO);
     assert!(!transaction.data.is_empty());
@@ -208,17 +153,12 @@ async fn prepares_live_bstock_sale_from_binance() -> Result<(), Box<dyn Error>> 
 #[tokio::test]
 #[ignore = "requires live Binance Web3 credentials and waits for quote expiry"]
 async fn rejects_expired_live_bstock_quote() -> Result<(), Box<dyn Error>> {
-    let wallet = BINANCE_HOT_WALLET.parse::<Address>()?;
-    let bstock = NVIDIA_BSTOCK.parse::<Address>()?;
-    let usdt = USDT.parse::<Address>()?;
     let amount = ONE_HUNDRED_USDT.parse::<U256>()?;
-    let client = Arc::new(live_client()?);
-    let policy = TradePolicy::new([usdt], 100, 50)?;
-    let service = BstockTradeService::new(client.clone(), client, policy);
+    let service = live_trade_service(USDT, 50)?;
     let request = TradeQuoteRequest {
-        wallet: WalletAddress::try_from(wallet)?,
-        sell_token: usdt,
-        buy_token: bstock,
+        wallet: binance_hot_wallet()?,
+        sell_token: USDT,
+        buy_token: NVIDIA_BSTOCK,
         sell_amount: amount,
     };
     let quote = service
@@ -248,18 +188,13 @@ async fn rejects_expired_live_bstock_quote() -> Result<(), Box<dyn Error>> {
 #[tokio::test]
 #[ignore = "requires live Binance Web3 credentials"]
 async fn rejects_mismatched_live_bstock_quote() -> Result<(), Box<dyn Error>> {
-    let wallet = BINANCE_HOT_WALLET.parse::<Address>()?;
-    let bstock = NVIDIA_BSTOCK.parse::<Address>()?;
-    let usdt = USDT.parse::<Address>()?;
     let quoted_amount = ONE_HUNDRED_USDT.parse::<U256>()?;
     let changed_amount = ONE_HUNDRED_ONE_USDT.parse::<U256>()?;
-    let client = Arc::new(live_client()?);
-    let policy = TradePolicy::new([usdt], 100, 50)?;
-    let service = BstockTradeService::new(client.clone(), client, policy);
+    let service = live_trade_service(USDT, 50)?;
     let quote_request = TradeQuoteRequest {
-        wallet: WalletAddress::try_from(wallet)?,
-        sell_token: usdt,
-        buy_token: bstock,
+        wallet: binance_hot_wallet()?,
+        sell_token: USDT,
+        buy_token: NVIDIA_BSTOCK,
         sell_amount: quoted_amount,
     };
     let quote = service
@@ -302,8 +237,6 @@ async fn reports_unknown_live_swap_transaction() -> Result<(), Box<dyn Error>> {
 #[tokio::test]
 #[ignore = "requires live Binance Web3 credentials"]
 async fn reads_successful_live_bstock_transaction() -> Result<(), Box<dyn Error>> {
-    let bstock = NVIDIA_BSTOCK.parse::<Address>()?;
-    let usdt = USDT.parse::<Address>()?;
     let transaction_hash = SUCCESSFUL_NVIDIA_SALE_TX.parse::<B256>()?;
 
     let status = live_client()?.transaction_status(transaction_hash).await?;
@@ -313,13 +246,13 @@ async fn reads_successful_live_bstock_transaction() -> Result<(), Box<dyn Error>
         status
             .sold
             .iter()
-            .any(|amount| amount.token == bstock && amount.amount > Decimal::ZERO)
+            .any(|amount| amount.token == NVIDIA_BSTOCK && amount.amount > Decimal::ZERO)
     );
     assert!(
         status
             .bought
             .iter()
-            .any(|amount| amount.token == usdt && amount.amount > Decimal::ZERO)
+            .any(|amount| amount.token == USDT && amount.amount > Decimal::ZERO)
     );
     assert!(status.block_number.is_some());
     assert!(status.executed_at_ms.is_some());

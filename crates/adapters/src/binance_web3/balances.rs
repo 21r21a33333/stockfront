@@ -51,7 +51,7 @@ impl BstockBalanceReader for BinanceWeb3Client {
             if !is_business_success(response.code, response.success) {
                 return Err(BalanceReaderError::Unavailable);
             }
-            let timestamp = response.timestamp.unwrap_or_default();
+            let timestamp = response.timestamp.ok_or(BalanceReaderError::InvalidData)?;
             observed_at_ms =
                 Some(observed_at_ms.map_or(timestamp, |current: i64| current.min(timestamp)));
 
@@ -76,7 +76,7 @@ impl BstockBalanceReader for BinanceWeb3Client {
         }
 
         Ok(BstockBalanceSnapshot {
-            observed_at_ms: observed_at_ms.unwrap_or_default(),
+            observed_at_ms: observed_at_ms.ok_or(BalanceReaderError::InvalidData)?,
             balances,
         })
     }

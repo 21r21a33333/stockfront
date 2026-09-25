@@ -157,10 +157,16 @@ impl From<BstockMarketError> for ApiError {
     fn from(error: BstockMarketError) -> Self {
         match error {
             BstockMarketError::UnsupportedChain => Self::UNSUPPORTED_CHAIN,
-            BstockMarketError::Catalog(CatalogError::Unavailable) => Self::MARKET_DATA_UNAVAILABLE,
-            BstockMarketError::Catalog(CatalogError::InvalidData { .. }) => {
-                Self::INVALID_MARKET_DATA
-            }
+            BstockMarketError::Catalog(error) => error.into(),
+        }
+    }
+}
+
+impl From<CatalogError> for ApiError {
+    fn from(error: CatalogError) -> Self {
+        match error {
+            CatalogError::Unavailable => Self::MARKET_DATA_UNAVAILABLE,
+            CatalogError::InvalidData { .. } => Self::INVALID_MARKET_DATA,
         }
     }
 }
@@ -174,17 +180,18 @@ impl From<WalletAddressError> for ApiError {
 impl From<WalletPortfolioError> for ApiError {
     fn from(error: WalletPortfolioError) -> Self {
         match error {
-            WalletPortfolioError::Catalog(CatalogError::Unavailable) => {
-                Self::MARKET_DATA_UNAVAILABLE
-            }
-            WalletPortfolioError::BalanceReader(BalanceReaderError::Unavailable) => {
-                Self::BALANCE_DATA_UNAVAILABLE
-            }
-            WalletPortfolioError::Catalog(CatalogError::InvalidData { .. }) => {
-                Self::INVALID_MARKET_DATA
-            }
-            WalletPortfolioError::BalanceReader(BalanceReaderError::InvalidData)
-            | WalletPortfolioError::InvalidSnapshot => Self::INVALID_BALANCE_DATA,
+            WalletPortfolioError::Catalog(error) => error.into(),
+            WalletPortfolioError::BalanceReader(error) => error.into(),
+            WalletPortfolioError::InvalidSnapshot => Self::INVALID_BALANCE_DATA,
+        }
+    }
+}
+
+impl From<BalanceReaderError> for ApiError {
+    fn from(error: BalanceReaderError) -> Self {
+        match error {
+            BalanceReaderError::Unavailable => Self::BALANCE_DATA_UNAVAILABLE,
+            BalanceReaderError::InvalidData => Self::INVALID_BALANCE_DATA,
         }
     }
 }
@@ -192,24 +199,25 @@ impl From<WalletPortfolioError> for ApiError {
 impl From<BstockTradeError> for ApiError {
     fn from(error: BstockTradeError) -> Self {
         match error {
-            BstockTradeError::Gateway(TradeGatewayError::Unavailable) => Self::TRADE_UNAVAILABLE,
-            BstockTradeError::Gateway(TradeGatewayError::Rejected) => Self::TRADE_REJECTED,
-            BstockTradeError::Gateway(TradeGatewayError::InvalidData) => Self::INVALID_TRADE_DATA,
-            BstockTradeError::Gateway(TradeGatewayError::QuoteExpired) => Self::QUOTE_EXPIRED,
-            BstockTradeError::Gateway(TradeGatewayError::QuoteMismatch) => Self::QUOTE_MISMATCH,
+            BstockTradeError::Gateway(error) => error.into(),
+            BstockTradeError::Catalog(error) => error.into(),
             BstockTradeError::NoSupportedQuote => Self::NO_EXECUTABLE_QUOTE,
             BstockTradeError::UnsupportedTradePair => Self::UNSUPPORTED_TRADE_PAIR,
             BstockTradeError::InvalidAmount => Self::INVALID_TRADE_AMOUNT,
-            BstockTradeError::Catalog(CatalogError::Unavailable) => Self::MARKET_DATA_UNAVAILABLE,
-            BstockTradeError::Catalog(CatalogError::InvalidData { .. }) => {
-                Self::INVALID_MARKET_DATA
-            }
-            BstockTradeError::Gateway(TradeGatewayError::OrderNotFound) => {
-                Self::TRADE_ORDER_NOT_FOUND
-            }
-            BstockTradeError::Gateway(TradeGatewayError::TransactionNotFound) => {
-                Self::TRADE_TRANSACTION_NOT_FOUND
-            }
+        }
+    }
+}
+
+impl From<TradeGatewayError> for ApiError {
+    fn from(error: TradeGatewayError) -> Self {
+        match error {
+            TradeGatewayError::Unavailable => Self::TRADE_UNAVAILABLE,
+            TradeGatewayError::Rejected => Self::TRADE_REJECTED,
+            TradeGatewayError::InvalidData => Self::INVALID_TRADE_DATA,
+            TradeGatewayError::QuoteExpired => Self::QUOTE_EXPIRED,
+            TradeGatewayError::QuoteMismatch => Self::QUOTE_MISMATCH,
+            TradeGatewayError::OrderNotFound => Self::TRADE_ORDER_NOT_FOUND,
+            TradeGatewayError::TransactionNotFound => Self::TRADE_TRANSACTION_NOT_FOUND,
         }
     }
 }

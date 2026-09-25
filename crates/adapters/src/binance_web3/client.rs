@@ -5,7 +5,6 @@ use reqwest_middleware::ClientBuilder;
 
 use super::auth::{BinanceConfigurationError, BinanceWeb3Authentication};
 
-#[derive(Clone)]
 pub struct BinanceWeb3Client {
     pub(super) configuration: Configuration,
 }
