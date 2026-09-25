@@ -15,21 +15,14 @@ use serde::{Deserialize, Serialize};
 pub struct RfqOrderPayload {
     #[serde(rename = "vendor")]
     pub vendor: models::RfqVenue,
-    #[serde(rename = "orderId")]
-    pub order_id: String,
     #[serde(rename = "typedDataToSign")]
     pub typed_data_to_sign: String,
 }
 
 impl RfqOrderPayload {
-    pub fn new(
-        vendor: models::RfqVenue,
-        order_id: String,
-        typed_data_to_sign: String,
-    ) -> RfqOrderPayload {
+    pub fn new(vendor: models::RfqVenue, typed_data_to_sign: String) -> RfqOrderPayload {
         RfqOrderPayload {
             vendor,
-            order_id,
             typed_data_to_sign,
         }
     }

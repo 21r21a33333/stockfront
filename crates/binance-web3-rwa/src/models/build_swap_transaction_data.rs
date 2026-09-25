@@ -13,12 +13,20 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Default, Debug, PartialEq, Serialize, Deserialize)]
 pub struct BuildSwapTransactionData {
-    #[serde(rename = "rfq")]
-    pub rfq: Box<models::RfqOrderPayload>,
+    #[serde(rename = "executionMode")]
+    pub execution_mode: String,
+    #[serde(rename = "tx", skip_serializing_if = "Option::is_none")]
+    pub tx: Option<Box<models::SwapTransactionPayload>>,
+    #[serde(rename = "rfq", skip_serializing_if = "Option::is_none")]
+    pub rfq: Option<Box<models::RfqOrderPayload>>,
 }
 
 impl BuildSwapTransactionData {
-    pub fn new(rfq: models::RfqOrderPayload) -> BuildSwapTransactionData {
-        BuildSwapTransactionData { rfq: Box::new(rfq) }
+    pub fn new(execution_mode: String) -> BuildSwapTransactionData {
+        BuildSwapTransactionData {
+            execution_mode,
+            tx: None,
+            rfq: None,
+        }
     }
 }

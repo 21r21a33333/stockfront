@@ -31,6 +31,11 @@ impl ApiError {
         "invalid_wallet_address",
         "wallet must be a non-zero EVM address",
     );
+    pub(super) const INVALID_TRANSACTION_HASH: Self = Self::fixed(
+        StatusCode::BAD_REQUEST,
+        "invalid_transaction_hash",
+        "transaction hash must be a 32-byte hex value",
+    );
     pub(super) const BSTOCK_NOT_FOUND: Self = Self::fixed(
         StatusCode::NOT_FOUND,
         "bstock_not_found",
@@ -94,7 +99,7 @@ impl ApiError {
     const NO_EXECUTABLE_QUOTE: Self = Self::fixed(
         StatusCode::UNPROCESSABLE_ENTITY,
         "no_executable_quote",
-        "no RFQ quote satisfies the trading policy",
+        "no quote satisfies the trading policy",
     );
     const UNSUPPORTED_TRADE_PAIR: Self = Self::fixed(
         StatusCode::BAD_REQUEST,
@@ -105,6 +110,11 @@ impl ApiError {
         StatusCode::NOT_FOUND,
         "trade_order_not_found",
         "the trade order was not found",
+    );
+    const TRADE_TRANSACTION_NOT_FOUND: Self = Self::fixed(
+        StatusCode::NOT_FOUND,
+        "trade_transaction_not_found",
+        "the trade transaction was not found",
     );
     const fn fixed(status: StatusCode, code: &'static str, message: &'static str) -> Self {
         Self {
@@ -196,6 +206,9 @@ impl From<BstockTradeError> for ApiError {
             }
             BstockTradeError::Gateway(TradeGatewayError::OrderNotFound) => {
                 Self::TRADE_ORDER_NOT_FOUND
+            }
+            BstockTradeError::Gateway(TradeGatewayError::TransactionNotFound) => {
+                Self::TRADE_TRANSACTION_NOT_FOUND
             }
         }
     }

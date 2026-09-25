@@ -1,10 +1,11 @@
+use alloy_primitives::B256;
 use async_trait::async_trait;
 use binance_web3_rwa::{
     apis::trading_api::{
         BuildSwapTransactionParams, GetAggregatedQuoteParams, GetErc20ApproveTransactionParams,
-        GetRfqOrderStatusParams, SubmitRfqOrderParams, build_swap_transaction,
-        get_aggregated_quote, get_erc20_approve_transaction, get_rfq_order_status,
-        submit_rfq_order,
+        GetRfqOrderStatusParams, GetTransactionStatusParams, SubmitRfqOrderParams,
+        build_swap_transaction, get_aggregated_quote, get_erc20_approve_transaction,
+        get_rfq_order_status, get_transaction_status, submit_rfq_order,
     },
     models,
 };
@@ -14,7 +15,7 @@ use stockfront_core::{
     bstock_trade::{
         ApprovalRequest, BstockTradeGateway, PrepareTradeRequest, PreparedApproval, PreparedTrade,
         SubmitOrderRequest, SubmittedOrder, TradeGatewayError, TradeOrderStatus, TradeQuote,
-        TradeQuoteRequest,
+        TradeQuoteRequest, TradeTransactionStatus,
     },
 };
 
@@ -22,7 +23,7 @@ use super::{
     super::client::{BinanceWeb3Client, is_business_success},
     mapping::{
         ProviderApproval, ProviderOrderStatus, ProviderPreparedTrade, ProviderQuote,
-        ProviderSubmittedOrder, provider_venue,
+        ProviderSubmittedOrder, ProviderTransactionStatus, provider_venue,
     },
 };
 
@@ -49,7 +50,6 @@ impl BstockTradeGateway for BinanceWeb3Client {
             .data
             .unwrap_or_default()
             .into_iter()
-            .filter(|quote| quote.execution_mode.as_deref() == Some("RFQ"))
             .filter_map(|quote| {
                 TradeQuote::try_from(ProviderQuote {
                     value: quote,
@@ -70,7 +70,7 @@ impl BstockTradeGateway for BinanceWeb3Client {
                 binance_chain_id: BNB_CHAIN_ID.to_string(),
                 token_contract_address: request.token.to_string(),
                 approve_amount: request.amount.to_string(),
-                vendor: provider_venue(request.venue),
+                vendor: request.venue.clone(),
             },
         )
         .await
@@ -109,7 +109,10 @@ impl BstockTradeGateway for BinanceWeb3Client {
         .map_err(map_provider_error)?;
         ensure_quote_business_success(response.code, response.success)?;
         let prepared = response.data.ok_or(TradeGatewayError::InvalidData)?;
-        Ok(ProviderPreparedTrade(*prepared.rfq).into())
+        PreparedTrade::try_from(ProviderPreparedTrade {
+            value: *prepared,
+            route_quote_id: request.route_quote_id.clone(),
+        })
     }
 
     async fn submit_order(
@@ -120,7 +123,7 @@ impl BstockTradeGateway for BinanceWeb3Client {
             request.submission_id,
             request.signature.clone(),
             provider_venue(request.venue),
-            request.rfq_order_id.clone(),
+            request.route_quote_id.clone(),
         );
         body.signing_scheme = Some(models::RfqSigningScheme::Eip712);
         let response = submit_rfq_order(
@@ -158,6 +161,26 @@ impl BstockTradeGateway for BinanceWeb3Client {
         ensure_business_success(response.code, response.success)?;
         let status = response.data.ok_or(TradeGatewayError::InvalidData)?;
         TradeOrderStatus::try_from(ProviderOrderStatus(*status))
+    }
+
+    async fn transaction_status(
+        &self,
+        transaction_hash: B256,
+    ) -> Result<TradeTransactionStatus, TradeGatewayError> {
+        let response = get_transaction_status(
+            &self.configuration,
+            GetTransactionStatusParams {
+                binance_chain_id: BNB_CHAIN_ID.to_string(),
+                tx_hash: transaction_hash.to_string(),
+            },
+        )
+        .await
+        .map_err(map_provider_error)?;
+        ensure_business_success(response.code, response.success)?;
+        let status = response
+            .data
+            .ok_or(TradeGatewayError::TransactionNotFound)?;
+        TradeTransactionStatus::try_from(ProviderTransactionStatus(*status))
     }
 }
 

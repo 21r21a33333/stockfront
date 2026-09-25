@@ -1,10 +1,11 @@
+use alloy_primitives::B256;
 use async_trait::async_trait;
 use rust_decimal::Decimal;
 use thiserror::Error;
 
 use super::model::{
     ApprovalRequest, PrepareTradeRequest, PreparedApproval, PreparedTrade, SubmitOrderRequest,
-    SubmittedOrder, TradeOrderStatus, TradeQuote, TradeQuoteRequest,
+    SubmittedOrder, TradeOrderStatus, TradeQuote, TradeQuoteRequest, TradeTransactionStatus,
 };
 
 #[derive(Debug, Error)]
@@ -21,6 +22,8 @@ pub enum TradeGatewayError {
     QuoteMismatch,
     #[error("the trade order was not found")]
     OrderNotFound,
+    #[error("the trade transaction was not found")]
+    TransactionNotFound,
 }
 
 #[async_trait]
@@ -47,4 +50,9 @@ pub trait BstockTradeGateway: Send + Sync {
     ) -> Result<SubmittedOrder, TradeGatewayError>;
 
     async fn order_status(&self, order_id: &str) -> Result<TradeOrderStatus, TradeGatewayError>;
+
+    async fn transaction_status(
+        &self,
+        transaction_hash: B256,
+    ) -> Result<TradeTransactionStatus, TradeGatewayError>;
 }

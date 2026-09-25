@@ -23,8 +23,8 @@ pub struct CompanyInfo {
     pub concepts_en: Option<Vec<String>>,
     #[serde(rename = "conceptsCn", skip_serializing_if = "Option::is_none")]
     pub concepts_cn: Option<Vec<String>>,
-    #[serde(rename = "descriptionEn", skip_serializing_if = "Option::is_none")]
-    pub description_en: Option<String>,
+    #[serde(rename = "description", skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
     #[serde(rename = "descriptionZh", skip_serializing_if = "Option::is_none")]
     pub description_zh: Option<String>,
 }
@@ -37,7 +37,7 @@ impl CompanyInfo {
             industry: None,
             concepts_en: None,
             concepts_cn: None,
-            description_en: None,
+            description: None,
             description_zh: None,
         }
     }

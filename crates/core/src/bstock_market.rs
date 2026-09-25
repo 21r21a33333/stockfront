@@ -59,11 +59,17 @@ impl Serialize for MarketSession {
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MarketStatus {
-    pub session: MarketSession,
-    pub tradable: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub session: Option<MarketSession>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tradable: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub reason_code: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub reason: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub next_open_at_ms: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub next_close_at_ms: Option<i64>,
 }
 
@@ -74,16 +80,22 @@ pub struct BstockSummary {
     pub id: BstockId,
     pub token_name: String,
     pub token_symbol: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub token_logo_url: Option<String>,
     pub token_decimals: u8,
     pub underlying_ticker: String,
     pub underlying_name: String,
     pub asset_kind: AssetKind,
     pub token_to_share_ratio: Decimal,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub token_price_usd: Option<Decimal>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub reference_price_usd: Option<Decimal>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub volume_24h_usd: Option<Decimal>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub market_cap_usd: Option<Decimal>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub market_status: Option<MarketStatus>,
     pub tags: Vec<String>,
 }
@@ -91,10 +103,14 @@ pub struct BstockSummary {
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CompanyProfile {
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub ceo: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub website: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub industry: Option<String>,
     pub concepts: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
 }
 
@@ -103,21 +119,32 @@ pub struct CompanyProfile {
 pub struct Protection {
     pub kind: String,
     pub supported: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub report_url: Option<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MarketMetrics {
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub high_52w_usd: Option<Decimal>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub low_52w_usd: Option<Decimal>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub volume_24h_shares: Option<Decimal>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub average_daily_volume_1y: Option<Decimal>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub total_shares: Option<Decimal>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub turnover_rate_percent: Option<Decimal>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub pe_ratio_ttm: Option<Decimal>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub pb_ratio: Option<Decimal>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub dividend_yield_percent: Option<Decimal>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub latest_dividend_usd: Option<Decimal>,
 }
 
@@ -125,9 +152,11 @@ pub struct MarketMetrics {
 #[serde(rename_all = "camelCase")]
 pub struct BstockDetails {
     pub summary: BstockSummary,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub company: Option<CompanyProfile>,
     pub protections: Vec<Protection>,
     pub market_metrics: MarketMetrics,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub price_updated_at_ms: Option<i64>,
 }
 

@@ -41,13 +41,20 @@ pub struct GetErc20ApproveTransactionParams {
     pub binance_chain_id: String,
     pub token_contract_address: String,
     pub approve_amount: String,
-    pub vendor: models::RfqVenue,
+    pub vendor: String,
 }
 
 /// struct for passing parameters to the method [`get_rfq_order_status`]
 #[derive(Clone, Debug)]
 pub struct GetRfqOrderStatusParams {
     pub order_id: String,
+}
+
+/// struct for passing parameters to the method [`get_transaction_status`]
+#[derive(Clone, Debug)]
+pub struct GetTransactionStatusParams {
+    pub binance_chain_id: String,
+    pub tx_hash: String,
 }
 
 /// struct for passing parameters to the method [`submit_rfq_order`]
@@ -81,6 +88,13 @@ pub enum GetErc20ApproveTransactionError {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum GetRfqOrderStatusError {
+    UnknownValue(serde_json::Value),
+}
+
+/// struct for typed errors of method [`get_transaction_status`]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum GetTransactionStatusError {
     UnknownValue(serde_json::Value),
 }
 
@@ -273,6 +287,48 @@ pub async fn get_rfq_order_status(
     } else {
         let content = resp.text().await?;
         let entity: Option<GetRfqOrderStatusError> = serde_json::from_str(&content).ok();
+        Err(Error::ResponseError(ResponseContent {
+            status,
+            content,
+            entity,
+        }))
+    }
+}
+
+pub async fn get_transaction_status(
+    configuration: &configuration::Configuration,
+    params: GetTransactionStatusParams,
+) -> Result<models::GetTransactionStatusResponse, Error<GetTransactionStatusError>> {
+    let uri_str = format!("{}/api/v1/dex/aggregator/history", configuration.base_path);
+    let mut req_builder = configuration.client.request(reqwest::Method::GET, &uri_str);
+
+    req_builder = req_builder.query(&[("binanceChainId", &params.binance_chain_id.to_string())]);
+    req_builder = req_builder.query(&[("txHash", &params.tx_hash.to_string())]);
+    if let Some(ref user_agent) = configuration.user_agent {
+        req_builder = req_builder.header(reqwest::header::USER_AGENT, user_agent.clone());
+    }
+
+    let req = req_builder.build()?;
+    let resp = configuration.client.execute(req).await?;
+
+    let status = resp.status();
+    let content_type = resp
+        .headers()
+        .get("content-type")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("application/octet-stream");
+    let content_type = super::ContentType::from(content_type);
+
+    if !status.is_client_error() && !status.is_server_error() {
+        let content = resp.text().await?;
+        match content_type {
+            ContentType::Json => serde_path_to_error::deserialize(&mut serde_json::Deserializer::from_str(&content)).map_err(Error::from),
+            ContentType::Text => Err(Error::from(serde_json::Error::custom("Received `text/plain` content type response that cannot be converted to `models::GetTransactionStatusResponse`"))),
+            ContentType::Unsupported(unknown_type) => Err(Error::from(serde_json::Error::custom(format!("Received `{unknown_type}` content type response that cannot be converted to `models::GetTransactionStatusResponse`")))),
+        }
+    } else {
+        let content = resp.text().await?;
+        let entity: Option<GetTransactionStatusError> = serde_json::from_str(&content).ok();
         Err(Error::ResponseError(ResponseContent {
             status,
             content,

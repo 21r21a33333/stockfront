@@ -16,7 +16,14 @@ pub enum RfqVenue {
     PcsXRfq,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Copy, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum TradeExecutionMode {
+    Swap,
+    Rfq,
+}
+
+#[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TradeQuoteRequest {
     pub wallet: WalletAddress,
@@ -35,7 +42,7 @@ pub struct ApprovalRequest {
     pub token: Address,
     #[serde(deserialize_with = "deserialize_u256")]
     pub amount: U256,
-    pub venue: RfqVenue,
+    pub venue: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -50,7 +57,7 @@ pub struct PrepareTradeRequest {
 #[serde(rename_all = "camelCase")]
 pub struct SubmitOrderRequest {
     pub submission_id: Uuid,
-    pub rfq_order_id: String,
+    pub route_quote_id: String,
     pub venue: RfqVenue,
     pub signature: String,
 }
@@ -68,11 +75,15 @@ pub struct TokenAmount {
 #[serde(rename_all = "camelCase")]
 pub struct TradeQuote {
     pub route_quote_id: String,
-    pub venue: RfqVenue,
+    pub venue: String,
+    pub execution_mode: TradeExecutionMode,
     pub sell: TokenAmount,
     pub buy: TokenAmount,
     pub price_impact_percent: Decimal,
-    #[serde(serialize_with = "serialize_optional_address")]
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        serialize_with = "serialize_optional_address"
+    )]
     pub approval_target: Option<Address>,
 }
 
@@ -92,12 +103,42 @@ pub struct PreparedApproval {
 }
 
 #[derive(Debug, Serialize)]
+#[serde(tag = "executionMode", rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum PreparedTrade {
+    Swap {
+        transaction: PreparedTransaction,
+    },
+    Rfq {
+        #[serde(rename = "submissionId")]
+        submission_id: Uuid,
+        #[serde(rename = "routeQuoteId")]
+        route_quote_id: String,
+        venue: RfqVenue,
+        #[serde(rename = "typedData")]
+        typed_data: String,
+    },
+}
+
+#[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct PreparedTrade {
-    pub submission_id: Uuid,
-    pub rfq_order_id: String,
-    pub venue: RfqVenue,
-    pub typed_data: String,
+pub struct PreparedTransaction {
+    #[serde(serialize_with = "serialize_address")]
+    pub to: Address,
+    #[serde(serialize_with = "serialize_bytes")]
+    pub data: Bytes,
+    #[serde(serialize_with = "serialize_u256")]
+    pub value: U256,
+    #[serde(serialize_with = "serialize_u256")]
+    pub gas_limit: U256,
+    #[serde(serialize_with = "serialize_u256")]
+    pub gas_price: U256,
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        serialize_with = "serialize_optional_u256"
+    )]
+    pub max_priority_fee_per_gas: Option<U256>,
+    #[serde(serialize_with = "serialize_u256")]
+    pub min_receive_amount: U256,
 }
 
 #[derive(Debug, Serialize)]
@@ -124,14 +165,49 @@ pub struct SubmittedOrder {
 #[serde(rename_all = "camelCase")]
 pub struct TradeOrderStatus {
     pub state: TradeOrderState,
-    #[serde(serialize_with = "serialize_optional_hash")]
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        serialize_with = "serialize_optional_hash"
+    )]
     pub transaction_hash: Option<B256>,
-    #[serde(serialize_with = "serialize_optional_u256")]
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        serialize_with = "serialize_optional_u256"
+    )]
     pub filled_sell_amount: Option<U256>,
-    #[serde(serialize_with = "serialize_optional_u256")]
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        serialize_with = "serialize_optional_u256"
+    )]
     pub filled_buy_amount: Option<U256>,
     pub created_at_ms: i64,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub filled_at_ms: Option<i64>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum TradeTransactionState {
+    Pending,
+    Succeeded,
+    Failed,
+    Unknown,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TradeTransactionStatus {
+    pub state: TradeTransactionState,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub sold: Vec<TokenAmount>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub bought: Vec<TokenAmount>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub block_number: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub executed_at_ms: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
 }
 
 fn serialize_address<S>(value: &Address, serializer: S) -> Result<S::Ok, S::Error>

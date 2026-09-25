@@ -129,7 +129,7 @@ paths:
             type: string
       responses:
         '200':
-          description: Aggregated RFQ routes or a Binance business error.
+          description: Aggregated executable routes or a Binance business error.
           content:
             application/json:
               schema:
@@ -154,7 +154,7 @@ paths:
           in: query
           required: true
           schema:
-            $ref: '#/components/schemas/RfqVenue'
+            type: string
       responses:
         '200':
           description: Exact ERC-20 approval calldata or a Binance business error.
@@ -200,7 +200,7 @@ paths:
             type: string
       responses:
         '200':
-          description: RFQ EIP-712 payload or a Binance business error.
+          description: On-chain transaction or RFQ signing payload, or a Binance business error.
           content:
             application/json:
               schema:
@@ -239,6 +239,24 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/GetRfqOrderStatusResponse'
+  /api/v1/dex/aggregator/history:
+    get:
+      operationId: getTransactionStatus
+      tags: [Trading]
+      parameters:
+        - $ref: '#/components/parameters/BinanceChainId'
+        - name: txHash
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Current on-chain transaction status or a Binance business error.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetTransactionStatusResponse'
 components:
   parameters:
     BinanceChainId:
@@ -489,7 +507,7 @@ components:
           type: array
           items:
             type: string
-        descriptionEn:
+        description:
           type: string
         descriptionZh:
           type: string
@@ -620,18 +638,38 @@ components:
               $ref: '#/components/schemas/BuildSwapTransactionData'
     BuildSwapTransactionData:
       type: object
-      required: [rfq]
+      required: [executionMode]
       properties:
+        executionMode:
+          type: string
+        tx:
+          $ref: '#/components/schemas/SwapTransactionPayload'
         rfq:
           $ref: '#/components/schemas/RfqOrderPayload'
+    SwapTransactionPayload:
+      type: object
+      required: [to, data, value, gas, gasPrice, minReceiveAmount]
+      properties:
+        to:
+          type: string
+        data:
+          type: string
+        value:
+          type: string
+        gas:
+          type: string
+        gasPrice:
+          type: string
+        maxPriorityFeePerGas:
+          type: string
+        minReceiveAmount:
+          type: string
     RfqOrderPayload:
       type: object
-      required: [vendor, orderId, typedDataToSign]
+      required: [vendor, typedDataToSign]
       properties:
         vendor:
           $ref: '#/components/schemas/RfqVenue'
-        orderId:
-          type: string
         typedDataToSign:
           type: string
     SubmitRfqOrderRequest:
@@ -696,3 +734,37 @@ components:
         createdAt:
           type: integer
           format: int64
+    GetTransactionStatusResponse:
+      allOf:
+        - $ref: '#/components/schemas/BusinessResponse'
+        - type: object
+          properties:
+            data:
+              $ref: '#/components/schemas/TransactionStatus'
+    TransactionStatus:
+      type: object
+      description: Transaction details; absent when the transaction is not found.
+      properties:
+        height:
+          type: string
+        txTime:
+          type: string
+        status:
+          type: string
+        errorMsg:
+          type: string
+        fromTokenDetails:
+          type: array
+          items:
+            $ref: '#/components/schemas/TransactionTokenAmount'
+        toTokenDetails:
+          type: array
+          items:
+            $ref: '#/components/schemas/TransactionTokenAmount'
+    TransactionTokenAmount:
+      type: object
+      properties:
+        tokenAddress:
+          type: string
+        amount:
+          type: string

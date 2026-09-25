@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use alloy_primitives::B256;
 use axum::{
     Json,
     extract::{Path, State, rejection::JsonRejection},
@@ -7,9 +8,13 @@ use axum::{
 use stockfront_core::bstock_trade::{
     ApprovalRequest, BstockTradeService, PrepareTradeRequest, PreparedApproval, PreparedTrade,
     SubmitOrderRequest, SubmittedOrder, TradeOrderStatus, TradeQuote, TradeQuoteRequest,
+    TradeTransactionStatus,
 };
 
-use super::super::primitives::{ApiResult, List, Response};
+use super::super::{
+    error::ApiError,
+    primitives::{ApiResult, List, Response},
+};
 
 pub(in crate::http) async fn quotes(
     State(service): State<Arc<BstockTradeService>>,
@@ -52,5 +57,16 @@ pub(in crate::http) async fn order_status(
     Path(order_id): Path<String>,
 ) -> ApiResult<TradeOrderStatus> {
     let status = service.order_status(&order_id).await?;
+    Ok(Response::ok(status))
+}
+
+pub(in crate::http) async fn transaction_status(
+    State(service): State<Arc<BstockTradeService>>,
+    Path(transaction_hash): Path<String>,
+) -> ApiResult<TradeTransactionStatus> {
+    let transaction_hash = transaction_hash
+        .parse::<B256>()
+        .map_err(|_| ApiError::INVALID_TRANSACTION_HASH)?;
+    let status = service.transaction_status(transaction_hash).await?;
     Ok(Response::ok(status))
 }

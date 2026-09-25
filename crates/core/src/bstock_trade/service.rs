@@ -1,11 +1,12 @@
 use std::sync::Arc;
 
+use alloy_primitives::B256;
 use thiserror::Error;
 
 use super::{
     model::{
         ApprovalRequest, PrepareTradeRequest, PreparedApproval, PreparedTrade, SubmitOrderRequest,
-        SubmittedOrder, TradeOrderStatus, TradeQuote, TradeQuoteRequest,
+        SubmittedOrder, TradeOrderStatus, TradeQuote, TradeQuoteRequest, TradeTransactionStatus,
     },
     policy::TradePolicy,
     ports::{BstockTradeGateway, TradeGatewayError},
@@ -22,7 +23,7 @@ pub enum BstockTradeError {
     InvalidAmount,
     #[error("the trade pair is not supported")]
     UnsupportedTradePair,
-    #[error("no RFQ quote satisfies the configured price-impact limit")]
+    #[error("no quote satisfies the configured price-impact limit")]
     NoSupportedQuote,
 }
 
@@ -46,7 +47,7 @@ impl BstockTradeService {
         }
     }
 
-    /// Returns Binance RFQ quotes that satisfy Stockfront's price-impact policy.
+    /// Returns Binance quotes that satisfy Stockfront's price-impact policy.
     ///
     /// # Errors
     ///
@@ -66,7 +67,7 @@ impl BstockTradeService {
         Ok(quotes)
     }
 
-    /// Returns Binance's exact approval transaction for the requested RFQ venue.
+    /// Returns Binance's exact approval transaction for the requested venue.
     ///
     /// # Errors
     ///
@@ -85,7 +86,7 @@ impl BstockTradeService {
             .map_err(Into::into)
     }
 
-    /// Returns Binance's EIP-712 payload for the selected quote.
+    /// Returns Binance's wallet transaction or EIP-712 payload for the selected quote.
     ///
     /// # Errors
     ///
@@ -122,6 +123,21 @@ impl BstockTradeService {
     pub async fn order_status(&self, order_id: &str) -> Result<TradeOrderStatus, BstockTradeError> {
         self.gateway
             .order_status(order_id)
+            .await
+            .map_err(Into::into)
+    }
+
+    /// Returns Binance's current on-chain transaction state.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`BstockTradeError`] when Binance is unavailable or the transaction is unknown.
+    pub async fn transaction_status(
+        &self,
+        transaction_hash: B256,
+    ) -> Result<TradeTransactionStatus, BstockTradeError> {
+        self.gateway
+            .transaction_status(transaction_hash)
             .await
             .map_err(Into::into)
     }

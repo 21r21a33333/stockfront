@@ -54,5 +54,9 @@ pub fn trade_router(service: Arc<BstockTradeService>) -> Router {
             "/v1/bstock-trades/orders/{order_id}",
             get(handlers::trades::order_status),
         )
+        .route(
+            "/v1/bstock-trades/transactions/{transaction_hash}",
+            get(handlers::trades::transaction_status),
+        )
         .with_state(service)
 }

@@ -140,20 +140,19 @@ struct ProviderMarketStatus<'a>(&'a models::MarketStatusInfo);
 impl From<ProviderMarketStatus<'_>> for MarketStatus {
     fn from(value: ProviderMarketStatus<'_>) -> Self {
         let value = value.0;
-        let session = match value.market_status.as_deref() {
-            Some("premarket") => MarketSession::PreMarket,
-            Some("regular") => MarketSession::Regular,
-            Some("postmarket") => MarketSession::PostMarket,
-            Some("overnight") => MarketSession::Overnight,
-            Some("closed") => MarketSession::Closed,
-            Some("pause") => MarketSession::Paused,
-            Some(other) => MarketSession::Unknown(other.to_owned()),
-            None => MarketSession::Unknown("unknown".to_owned()),
-        };
+        let session = value.market_status.as_deref().map(|session| match session {
+            "premarket" => MarketSession::PreMarket,
+            "regular" => MarketSession::Regular,
+            "postmarket" => MarketSession::PostMarket,
+            "overnight" => MarketSession::Overnight,
+            "closed" => MarketSession::Closed,
+            "pause" => MarketSession::Paused,
+            other => MarketSession::Unknown(other.to_owned()),
+        });
 
         Self {
             session,
-            tradable: value.open_state.unwrap_or(false),
+            tradable: value.open_state,
             reason_code: value.reason_code.clone().flatten(),
             reason: value.reason_msg.clone().flatten(),
             next_open_at_ms: value.next_open_time.flatten(),
@@ -172,7 +171,7 @@ impl From<ProviderCompanyProfile> for CompanyProfile {
             website: value.website,
             industry: value.industry,
             concepts: value.concepts_en.unwrap_or_default(),
-            description: value.description_en,
+            description: value.description,
         }
     }
 }
