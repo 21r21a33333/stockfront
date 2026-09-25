@@ -1,0 +1,347 @@
+openapi: 3.0.3
+info:
+  title: Binance Web3 Wallet RWA API compatibility subset
+  version: 1.0.0-stockfront.1
+  description: >-
+    Stockfront's narrow compatibility contract for the Binance Web3 Wallet RWA
+    endpoints used by the bStock market slice. Binance does not publish the
+    source OpenAPI document used to generate its official connectors.
+  x-stockfront-upstream:
+    repository: https://github.com/binance/binance-web3-connector-python
+    commit: 5f6256f97e55d05dade325cc0d706f67283a13e8
+    package: binance-web3-wallet@7.0.0
+    generated-document-version: 1.0.0
+    reference-path: clients/web3-wallet/src/binance_sdk_web3_wallet/rest_api
+  license:
+    name: MIT
+servers:
+  - url: https://web3.binance.com/build
+tags:
+  - name: RWA data
+paths:
+  /api/v1/dex/market/rwa/tokens:
+    get:
+      operationId: getRwaTokenList
+      tags: [RWA data]
+      parameters:
+        - $ref: '#/components/parameters/BinanceChainIdOptional'
+        - $ref: '#/components/parameters/PlatformId'
+        - name: tabId
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: int32
+      responses:
+        '200':
+          description: RWA token list or a Binance business error.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RwaTokenListResponse'
+  /api/v1/dex/market/rwa/price:
+    get:
+      operationId: getRwaTokenPrice
+      tags: [RWA data]
+      parameters:
+        - $ref: '#/components/parameters/BinanceChainId'
+        - name: tokenContractAddresses
+          in: query
+          required: true
+          description: Comma-separated token contract addresses, with at most 100 entries.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Token prices or a Binance business error.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RwaTokenPriceResponse'
+  /api/v1/dex/market/rwa/underlying-profile:
+    get:
+      operationId: getRwaUnderlyingInfo
+      tags: [RWA data]
+      parameters:
+        - $ref: '#/components/parameters/BinanceChainId'
+        - $ref: '#/components/parameters/TokenContractAddress'
+      responses:
+        '200':
+          description: Underlying profile or a Binance business error.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RwaUnderlyingInfoResponse'
+  /api/v1/dex/market/rwa/underlying-market:
+    get:
+      operationId: getRwaUnderlyingMarketData
+      tags: [RWA data]
+      parameters:
+        - $ref: '#/components/parameters/BinanceChainId'
+        - $ref: '#/components/parameters/TokenContractAddress'
+      responses:
+        '200':
+          description: Underlying market data or a Binance business error.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RwaUnderlyingMarketDataResponse'
+components:
+  parameters:
+    BinanceChainId:
+      name: binanceChainId
+      in: query
+      required: true
+      schema:
+        type: string
+    BinanceChainIdOptional:
+      name: binanceChainId
+      in: query
+      required: false
+      schema:
+        type: string
+    PlatformId:
+      name: platformId
+      in: query
+      required: false
+      schema:
+        type: string
+        enum: [ondo, bstock]
+    TokenContractAddress:
+      name: tokenContractAddress
+      in: query
+      required: true
+      schema:
+        type: string
+  schemas:
+    BusinessResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+          format: int32
+          description: Business status code; zero indicates success.
+        msg:
+          type: string
+        timestamp:
+          type: integer
+          format: int64
+        success:
+          type: boolean
+    RwaTokenListResponse:
+      allOf:
+        - $ref: '#/components/schemas/BusinessResponse'
+        - type: object
+          properties:
+            data:
+              type: array
+              items:
+                $ref: '#/components/schemas/RwaToken'
+    RwaTokenPriceResponse:
+      allOf:
+        - $ref: '#/components/schemas/BusinessResponse'
+        - type: object
+          properties:
+            data:
+              type: array
+              items:
+                $ref: '#/components/schemas/RwaTokenPrice'
+    RwaUnderlyingInfoResponse:
+      allOf:
+        - $ref: '#/components/schemas/BusinessResponse'
+        - type: object
+          properties:
+            data:
+              $ref: '#/components/schemas/RwaUnderlyingInfo'
+    RwaUnderlyingMarketDataResponse:
+      allOf:
+        - $ref: '#/components/schemas/BusinessResponse'
+        - type: object
+          properties:
+            data:
+              $ref: '#/components/schemas/RwaUnderlyingMarketData'
+    RwaToken:
+      type: object
+      properties:
+        binanceChainId:
+          type: string
+        tokenContractAddress:
+          type: string
+        platformId:
+          type: string
+        assetType:
+          type: integer
+          format: int32
+          description: 1=Stock, 2=Pre-IPO, 3=ETF.
+        tokenName:
+          type: string
+        tokenSymbol:
+          type: string
+        tokenLogoUrl:
+          type: string
+        decimals:
+          type: string
+        underlyingTicker:
+          type: string
+        underlyingName:
+          type: string
+        underlyingNameZh:
+          type: string
+        tokenToShareRatio:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+        statusInfo:
+          $ref: '#/components/schemas/MarketStatusInfo'
+        tokenPrice:
+          type: string
+        referencePrice:
+          type: string
+        volume24H:
+          type: string
+        marketCap:
+          type: string
+        peRatioTTM:
+          type: string
+          nullable: true
+    RwaTokenPrice:
+      type: object
+      properties:
+        binanceChainId:
+          type: string
+        tokenContractAddress:
+          type: string
+        platformId:
+          type: string
+        tokenPrice:
+          type: string
+        referencePrice:
+          type: string
+        tokenPriceUpdatedAt:
+          type: integer
+          format: int64
+    RwaUnderlyingInfo:
+      type: object
+      properties:
+        binanceChainId:
+          type: string
+        tokenContractAddress:
+          type: string
+        platformId:
+          type: string
+        underlyingTicker:
+          type: string
+        underlyingFullName:
+          type: string
+        assetType:
+          type: integer
+          format: int32
+        tokenToShareRatio:
+          type: string
+        protections:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/Protection'
+        companyInfo:
+          $ref: '#/components/schemas/CompanyInfo'
+    Protection:
+      type: object
+      properties:
+        supported:
+          type: boolean
+        url:
+          type: string
+    CompanyInfo:
+      type: object
+      properties:
+        ceo:
+          type: string
+        website:
+          type: string
+        industry:
+          type: string
+        conceptsEn:
+          type: array
+          items:
+            type: string
+        conceptsCn:
+          type: array
+          items:
+            type: string
+        descriptionEn:
+          type: string
+        descriptionZh:
+          type: string
+    RwaUnderlyingMarketData:
+      type: object
+      properties:
+        binanceChainId:
+          type: string
+        tokenContractAddress:
+          type: string
+        platformId:
+          type: string
+        assetType:
+          type: integer
+          format: int32
+        statusInfo:
+          $ref: '#/components/schemas/MarketStatusInfo'
+        marketData:
+          $ref: '#/components/schemas/UnderlyingMarketData'
+    MarketStatusInfo:
+      type: object
+      properties:
+        openState:
+          type: boolean
+        marketStatus:
+          type: string
+        reasonCode:
+          type: string
+          nullable: true
+        reasonMsg:
+          type: string
+          nullable: true
+        nextOpenTime:
+          type: integer
+          format: int64
+          nullable: true
+        nextCloseTime:
+          type: integer
+          format: int64
+          nullable: true
+    UnderlyingMarketData:
+      type: object
+      properties:
+        referencePrice:
+          type: string
+        high52W:
+          type: string
+        low52W:
+          type: string
+        volumeShares24H:
+          type: string
+        avgDailyVolume1Y:
+          type: string
+        totalShares:
+          type: string
+        marketCap:
+          type: string
+        turnoverRate:
+          type: string
+        amplitude:
+          type: string
+          nullable: true
+        peRatioTTM:
+          type: string
+          nullable: true
+        pbRatio:
+          type: string
+          nullable: true
+        dividendYield:
+          type: string
+          nullable: true
+        latestDividend:
+          type: string
+          nullable: true

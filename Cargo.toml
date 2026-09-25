@@ -2,6 +2,7 @@
 members = [
     "crates/adapters",
     "crates/app",
+    "crates/binance-web3-rwa",
     "crates/core",
 ]
 resolver = "3"
