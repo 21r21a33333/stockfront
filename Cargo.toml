@@ -1,6 +1,19 @@
-[package]
-name = "stockfront"
+[workspace]
+members = [
+    "crates/adapters",
+    "crates/app",
+    "crates/core",
+]
+resolver = "3"
+
+[workspace.package]
 version = "0.1.0"
 edition = "2024"
+license = "MIT"
 
-[dependencies]
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+all = { level = "deny", priority = -1 }
+pedantic = { level = "deny", priority = -1 }

@@ -3,5 +3,20 @@
 version = 4
 
 [[package]]
-name = "stockfront"
+name = "stockfront-adapters"
+version = "0.1.0"
+dependencies = [
+ "stockfront-core",
+]
+
+[[package]]
+name = "stockfront-app"
+version = "0.1.0"
+dependencies = [
+ "stockfront-adapters",
+ "stockfront-core",
+]
+
+[[package]]
+name = "stockfront-core"
 version = "0.1.0"
