@@ -24,10 +24,7 @@ impl<T> fmt::Display for Error<T> {
             Error::Reqwest(e) => ("reqwest", e.to_string()),
             Error::ReqwestMiddleware(e) => ("reqwest-middleware", e.to_string()),
             Error::Serde(e) => ("serde", e.to_string()),
-            Error::SerdePathToError(e) => (
-                "serde",
-                format!("{}: {}", e.path().to_string(), e.inner().to_string()),
-            ),
+            Error::SerdePathToError(e) => ("serde", format!("{}: {}", e.path(), e.inner())),
             Error::Io(e) => ("IO", e.to_string()),
             Error::ResponseError(e) => ("response", format!("status code {}", e.status)),
         };
@@ -125,11 +122,11 @@ enum ContentType {
 impl From<&str> for ContentType {
     fn from(content_type: &str) -> Self {
         if content_type.starts_with("application") && content_type.contains("json") {
-            return Self::Json;
+            Self::Json
         } else if content_type.starts_with("text/plain") {
-            return Self::Text;
+            Self::Text
         } else {
-            return Self::Unsupported(content_type.to_string());
+            Self::Unsupported(content_type.to_string())
         }
     }
 }
