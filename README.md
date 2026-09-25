@@ -1,117 +1,133 @@
 # Stockfront
 
-Stockfront is a non-custodial backend for discovering, holding, and trading tokenized stocks on BNB Chain. The current S1 release integrates Binance Web3 APIs for bStock market data, wallet portfolios, quotes, transaction preparation, RFQ orders, and settlement status.
+**More from every stock.**
 
-> Development status: S1 is complete. The API is under active development and is not production-deployed.
+Stockfront is a non-custodial portfolio and income layer for tokenized stocks on BNB Chain. It helps users discover and purchase bStocks, borrow without selling them, enter a conservative automated carry vault, provide verified stock liquidity, and manage risk from one place.
 
-## What works
+Instead of creating another exchange, lending market, or oracle, Stockfront composes established BNB Chain infrastructure and adds the strategy orchestration, accounting, automation, monitoring, and controlled exits needed to make tokenized stocks useful in DeFi.
 
-- Browse bStocks and retrieve market and company details.
-- Read a wallet's bStock positions without custodying funds.
-- Quote either stablecoin → bStock or bStock → stablecoin trades.
-- Prepare exact approvals and wallet-signed swap transactions.
-- Prepare and submit Binance-selected RFQ orders.
-- Verify swap and RFQ settlement through Binance Web3 status APIs.
+## The problem
 
-Stockfront never accepts user private keys. Swap transactions are signed and broadcast by the user's wallet.
+Tokenized stocks provide onchain price exposure, but the surrounding user experience remains fragmented. Users must separately discover assets, evaluate backing, find liquidity, borrow, track changing collateral values, account for dividends or rebases, and unwind positions safely.
 
-## Architecture
+Stockfront turns those disconnected primitives into understandable financial workflows while keeping users in control of their assets.
 
-The Rust workspace follows hexagonal architecture:
+## Product
+
+### Discover and own bStocks
+
+- Search and compare supported tokenized stocks.
+- Inspect issuer, market, pricing, liquidity, and collateral information.
+- Obtain an aggregated trade quote and prepare a wallet-signed purchase or sale.
+- Track bStocks and their effective underlying-share exposure in one portfolio.
+
+This is the trusted entry and accounting layer used by every Stockfront strategy.
+
+### Borrow without selling
+
+Users can supply supported bStocks as collateral and borrow an approved stablecoin while retaining their stock and dividend exposure. Stockfront monitors the position and prepares user-signed actions to repay debt, add collateral, or exit.
+
+### Earn through a Conservative Carry Vault
+
+The first pooled strategy is intentionally narrow:
 
 ```text
-crates/core              domain models, policies, use cases, outbound ports
-crates/adapters          Binance Web3 and Axum adapters
-crates/app               configuration and composition root
-crates/binance-web3-rwa  generated Binance Web3 client
-openapi                  pinned compatibility schema and generator config
-scripts                  reproducible client generation
+Deposit NVDAB
+→ supply it as collateral on Lista
+→ borrow a conservative amount of USDT
+→ lend USDT in one approved Aave V3 BNB market
+→ compound the positive interest-rate spread
 ```
 
-Dependencies point inward:
+The return combines the user's stock exposure with the spread between stablecoin lending yield and borrowing cost. The vault borrows only when expected lending yield exceeds borrowing cost, fees, and a safety margin.
 
-```text
-app → adapters → core
-```
+The vault is capped, transparent, and designed around conservative leverage, liquidity reserves, contract-limited automation, and emergency unwinding. It is not principal-protected and does not promise guaranteed returns.
 
-The generated crate must not be edited manually. Provider types are converted at the adapter boundary and never leak into the domain.
+### Provide managed stock liquidity
 
-## Run locally
+Stockfront identifies verified bStock/stablecoin pools and helps users create and manage concentrated-liquidity positions. It can balance assets, select a range, compound fees, monitor whether liquidity remains active, and prepare rebalancing or withdrawal actions.
 
-Requirements: stable Rust, a Binance Web3 API key and secret.
+A pool must pass depth, exit-liquidity, and price-impact checks before deposits are enabled. Otherwise, Stockfront exposes monitoring and simulated entry/exit instead of presenting unsafe liquidity as a usable strategy.
 
-```bash
-export BINANCE_WEB3_API_KEY='...'
-export BINANCE_WEB3_API_SECRET='...'
-cargo run -p stockfront-app
-```
+### Monitor risk and exit safely
 
-The server listens on `127.0.0.1:3000` by default.
+The portfolio and risk layer brings together:
 
-Optional configuration:
+- Position value and realized return.
+- Borrowing cost, net carry, health factor, and liquidation proximity.
+- Liquidity range, earned fees, impermanent loss, and available exit liquidity.
+- Stock/reference-price deviations.
+- Dividend, split, rebase, and multiplier-adjusted accounting.
 
-| Variable | Default |
+Alerts prepare concrete actions such as repaying debt, adding collateral, reducing leverage, rebalancing liquidity, or exiting. Users approve and sign actions for personal positions; pooled-vault keepers operate only within contract-enforced limits.
+
+## MVP
+
+The initial product is deliberately focused:
+
+1. bStock discovery, wallet portfolio, trade quotes, and wallet-signed execution.
+2. Borrowing against supported bStocks with direct onchain health verification.
+3. One capped Conservative Carry Vault using NVDAB, Lista, USDT, and one Aave market.
+4. One verified PancakeSwap liquidity flow—or a transparent simulator when no pool passes the safety gate.
+5. Live carry, collateral-health, liquidity-range, and exit-liquidity monitoring.
+6. User-signed safety and exit actions.
+7. Transparent vault assets, debt, multiplier, NAV, and share accounting.
+
+Only the Conservative Carry Vault is a custom pooled vault in the MVP.
+
+## Strategy roadmap
+
+After the core accounting and risk system is proven, Stockfront can extend into:
+
+- Leveraged stock exposure with automatic deleveraging.
+- Delta-neutral stock basis using an equivalent perpetual hedge.
+- Delta-hedged liquidity provision.
+- Liquidity between approved representations of the same stock.
+- Leveraged liquidity provision.
+- Same-stock price-convergence monitoring and transaction preparation.
+- Automatically rebalanced thematic and index-style stock baskets.
+
+Cross-chain execution, options strategies, payment cards, permissionless strategy creation, and guaranteed-return products are outside the current scope.
+
+## Protocol stack
+
+| Role | Protocol or service |
 | --- | --- |
-| `STOCKFRONT_BIND_ADDRESS` | `127.0.0.1:3000` |
-| `BINANCE_WEB3_BASE_URL` | `https://web3.binance.com/build` |
-| `STOCKFRONT_TRADE_SETTLEMENT_TOKENS` | BNB Chain USDT and USDC |
-| `STOCKFRONT_MAX_TRADE_PRICE_IMPACT_BPS` | `100` |
-| `STOCKFRONT_TRADE_SLIPPAGE_BPS` | `50` |
+| Tokenized stocks | bStocks |
+| Asset registry and market data | Binance RWA API |
+| Wallet and DeFi discovery | Binance Wallet and DeFi APIs |
+| Quotes and transaction construction | Binance Trading and Transaction APIs |
+| Primary collateral and borrowing | Lista |
+| Secondary borrowing venue | Venus |
+| Initial stablecoin yield destination | Aave V3 on BNB Chain |
+| Swaps and liquidity | PancakeSwap V3 / Infinity |
+| Post-MVP perpetual hedging | Aster |
+| Collateral pricing | Venus Resilient Oracle |
+| Vault accounting | OpenZeppelin ERC-4626 |
+| Monitoring and constrained automation | OpenZeppelin Monitor / Relayer |
+| Emergency administration | Safe multisig |
 
-Example:
+GoldRush may provide historical backfill when primary API coverage is insufficient. DeBank may be used for portfolio reconciliation, but never as the source of truth for liquidation-sensitive decisions.
 
-```bash
-curl 'http://127.0.0.1:3000/v1/bstocks?limit=10'
-```
+## Safety principles
 
-## HTTP API
+- Non-custodial personal positions and user-signed transactions.
+- Conservative loan-to-value targets below liquidation thresholds.
+- Hard deposit and debt caps.
+- No new borrowing when expected carry becomes negative.
+- No deposits when prices are stale or oracle protection is active.
+- Explicit withdrawal liquidity and emergency-unwind paths.
+- Sustainable protocol yield separated from temporary incentives.
+- Correct accounting for dividends, rebases, splits, and market closures.
+- Repayment of strategy debt before collateral is released during an unwind.
+- Security review before vault caps are raised.
+- Keepers cannot transfer funds to arbitrary addresses.
 
-| Method | Path | Purpose |
-| --- | --- | --- |
-| `GET` | `/v1/bstocks` | List and search bStocks |
-| `GET` | `/v1/bstocks/{chain_id}/{contract}` | Get one bStock |
-| `GET` | `/v1/wallets/{address}/portfolio` | Read bStock positions |
-| `POST` | `/v1/bstock-trades/quotes` | Quote a buy or sell |
-| `POST` | `/v1/bstock-trades/approval` | Prepare an exact token approval |
-| `POST` | `/v1/bstock-trades/prepare` | Prepare a swap or RFQ payload |
-| `POST` | `/v1/bstock-trades/orders` | Submit a signed RFQ order |
-| `GET` | `/v1/bstock-trades/orders/{order_id}` | Read RFQ order status |
-| `GET` | `/v1/bstock-trades/transactions/{transaction_hash}` | Verify swap settlement |
+## Architecture principles
 
-## Verification
+Stockfront is organized as vertical product slices using hexagonal architecture. The domain owns financial rules and ports; external protocols, HTTP, persistence, and chain access remain adapters. This keeps strategy logic testable and prevents any one provider's data model from becoming the product model.
 
-```bash
-cargo fmt --check
-cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace --all-targets
-```
-
-Live Binance tests are ignored by default and require credentials:
-
-```bash
-cargo test -p stockfront-adapters --test binance_bstock_catalog -- --ignored
-cargo test -p stockfront-adapters --test binance_wallet_portfolio -- --ignored
-cargo test -p stockfront-adapters --test binance_bstock_trade -- --ignored
-```
-
-The round-trip test spends real BNB Chain USDT and BNB and must be invoked explicitly. Read the test configuration before running it.
-
-## Regenerate the Binance client
-
-The local OpenAPI file is a narrow compatibility subset containing only the Binance endpoints Stockfront consumes.
-
-```bash
-./scripts/generate-binance-web3-rwa.sh
-git diff --exit-code -- openapi crates/binance-web3-rwa
-```
-
-Upstream schema synchronization and drift detection are planned; local schema-to-client generation is already deterministic.
-
-## For contributors and coding agents
-
-Read [AGENTS.md](AGENTS.md) before changing the project. It defines the vertical-slice workflow, dependency rules, boundary-type policy, generated-code ownership, testing expectations, and secret-handling requirements.
-
-Keep changes inside the active slice, do not hand-edit `crates/binance-web3-rwa`, and never commit credentials or private keys.
+Contributors and coding agents must read [AGENTS.md](AGENTS.md) before making changes. It defines the architecture boundaries, integration policy, testing standards, generated-code ownership, and secret-handling requirements.
 
 ## License
 
