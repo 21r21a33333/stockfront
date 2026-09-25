@@ -1,0 +1,16 @@
+[package]
+name = "stockfront-app"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+axum.workspace = true
+serde = { workspace = true, features = ["derive"] }
+stockfront-adapters = { path = "../adapters" }
+stockfront-core.workspace = true
+thiserror.workspace = true
+tokio = { workspace = true, features = ["macros", "net", "rt-multi-thread", "signal"] }
+
+[lints]
+workspace = true

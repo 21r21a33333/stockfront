@@ -1,0 +1,19 @@
+[package]
+name = "stockfront-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+alloy-primitives.workspace = true
+async-trait.workspace = true
+rust_decimal.workspace = true
+serde = { workspace = true, features = ["derive"] }
+thiserror.workspace = true
+uuid = { workspace = true, features = ["serde"] }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt"] }
+
+[lints]
+workspace = true

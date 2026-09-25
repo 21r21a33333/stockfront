@@ -1,0 +1,770 @@
+openapi: 3.0.3
+info:
+  title: Binance Web3 API compatibility subset
+  version: 1.0.0-stockfront.1
+  description: >-
+    Stockfront's narrow generated-client contract for the Binance Web3
+    endpoints used by its bStock vertical slices.
+  x-stockfront-upstream:
+    schema: https://web3.binance.com/en/dev-docs/catalog/web3-wallet/api/rest-api/1.0.0/schema.json
+    document-version: 1.0.0
+  license:
+    name: MIT
+servers:
+  - url: https://web3.binance.com/build
+tags:
+  - name: RWA data
+  - name: Wallet
+  - name: Trading
+paths:
+  /api/v1/dex/balance/token-balances-by-address:
+    post:
+      operationId: getTokenBalancesByAddress
+      tags: [Wallet]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GetTokenBalancesByAddressRequest'
+      responses:
+        '200':
+          description: Requested token balances or a Binance business error.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetTokenBalancesByAddressResponse'
+  /api/v1/dex/market/rwa/tokens:
+    get:
+      operationId: getRwaTokenList
+      tags: [RWA data]
+      parameters:
+        - $ref: '#/components/parameters/BinanceChainIdOptional'
+        - $ref: '#/components/parameters/PlatformId'
+        - name: tabId
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: int32
+      responses:
+        '200':
+          description: RWA token list or a Binance business error.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RwaTokenListResponse'
+  /api/v1/dex/market/rwa/price:
+    get:
+      operationId: getRwaTokenPrice
+      tags: [RWA data]
+      parameters:
+        - $ref: '#/components/parameters/BinanceChainId'
+        - name: tokenContractAddresses
+          in: query
+          required: true
+          description: Comma-separated token contract addresses, with at most 100 entries.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Token prices or a Binance business error.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RwaTokenPriceResponse'
+  /api/v1/dex/market/rwa/underlying-profile:
+    get:
+      operationId: getRwaUnderlyingInfo
+      tags: [RWA data]
+      parameters:
+        - $ref: '#/components/parameters/BinanceChainId'
+        - $ref: '#/components/parameters/TokenContractAddress'
+      responses:
+        '200':
+          description: Underlying profile or a Binance business error.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RwaUnderlyingInfoResponse'
+  /api/v1/dex/market/rwa/underlying-market:
+    get:
+      operationId: getRwaUnderlyingMarketData
+      tags: [RWA data]
+      parameters:
+        - $ref: '#/components/parameters/BinanceChainId'
+        - $ref: '#/components/parameters/TokenContractAddress'
+      responses:
+        '200':
+          description: Underlying market data or a Binance business error.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RwaUnderlyingMarketDataResponse'
+  /api/v1/dex/aggregator/quote:
+    get:
+      operationId: getAggregatedQuote
+      tags: [Trading]
+      parameters:
+        - $ref: '#/components/parameters/BinanceChainId'
+        - name: amount
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: fromTokenAddress
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: toTokenAddress
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: userWalletAddress
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Aggregated executable routes or a Binance business error.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetAggregatedQuoteResponse'
+  /api/v1/dex/aggregator/approve-transaction:
+    get:
+      operationId: getErc20ApproveTransaction
+      tags: [Trading]
+      parameters:
+        - $ref: '#/components/parameters/BinanceChainId'
+        - name: tokenContractAddress
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: approveAmount
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: vendor
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Exact ERC-20 approval calldata or a Binance business error.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetErc20ApproveTransactionResponse'
+  /api/v1/dex/aggregator/swap:
+    get:
+      operationId: buildSwapTransaction
+      tags: [Trading]
+      parameters:
+        - $ref: '#/components/parameters/BinanceChainId'
+        - name: amount
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: fromTokenAddress
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: toTokenAddress
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: userWalletAddress
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: quoteId
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: slippagePercent
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: On-chain transaction or RFQ signing payload, or a Binance business error.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BuildSwapTransactionResponse'
+  /api/v1/dex/aggregator/order/submit:
+    post:
+      operationId: submitRfqOrder
+      tags: [Trading]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SubmitRfqOrderRequest'
+      responses:
+        '200':
+          description: Submitted RFQ order or a Binance business error.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubmitRfqOrderResponse'
+  /api/v1/dex/aggregator/order/{orderId}:
+    get:
+      operationId: getRfqOrderStatus
+      tags: [Trading]
+      parameters:
+        - name: orderId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Current RFQ order status or a Binance business error.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetRfqOrderStatusResponse'
+  /api/v1/dex/aggregator/history:
+    get:
+      operationId: getTransactionStatus
+      tags: [Trading]
+      parameters:
+        - $ref: '#/components/parameters/BinanceChainId'
+        - name: txHash
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Current on-chain transaction status or a Binance business error.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetTransactionStatusResponse'
+components:
+  parameters:
+    BinanceChainId:
+      name: binanceChainId
+      in: query
+      required: true
+      schema:
+        type: string
+    BinanceChainIdOptional:
+      name: binanceChainId
+      in: query
+      required: false
+      schema:
+        type: string
+    PlatformId:
+      name: platformId
+      in: query
+      required: false
+      schema:
+        type: string
+        enum: [ondo, bstock]
+    TokenContractAddress:
+      name: tokenContractAddress
+      in: query
+      required: true
+      schema:
+        type: string
+  schemas:
+    RfqVenue:
+      type: string
+      description: Supported Binance RFQ settlement venue.
+      enum: [InchFusion, CowSwap, PcsXRfq]
+    RfqSigningScheme:
+      type: string
+      description: RFQ wallet signing scheme.
+      enum: [EIP712]
+    BusinessResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+          format: int32
+          description: Business status code; zero indicates success.
+        msg:
+          type: string
+        timestamp:
+          type: integer
+          format: int64
+        success:
+          type: boolean
+    GetTokenBalancesByAddressRequest:
+      type: object
+      required: [address, tokenContractAddresses]
+      properties:
+        address:
+          type: string
+        tokenContractAddresses:
+          type: array
+          maxItems: 20
+          items:
+            $ref: '#/components/schemas/TokenContractIdentity'
+        excludeRiskToken:
+          type: string
+          enum: ['0', '1']
+          description: '0 excludes risk tokens; 1 includes them.'
+    TokenContractIdentity:
+      type: object
+      required: [binanceChainId, tokenContractAddress]
+      properties:
+        binanceChainId:
+          type: string
+        tokenContractAddress:
+          type: string
+    GetTokenBalancesByAddressResponse:
+      allOf:
+        - $ref: '#/components/schemas/BusinessResponse'
+        - type: object
+          properties:
+            data:
+              type: array
+              items:
+                $ref: '#/components/schemas/TokenBalanceGroup'
+    TokenBalanceGroup:
+      type: object
+      properties:
+        tokenAssets:
+          type: array
+          items:
+            $ref: '#/components/schemas/TokenBalance'
+    TokenBalance:
+      type: object
+      properties:
+        binanceChainId:
+          type: string
+        tokenContractAddress:
+          type: string
+        address:
+          type: string
+        symbol:
+          type: string
+        balance:
+          type: string
+        rawBalance:
+          type: string
+        tokenPrice:
+          type: string
+        isRiskToken:
+          type: boolean
+    RwaTokenListResponse:
+      allOf:
+        - $ref: '#/components/schemas/BusinessResponse'
+        - type: object
+          properties:
+            data:
+              type: array
+              items:
+                $ref: '#/components/schemas/RwaToken'
+    RwaTokenPriceResponse:
+      allOf:
+        - $ref: '#/components/schemas/BusinessResponse'
+        - type: object
+          properties:
+            data:
+              type: array
+              items:
+                $ref: '#/components/schemas/RwaTokenPrice'
+    RwaUnderlyingInfoResponse:
+      allOf:
+        - $ref: '#/components/schemas/BusinessResponse'
+        - type: object
+          properties:
+            data:
+              $ref: '#/components/schemas/RwaUnderlyingInfo'
+    RwaUnderlyingMarketDataResponse:
+      allOf:
+        - $ref: '#/components/schemas/BusinessResponse'
+        - type: object
+          properties:
+            data:
+              $ref: '#/components/schemas/RwaUnderlyingMarketData'
+    RwaToken:
+      type: object
+      properties:
+        binanceChainId:
+          type: string
+        tokenContractAddress:
+          type: string
+        platformId:
+          type: string
+        assetType:
+          type: integer
+          format: int32
+          description: 1=Stock, 2=Pre-IPO, 3=ETF.
+        tokenName:
+          type: string
+        tokenSymbol:
+          type: string
+        tokenLogoUrl:
+          type: string
+        decimals:
+          type: string
+        underlyingTicker:
+          type: string
+        underlyingName:
+          type: string
+        underlyingNameZh:
+          type: string
+        tokenToShareRatio:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+        statusInfo:
+          $ref: '#/components/schemas/MarketStatusInfo'
+        tokenPrice:
+          type: string
+        referencePrice:
+          type: string
+        volume24H:
+          type: string
+        marketCap:
+          type: string
+        peRatioTTM:
+          type: string
+          nullable: true
+    RwaTokenPrice:
+      type: object
+      properties:
+        binanceChainId:
+          type: string
+        tokenContractAddress:
+          type: string
+        platformId:
+          type: string
+        tokenPrice:
+          type: string
+        referencePrice:
+          type: string
+        tokenPriceUpdatedAt:
+          type: integer
+          format: int64
+    RwaUnderlyingInfo:
+      type: object
+      properties:
+        binanceChainId:
+          type: string
+        tokenContractAddress:
+          type: string
+        platformId:
+          type: string
+        underlyingTicker:
+          type: string
+        underlyingFullName:
+          type: string
+        assetType:
+          type: integer
+          format: int32
+        tokenToShareRatio:
+          type: string
+        protections:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/Protection'
+        companyInfo:
+          $ref: '#/components/schemas/CompanyInfo'
+    Protection:
+      type: object
+      properties:
+        supported:
+          type: boolean
+        url:
+          type: string
+    CompanyInfo:
+      type: object
+      properties:
+        ceo:
+          type: string
+        website:
+          type: string
+        industry:
+          type: string
+        conceptsEn:
+          type: array
+          items:
+            type: string
+        conceptsCn:
+          type: array
+          items:
+            type: string
+        description:
+          type: string
+        descriptionZh:
+          type: string
+    RwaUnderlyingMarketData:
+      type: object
+      properties:
+        binanceChainId:
+          type: string
+        tokenContractAddress:
+          type: string
+        platformId:
+          type: string
+        assetType:
+          type: integer
+          format: int32
+        statusInfo:
+          $ref: '#/components/schemas/MarketStatusInfo'
+        marketData:
+          $ref: '#/components/schemas/UnderlyingMarketData'
+    MarketStatusInfo:
+      type: object
+      properties:
+        openState:
+          type: boolean
+        marketStatus:
+          type: string
+        reasonCode:
+          type: string
+          nullable: true
+        reasonMsg:
+          type: string
+          nullable: true
+        nextOpenTime:
+          type: integer
+          format: int64
+          nullable: true
+        nextCloseTime:
+          type: integer
+          format: int64
+          nullable: true
+    UnderlyingMarketData:
+      type: object
+      properties:
+        referencePrice:
+          type: string
+        high52W:
+          type: string
+        low52W:
+          type: string
+        volumeShares24H:
+          type: string
+        avgDailyVolume1Y:
+          type: string
+        totalShares:
+          type: string
+        marketCap:
+          type: string
+        turnoverRate:
+          type: string
+        amplitude:
+          type: string
+          nullable: true
+        peRatioTTM:
+          type: string
+          nullable: true
+        pbRatio:
+          type: string
+          nullable: true
+        dividendYield:
+          type: string
+          nullable: true
+        latestDividend:
+          type: string
+          nullable: true
+    GetAggregatedQuoteResponse:
+      allOf:
+        - $ref: '#/components/schemas/BusinessResponse'
+        - type: object
+          properties:
+            data:
+              type: array
+              items:
+                $ref: '#/components/schemas/AggregatedQuote'
+    AggregatedQuote:
+      type: object
+      properties:
+        quoteId:
+          type: string
+        vendorName:
+          type: string
+        toTokenAmount:
+          type: string
+        priceImpactPercent:
+          type: string
+          nullable: true
+        executionMode:
+          type: string
+        approveTarget:
+          type: string
+          nullable: true
+    GetErc20ApproveTransactionResponse:
+      allOf:
+        - $ref: '#/components/schemas/BusinessResponse'
+        - type: object
+          properties:
+            data:
+              type: array
+              items:
+                $ref: '#/components/schemas/ApproveTransaction'
+    ApproveTransaction:
+      type: object
+      required: [data, dexContractAddress, gasLimit, gasPrice]
+      properties:
+        data:
+          type: string
+        dexContractAddress:
+          type: string
+        gasLimit:
+          type: string
+        gasPrice:
+          type: string
+    BuildSwapTransactionResponse:
+      allOf:
+        - $ref: '#/components/schemas/BusinessResponse'
+        - type: object
+          properties:
+            data:
+              $ref: '#/components/schemas/BuildSwapTransactionData'
+    BuildSwapTransactionData:
+      type: object
+      required: [executionMode]
+      properties:
+        executionMode:
+          type: string
+        tx:
+          $ref: '#/components/schemas/SwapTransactionPayload'
+        rfq:
+          $ref: '#/components/schemas/RfqOrderPayload'
+    SwapTransactionPayload:
+      type: object
+      required: [to, data, value, gas, gasPrice, minReceiveAmount]
+      properties:
+        to:
+          type: string
+        data:
+          type: string
+        value:
+          type: string
+        gas:
+          type: string
+        gasPrice:
+          type: string
+        maxPriorityFeePerGas:
+          type: string
+        minReceiveAmount:
+          type: string
+    RfqOrderPayload:
+      type: object
+      required: [vendor, typedDataToSign]
+      properties:
+        vendor:
+          $ref: '#/components/schemas/RfqVenue'
+        typedDataToSign:
+          type: string
+    SubmitRfqOrderRequest:
+      type: object
+      required: [requestId, userSignature, vendor, quoteId]
+      properties:
+        requestId:
+          type: string
+          format: uuid
+        userSignature:
+          type: string
+        vendor:
+          $ref: '#/components/schemas/RfqVenue'
+        quoteId:
+          type: string
+        signingScheme:
+          $ref: '#/components/schemas/RfqSigningScheme'
+    SubmitRfqOrderResponse:
+      allOf:
+        - $ref: '#/components/schemas/BusinessResponse'
+        - type: object
+          properties:
+            data:
+              $ref: '#/components/schemas/SubmittedRfqOrder'
+    SubmittedRfqOrder:
+      type: object
+      required: [orderId, status, createdAt]
+      properties:
+        orderId:
+          type: string
+        status:
+          type: string
+        createdAt:
+          type: integer
+          format: int64
+    GetRfqOrderStatusResponse:
+      allOf:
+        - $ref: '#/components/schemas/BusinessResponse'
+        - type: object
+          properties:
+            data:
+              $ref: '#/components/schemas/RfqOrderStatus'
+    RfqOrderStatus:
+      type: object
+      required: [status, createdAt]
+      properties:
+        status:
+          type: string
+        txHash:
+          type: string
+          nullable: true
+        fromAmount:
+          type: string
+          nullable: true
+        toAmount:
+          type: string
+          nullable: true
+        filledAt:
+          type: integer
+          format: int64
+          nullable: true
+        createdAt:
+          type: integer
+          format: int64
+    GetTransactionStatusResponse:
+      allOf:
+        - $ref: '#/components/schemas/BusinessResponse'
+        - type: object
+          properties:
+            data:
+              $ref: '#/components/schemas/TransactionStatus'
+    TransactionStatus:
+      type: object
+      description: Transaction details; absent when the transaction is not found.
+      properties:
+        height:
+          type: string
+        txTime:
+          type: string
+        status:
+          type: string
+        errorMsg:
+          type: string
+        fromTokenDetails:
+          type: array
+          items:
+            $ref: '#/components/schemas/TransactionTokenAmount'
+        toTokenDetails:
+          type: array
+          items:
+            $ref: '#/components/schemas/TransactionTokenAmount'
+    TransactionTokenAmount:
+      type: object
+      properties:
+        tokenAddress:
+          type: string
+        amount:
+          type: string
