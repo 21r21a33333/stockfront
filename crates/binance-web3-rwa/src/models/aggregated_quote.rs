@@ -28,6 +28,13 @@ pub struct AggregatedQuote {
     pub price_impact_percent: Option<Option<String>>,
     #[serde(rename = "executionMode", skip_serializing_if = "Option::is_none")]
     pub execution_mode: Option<String>,
+    #[serde(
+        rename = "approveTarget",
+        default,
+        with = "::serde_with::rust::double_option",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub approve_target: Option<Option<String>>,
 }
 
 impl AggregatedQuote {
@@ -38,6 +45,7 @@ impl AggregatedQuote {
             to_token_amount: None,
             price_impact_percent: None,
             execution_mode: None,
+            approve_target: None,
         }
     }
 }

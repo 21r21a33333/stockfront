@@ -47,12 +47,12 @@ pub fn trade_router(service: Arc<BstockTradeService>) -> Router {
             post(handlers::trades::prepare_trade),
         )
         .route(
-            "/v1/bstock-trades/submit",
-            post(handlers::trades::submit_trade),
+            "/v1/bstock-trades/orders",
+            post(handlers::trades::submit_order),
         )
         .route(
             "/v1/bstock-trades/orders/{order_id}",
-            get(handlers::trades::trade_status),
+            get(handlers::trades::order_status),
         )
         .with_state(service)
 }

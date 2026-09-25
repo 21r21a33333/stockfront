@@ -44,7 +44,11 @@ async fn main() -> Result<(), Box<dyn Error>> {
         max_trade_price_impact_bps,
         trade_slippage_bps,
     )?;
-    let bstock_trade = Arc::new(BstockTradeService::new(binance, trade_policy));
+    let bstock_trade = Arc::new(BstockTradeService::new(
+        binance.clone(),
+        binance,
+        trade_policy,
+    ));
     let app = bstock_router(bstock_market)
         .merge(wallet_router(wallet_portfolio))
         .merge(trade_router(bstock_trade));

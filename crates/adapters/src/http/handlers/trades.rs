@@ -6,14 +6,14 @@ use axum::{
 };
 use stockfront_core::bstock_trade::{
     ApprovalRequest, BstockTradeService, PrepareTradeRequest, PreparedApproval, PreparedTrade,
-    SubmitTradeRequest, SubmittedTrade, TradeQuote, TradeRequest, TradeStatus,
+    SubmitOrderRequest, SubmittedOrder, TradeOrderStatus, TradeQuote, TradeQuoteRequest,
 };
 
 use super::super::primitives::{ApiResult, List, Response};
 
 pub(in crate::http) async fn quotes(
     State(service): State<Arc<BstockTradeService>>,
-    request: Result<Json<TradeRequest>, JsonRejection>,
+    request: Result<Json<TradeQuoteRequest>, JsonRejection>,
 ) -> ApiResult<List<TradeQuote>> {
     let Json(request) = request?;
     let quotes = service.quotes(&request).await?;
@@ -38,19 +38,19 @@ pub(in crate::http) async fn prepare_trade(
     Ok(Response::ok(trade))
 }
 
-pub(in crate::http) async fn submit_trade(
+pub(in crate::http) async fn submit_order(
     State(service): State<Arc<BstockTradeService>>,
-    request: Result<Json<SubmitTradeRequest>, JsonRejection>,
-) -> ApiResult<SubmittedTrade> {
+    request: Result<Json<SubmitOrderRequest>, JsonRejection>,
+) -> ApiResult<SubmittedOrder> {
     let Json(request) = request?;
-    let trade = service.submit_trade(&request).await?;
-    Ok(Response::ok(trade))
+    let order = service.submit_order(&request).await?;
+    Ok(Response::ok(order))
 }
 
-pub(in crate::http) async fn trade_status(
+pub(in crate::http) async fn order_status(
     State(service): State<Arc<BstockTradeService>>,
     Path(order_id): Path<String>,
-) -> ApiResult<TradeStatus> {
-    let status = service.trade_status(&order_id).await?;
+) -> ApiResult<TradeOrderStatus> {
+    let status = service.order_status(&order_id).await?;
     Ok(Response::ok(status))
 }

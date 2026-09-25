@@ -13,41 +13,50 @@ use stockfront_core::{
     bstock_market::BNB_CHAIN_ID,
     bstock_trade::{
         ApprovalRequest, BstockTradeGateway, PrepareTradeRequest, PreparedApproval, PreparedTrade,
-        SubmitTradeRequest, SubmittedTrade, TradeGatewayError, TradeQuote, TradeRequest,
-        TradeStatus,
+        SubmitOrderRequest, SubmittedOrder, TradeGatewayError, TradeOrderStatus, TradeQuote,
+        TradeQuoteRequest,
     },
 };
 
 use super::{
     super::client::{BinanceWeb3Client, is_business_success},
     mapping::{
-        ProviderApproval, ProviderPreparedTrade, ProviderQuote, ProviderSubmittedTrade,
-        ProviderTradeStatus, provider_venue,
+        ProviderApproval, ProviderOrderStatus, ProviderPreparedTrade, ProviderQuote,
+        ProviderSubmittedOrder, provider_venue,
     },
 };
 
 #[async_trait]
 impl BstockTradeGateway for BinanceWeb3Client {
-    async fn quotes(&self, request: &TradeRequest) -> Result<Vec<TradeQuote>, TradeGatewayError> {
+    async fn quotes(
+        &self,
+        request: &TradeQuoteRequest,
+    ) -> Result<Vec<TradeQuote>, TradeGatewayError> {
         let response = get_aggregated_quote(
             &self.configuration,
             GetAggregatedQuoteParams {
                 binance_chain_id: BNB_CHAIN_ID.to_string(),
-                amount: request.raw_settlement_amount.to_string(),
-                from_token_address: request.settlement_token.to_string(),
-                to_token_address: request.bstock_contract.to_string(),
+                amount: request.sell_amount.to_string(),
+                from_token_address: request.sell_token.to_string(),
+                to_token_address: request.buy_token.to_string(),
                 user_wallet_address: request.wallet.as_address().to_string(),
             },
         )
         .await
-        .map_err(|_| TradeGatewayError::Unavailable)?;
+        .map_err(map_provider_error)?;
         ensure_business_success(response.code, response.success)?;
         Ok(response
             .data
             .unwrap_or_default()
             .into_iter()
             .filter(|quote| quote.execution_mode.as_deref() == Some("RFQ"))
-            .filter_map(|quote| TradeQuote::try_from(ProviderQuote(quote)).ok())
+            .filter_map(|quote| {
+                TradeQuote::try_from(ProviderQuote {
+                    value: quote,
+                    request,
+                })
+                .ok()
+            })
             .collect())
     }
 
@@ -59,13 +68,13 @@ impl BstockTradeGateway for BinanceWeb3Client {
             &self.configuration,
             GetErc20ApproveTransactionParams {
                 binance_chain_id: BNB_CHAIN_ID.to_string(),
-                token_contract_address: request.settlement_token.to_string(),
-                approve_amount: request.raw_settlement_amount.to_string(),
+                token_contract_address: request.token.to_string(),
+                approve_amount: request.amount.to_string(),
                 vendor: provider_venue(request.venue),
             },
         )
         .await
-        .map_err(|_| TradeGatewayError::Unavailable)?;
+        .map_err(map_provider_error)?;
         ensure_business_success(response.code, response.success)?;
         let approval = response
             .data
@@ -74,7 +83,7 @@ impl BstockTradeGateway for BinanceWeb3Client {
             .next()
             .ok_or(TradeGatewayError::InvalidData)?;
         PreparedApproval::try_from(ProviderApproval {
-            token: request.settlement_token,
+            token: request.token,
             value: approval,
         })
     }
@@ -88,30 +97,30 @@ impl BstockTradeGateway for BinanceWeb3Client {
             &self.configuration,
             BuildSwapTransactionParams {
                 binance_chain_id: BNB_CHAIN_ID.to_string(),
-                amount: request.trade.raw_settlement_amount.to_string(),
-                from_token_address: request.trade.settlement_token.to_string(),
-                to_token_address: request.trade.bstock_contract.to_string(),
+                amount: request.trade.sell_amount.to_string(),
+                from_token_address: request.trade.sell_token.to_string(),
+                to_token_address: request.trade.buy_token.to_string(),
                 user_wallet_address: request.trade.wallet.as_address().to_string(),
-                quote_id: request.quote_id.clone(),
+                quote_id: request.route_quote_id.clone(),
                 slippage_percent: slippage_percent.to_string(),
             },
         )
         .await
-        .map_err(|_| TradeGatewayError::Unavailable)?;
+        .map_err(map_provider_error)?;
         ensure_quote_business_success(response.code, response.success)?;
         let prepared = response.data.ok_or(TradeGatewayError::InvalidData)?;
         Ok(ProviderPreparedTrade(*prepared.rfq).into())
     }
 
-    async fn submit_trade(
+    async fn submit_order(
         &self,
-        request: &SubmitTradeRequest,
-    ) -> Result<SubmittedTrade, TradeGatewayError> {
+        request: &SubmitOrderRequest,
+    ) -> Result<SubmittedOrder, TradeGatewayError> {
         let mut body = models::SubmitRfqOrderRequest::new(
-            request.request_id,
-            request.user_signature.clone(),
+            request.submission_id,
+            request.signature.clone(),
             provider_venue(request.venue),
-            request.quote_id.clone(),
+            request.rfq_order_id.clone(),
         );
         body.signing_scheme = Some(models::RfqSigningScheme::Eip712);
         let response = submit_rfq_order(
@@ -121,13 +130,13 @@ impl BstockTradeGateway for BinanceWeb3Client {
             },
         )
         .await
-        .map_err(|_| TradeGatewayError::Unavailable)?;
+        .map_err(map_provider_error)?;
         ensure_quote_business_success(response.code, response.success)?;
         let submitted = response.data.ok_or(TradeGatewayError::InvalidData)?;
-        Ok(ProviderSubmittedTrade(*submitted).into())
+        Ok(ProviderSubmittedOrder(*submitted).into())
     }
 
-    async fn trade_status(&self, order_id: &str) -> Result<TradeStatus, TradeGatewayError> {
+    async fn order_status(&self, order_id: &str) -> Result<TradeOrderStatus, TradeGatewayError> {
         let response = get_rfq_order_status(
             &self.configuration,
             GetRfqOrderStatusParams {
@@ -141,14 +150,14 @@ impl BstockTradeGateway for BinanceWeb3Client {
             {
                 TradeGatewayError::OrderNotFound
             }
-            _ => TradeGatewayError::Unavailable,
+            error => map_provider_error(error),
         })?;
         if response.code == Some(404) || response.code == Some(40_404) {
             return Err(TradeGatewayError::OrderNotFound);
         }
         ensure_business_success(response.code, response.success)?;
         let status = response.data.ok_or(TradeGatewayError::InvalidData)?;
-        TradeStatus::try_from(ProviderTradeStatus(*status))
+        TradeOrderStatus::try_from(ProviderOrderStatus(*status))
     }
 }
 
@@ -159,7 +168,29 @@ fn ensure_business_success(
     if is_business_success(code, success) {
         Ok(())
     } else {
-        Err(TradeGatewayError::Unavailable)
+        match code {
+            Some(40_000..=49_999) if !matches!(code, Some(40_101..=40_104 | 42_900)) => {
+                Err(TradeGatewayError::Rejected)
+            }
+            _ => Err(TradeGatewayError::Unavailable),
+        }
+    }
+}
+
+fn map_provider_error<T>(error: binance_web3_rwa::apis::Error<T>) -> TradeGatewayError {
+    match error {
+        binance_web3_rwa::apis::Error::ResponseError(response)
+            if response.status.is_client_error()
+                && !matches!(
+                    response.status,
+                    reqwest::StatusCode::UNAUTHORIZED
+                        | reqwest::StatusCode::FORBIDDEN
+                        | reqwest::StatusCode::TOO_MANY_REQUESTS
+                ) =>
+        {
+            TradeGatewayError::Rejected
+        }
+        _ => TradeGatewayError::Unavailable,
     }
 }
 

@@ -5,7 +5,8 @@ mod service;
 
 pub use model::{
     ApprovalRequest, PrepareTradeRequest, PreparedApproval, PreparedTrade, RfqVenue,
-    SubmitTradeRequest, SubmittedTrade, TradeQuote, TradeRequest, TradeState, TradeStatus,
+    SubmitOrderRequest, SubmittedOrder, TokenAmount, TradeOrderState, TradeOrderStatus, TradeQuote,
+    TradeQuoteRequest,
 };
 pub use policy::{TradePolicy, TradePolicyError};
 pub use ports::{BstockTradeGateway, TradeGatewayError};

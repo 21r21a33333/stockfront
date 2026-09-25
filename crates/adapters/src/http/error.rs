@@ -63,23 +63,43 @@ impl ApiError {
     );
     const TRADE_UNAVAILABLE: Self = Self::fixed(
         StatusCode::SERVICE_UNAVAILABLE,
-        "trade_unavailable",
+        "trade_provider_unavailable",
         "bStock trading is temporarily unavailable",
+    );
+    const TRADE_REJECTED: Self = Self::fixed(
+        StatusCode::UNPROCESSABLE_ENTITY,
+        "trade_rejected",
+        "the trading provider rejected the request",
+    );
+    const INVALID_TRADE_AMOUNT: Self = Self::fixed(
+        StatusCode::BAD_REQUEST,
+        "invalid_trade_amount",
+        "trade amount must be greater than zero",
     );
     const INVALID_TRADE_DATA: Self = Self::fixed(
         StatusCode::BAD_GATEWAY,
-        "invalid_trade_data",
+        "invalid_provider_response",
         "the trade provider returned invalid data",
     );
-    const TRADE_CONFLICT: Self = Self::fixed(
+    const QUOTE_EXPIRED: Self = Self::fixed(
         StatusCode::CONFLICT,
-        "trade_conflict",
-        "the trade or quote is no longer executable",
+        "quote_expired",
+        "the quote has expired",
     );
-    const UNSUPPORTED_SETTLEMENT_TOKEN: Self = Self::fixed(
+    const QUOTE_MISMATCH: Self = Self::fixed(
+        StatusCode::CONFLICT,
+        "quote_mismatch",
+        "the prepared trade no longer matches the quote",
+    );
+    const NO_EXECUTABLE_QUOTE: Self = Self::fixed(
+        StatusCode::UNPROCESSABLE_ENTITY,
+        "no_executable_quote",
+        "no RFQ quote satisfies the trading policy",
+    );
+    const UNSUPPORTED_TRADE_PAIR: Self = Self::fixed(
         StatusCode::BAD_REQUEST,
-        "unsupported_settlement_token",
-        "the settlement token is not supported",
+        "unsupported_trade_pair",
+        "the trade pair is not supported",
     );
     const TRADE_ORDER_NOT_FOUND: Self = Self::fixed(
         StatusCode::NOT_FOUND,
@@ -163,12 +183,17 @@ impl From<BstockTradeError> for ApiError {
     fn from(error: BstockTradeError) -> Self {
         match error {
             BstockTradeError::Gateway(TradeGatewayError::Unavailable) => Self::TRADE_UNAVAILABLE,
+            BstockTradeError::Gateway(TradeGatewayError::Rejected) => Self::TRADE_REJECTED,
             BstockTradeError::Gateway(TradeGatewayError::InvalidData) => Self::INVALID_TRADE_DATA,
-            BstockTradeError::Gateway(
-                TradeGatewayError::QuoteExpired | TradeGatewayError::QuoteMismatch,
-            )
-            | BstockTradeError::NoSupportedQuote => Self::TRADE_CONFLICT,
-            BstockTradeError::UnsupportedSettlementToken => Self::UNSUPPORTED_SETTLEMENT_TOKEN,
+            BstockTradeError::Gateway(TradeGatewayError::QuoteExpired) => Self::QUOTE_EXPIRED,
+            BstockTradeError::Gateway(TradeGatewayError::QuoteMismatch) => Self::QUOTE_MISMATCH,
+            BstockTradeError::NoSupportedQuote => Self::NO_EXECUTABLE_QUOTE,
+            BstockTradeError::UnsupportedTradePair => Self::UNSUPPORTED_TRADE_PAIR,
+            BstockTradeError::InvalidAmount => Self::INVALID_TRADE_AMOUNT,
+            BstockTradeError::Catalog(CatalogError::Unavailable) => Self::MARKET_DATA_UNAVAILABLE,
+            BstockTradeError::Catalog(CatalogError::InvalidData { .. }) => {
+                Self::INVALID_MARKET_DATA
+            }
             BstockTradeError::Gateway(TradeGatewayError::OrderNotFound) => {
                 Self::TRADE_ORDER_NOT_FOUND
             }

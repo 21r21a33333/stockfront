@@ -15,6 +15,8 @@ use serde::{Deserialize, Serialize};
 pub struct ApproveTransaction {
     #[serde(rename = "data")]
     pub data: String,
+    #[serde(rename = "dexContractAddress")]
+    pub dex_contract_address: String,
     #[serde(rename = "gasLimit")]
     pub gas_limit: String,
     #[serde(rename = "gasPrice")]
@@ -22,9 +24,15 @@ pub struct ApproveTransaction {
 }
 
 impl ApproveTransaction {
-    pub fn new(data: String, gas_limit: String, gas_price: String) -> ApproveTransaction {
+    pub fn new(
+        data: String,
+        dex_contract_address: String,
+        gas_limit: String,
+        gas_price: String,
+    ) -> ApproveTransaction {
         ApproveTransaction {
             data,
+            dex_contract_address,
             gas_limit,
             gas_price,
         }

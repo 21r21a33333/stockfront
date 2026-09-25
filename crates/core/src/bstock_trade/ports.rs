@@ -3,14 +3,16 @@ use rust_decimal::Decimal;
 use thiserror::Error;
 
 use super::model::{
-    ApprovalRequest, PrepareTradeRequest, PreparedApproval, PreparedTrade, SubmitTradeRequest,
-    SubmittedTrade, TradeQuote, TradeRequest, TradeStatus,
+    ApprovalRequest, PrepareTradeRequest, PreparedApproval, PreparedTrade, SubmitOrderRequest,
+    SubmittedOrder, TradeOrderStatus, TradeQuote, TradeQuoteRequest,
 };
 
 #[derive(Debug, Error)]
 pub enum TradeGatewayError {
     #[error("the trading provider is temporarily unavailable")]
     Unavailable,
+    #[error("the trading provider rejected the request")]
+    Rejected,
     #[error("the trading provider returned invalid data")]
     InvalidData,
     #[error("the trade quote expired")]
@@ -23,7 +25,10 @@ pub enum TradeGatewayError {
 
 #[async_trait]
 pub trait BstockTradeGateway: Send + Sync {
-    async fn quotes(&self, request: &TradeRequest) -> Result<Vec<TradeQuote>, TradeGatewayError>;
+    async fn quotes(
+        &self,
+        request: &TradeQuoteRequest,
+    ) -> Result<Vec<TradeQuote>, TradeGatewayError>;
 
     async fn prepare_approval(
         &self,
@@ -36,10 +41,10 @@ pub trait BstockTradeGateway: Send + Sync {
         slippage_percent: Decimal,
     ) -> Result<PreparedTrade, TradeGatewayError>;
 
-    async fn submit_trade(
+    async fn submit_order(
         &self,
-        request: &SubmitTradeRequest,
-    ) -> Result<SubmittedTrade, TradeGatewayError>;
+        request: &SubmitOrderRequest,
+    ) -> Result<SubmittedOrder, TradeGatewayError>;
 
-    async fn trade_status(&self, order_id: &str) -> Result<TradeStatus, TradeGatewayError>;
+    async fn order_status(&self, order_id: &str) -> Result<TradeOrderStatus, TradeGatewayError>;
 }

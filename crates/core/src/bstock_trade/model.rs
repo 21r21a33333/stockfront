@@ -18,23 +18,23 @@ pub enum RfqVenue {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct TradeRequest {
+pub struct TradeQuoteRequest {
     pub wallet: WalletAddress,
     #[serde(deserialize_with = "deserialize_address")]
-    pub bstock_contract: Address,
+    pub sell_token: Address,
     #[serde(deserialize_with = "deserialize_address")]
-    pub settlement_token: Address,
+    pub buy_token: Address,
     #[serde(deserialize_with = "deserialize_u256")]
-    pub raw_settlement_amount: U256,
+    pub sell_amount: U256,
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ApprovalRequest {
     #[serde(deserialize_with = "deserialize_address")]
-    pub settlement_token: Address,
+    pub token: Address,
     #[serde(deserialize_with = "deserialize_u256")]
-    pub raw_settlement_amount: U256,
+    pub amount: U256,
     pub venue: RfqVenue,
 }
 
@@ -42,27 +42,38 @@ pub struct ApprovalRequest {
 #[serde(rename_all = "camelCase")]
 pub struct PrepareTradeRequest {
     #[serde(flatten)]
-    pub trade: TradeRequest,
-    pub quote_id: String,
+    pub trade: TradeQuoteRequest,
+    pub route_quote_id: String,
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct SubmitTradeRequest {
-    pub request_id: Uuid,
-    pub quote_id: String,
+pub struct SubmitOrderRequest {
+    pub submission_id: Uuid,
+    pub rfq_order_id: String,
     pub venue: RfqVenue,
-    pub user_signature: String,
+    pub signature: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TokenAmount {
+    #[serde(serialize_with = "serialize_address")]
+    pub token: Address,
+    #[serde(serialize_with = "serialize_u256")]
+    pub amount: U256,
 }
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TradeQuote {
-    pub quote_id: String,
+    pub route_quote_id: String,
     pub venue: RfqVenue,
-    #[serde(serialize_with = "serialize_u256")]
-    pub raw_bstock_amount: U256,
+    pub sell: TokenAmount,
+    pub buy: TokenAmount,
     pub price_impact_percent: Decimal,
+    #[serde(serialize_with = "serialize_optional_address")]
+    pub approval_target: Option<Address>,
 }
 
 #[derive(Debug, Serialize)]
@@ -70,8 +81,10 @@ pub struct TradeQuote {
 pub struct PreparedApproval {
     #[serde(serialize_with = "serialize_address")]
     pub to: Address,
+    #[serde(serialize_with = "serialize_address")]
+    pub spender: Address,
     #[serde(serialize_with = "serialize_bytes")]
-    pub calldata: Bytes,
+    pub data: Bytes,
     #[serde(serialize_with = "serialize_u256")]
     pub gas_limit: U256,
     #[serde(serialize_with = "serialize_u256")]
@@ -81,15 +94,15 @@ pub struct PreparedApproval {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PreparedTrade {
-    pub request_id: Uuid,
-    pub quote_id: String,
+    pub submission_id: Uuid,
+    pub rfq_order_id: String,
     pub venue: RfqVenue,
     pub typed_data: String,
 }
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub enum TradeState {
+pub enum TradeOrderState {
     PendingVendor,
     PendingOnchain,
     Filled,
@@ -101,22 +114,22 @@ pub enum TradeState {
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct SubmittedTrade {
+pub struct SubmittedOrder {
     pub order_id: String,
-    pub state: TradeState,
+    pub state: TradeOrderState,
     pub created_at_ms: i64,
 }
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct TradeStatus {
-    pub state: TradeState,
+pub struct TradeOrderStatus {
+    pub state: TradeOrderState,
     #[serde(serialize_with = "serialize_optional_hash")]
     pub transaction_hash: Option<B256>,
     #[serde(serialize_with = "serialize_optional_u256")]
-    pub raw_settlement_amount: Option<U256>,
+    pub filled_sell_amount: Option<U256>,
     #[serde(serialize_with = "serialize_optional_u256")]
-    pub raw_bstock_amount: Option<U256>,
+    pub filled_buy_amount: Option<U256>,
     pub created_at_ms: i64,
     pub filled_at_ms: Option<i64>,
 }
@@ -126,6 +139,17 @@ where
     S: Serializer,
 {
     serializer.serialize_str(&value.to_string())
+}
+
+#[allow(clippy::ref_option)]
+fn serialize_optional_address<S>(value: &Option<Address>, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    value
+        .as_ref()
+        .map(ToString::to_string)
+        .serialize(serializer)
 }
 
 fn serialize_u256<S>(value: &U256, serializer: S) -> Result<S::Ok, S::Error>

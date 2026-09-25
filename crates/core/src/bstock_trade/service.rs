@@ -1,36 +1,49 @@
 use std::sync::Arc;
 
-use alloy_primitives::Address;
 use thiserror::Error;
 
 use super::{
     model::{
-        ApprovalRequest, PrepareTradeRequest, PreparedApproval, PreparedTrade, SubmitTradeRequest,
-        SubmittedTrade, TradeQuote, TradeRequest, TradeStatus,
+        ApprovalRequest, PrepareTradeRequest, PreparedApproval, PreparedTrade, SubmitOrderRequest,
+        SubmittedOrder, TradeOrderStatus, TradeQuote, TradeQuoteRequest,
     },
     policy::TradePolicy,
     ports::{BstockTradeGateway, TradeGatewayError},
 };
+use crate::bstock_market::{BNB_CHAIN_ID, BstockCatalog, BstockId, CatalogError};
 
 #[derive(Debug, Error)]
 pub enum BstockTradeError {
     #[error(transparent)]
     Gateway(#[from] TradeGatewayError),
-    #[error("the settlement token is not supported")]
-    UnsupportedSettlementToken,
+    #[error(transparent)]
+    Catalog(#[from] CatalogError),
+    #[error("trade amount must be greater than zero")]
+    InvalidAmount,
+    #[error("the trade pair is not supported")]
+    UnsupportedTradePair,
     #[error("no RFQ quote satisfies the configured price-impact limit")]
     NoSupportedQuote,
 }
 
 pub struct BstockTradeService {
     gateway: Arc<dyn BstockTradeGateway>,
+    catalog: Arc<dyn BstockCatalog>,
     policy: TradePolicy,
 }
 
 impl BstockTradeService {
     #[must_use]
-    pub fn new(gateway: Arc<dyn BstockTradeGateway>, policy: TradePolicy) -> Self {
-        Self { gateway, policy }
+    pub fn new(
+        gateway: Arc<dyn BstockTradeGateway>,
+        catalog: Arc<dyn BstockCatalog>,
+        policy: TradePolicy,
+    ) -> Self {
+        Self {
+            gateway,
+            catalog,
+            policy,
+        }
     }
 
     /// Returns Binance RFQ quotes that satisfy Stockfront's price-impact policy.
@@ -41,15 +54,15 @@ impl BstockTradeService {
     /// unavailable.
     pub async fn quotes(
         &self,
-        request: &TradeRequest,
+        request: &TradeQuoteRequest,
     ) -> Result<Vec<TradeQuote>, BstockTradeError> {
-        self.validate_settlement_token(request.settlement_token)?;
+        self.validate_trade(request).await?;
         let mut quotes = self.gateway.quotes(request).await?;
         quotes.retain(|quote| self.policy.accepts_price_impact(quote.price_impact_percent));
         if quotes.is_empty() {
             return Err(BstockTradeError::NoSupportedQuote);
         }
-        quotes.sort_by_key(|quote| std::cmp::Reverse(quote.raw_bstock_amount));
+        quotes.sort_by_key(|quote| std::cmp::Reverse(quote.buy.amount));
         Ok(quotes)
     }
 
@@ -63,7 +76,9 @@ impl BstockTradeService {
         &self,
         request: &ApprovalRequest,
     ) -> Result<PreparedApproval, BstockTradeError> {
-        self.validate_settlement_token(request.settlement_token)?;
+        if request.amount.is_zero() {
+            return Err(BstockTradeError::InvalidAmount);
+        }
         self.gateway
             .prepare_approval(request)
             .await
@@ -80,7 +95,7 @@ impl BstockTradeService {
         &self,
         request: &PrepareTradeRequest,
     ) -> Result<PreparedTrade, BstockTradeError> {
-        self.validate_settlement_token(request.trade.settlement_token)?;
+        self.validate_trade(&request.trade).await?;
         self.gateway
             .prepare_trade(request, self.policy.slippage_percent)
             .await
@@ -92,11 +107,11 @@ impl BstockTradeService {
     /// # Errors
     ///
     /// Returns [`BstockTradeError`] when Binance rejects the order.
-    pub async fn submit_trade(
+    pub async fn submit_order(
         &self,
-        request: &SubmitTradeRequest,
-    ) -> Result<SubmittedTrade, BstockTradeError> {
-        self.gateway.submit_trade(request).await.map_err(Into::into)
+        request: &SubmitOrderRequest,
+    ) -> Result<SubmittedOrder, BstockTradeError> {
+        self.gateway.submit_order(request).await.map_err(Into::into)
     }
 
     /// Returns Binance's current RFQ order state.
@@ -104,17 +119,35 @@ impl BstockTradeService {
     /// # Errors
     ///
     /// Returns [`BstockTradeError`] when Binance is unavailable.
-    pub async fn trade_status(&self, order_id: &str) -> Result<TradeStatus, BstockTradeError> {
+    pub async fn order_status(&self, order_id: &str) -> Result<TradeOrderStatus, BstockTradeError> {
         self.gateway
-            .trade_status(order_id)
+            .order_status(order_id)
             .await
             .map_err(Into::into)
     }
 
-    fn validate_settlement_token(&self, token: Address) -> Result<(), BstockTradeError> {
-        if !self.policy.settlement_tokens.contains(&token) {
-            return Err(BstockTradeError::UnsupportedSettlementToken);
+    async fn validate_trade(&self, request: &TradeQuoteRequest) -> Result<(), BstockTradeError> {
+        if request.sell_amount.is_zero() {
+            return Err(BstockTradeError::InvalidAmount);
         }
-        Ok(())
+        let contract = self
+            .policy
+            .bstock_for_pair(request.sell_token, request.buy_token)
+            .ok_or(BstockTradeError::UnsupportedTradePair)?;
+        let bstock = BstockId {
+            chain_id: BNB_CHAIN_ID,
+            contract,
+        };
+        let supported = self
+            .catalog
+            .list_bstocks()
+            .await?
+            .iter()
+            .any(|asset| asset.id == bstock);
+        if supported {
+            Ok(())
+        } else {
+            Err(BstockTradeError::UnsupportedTradePair)
+        }
     }
 }

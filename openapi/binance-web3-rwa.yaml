@@ -587,6 +587,9 @@ components:
           nullable: true
         executionMode:
           type: string
+        approveTarget:
+          type: string
+          nullable: true
     GetErc20ApproveTransactionResponse:
       allOf:
         - $ref: '#/components/schemas/BusinessResponse'
@@ -598,9 +601,11 @@ components:
                 $ref: '#/components/schemas/ApproveTransaction'
     ApproveTransaction:
       type: object
-      required: [data, gasLimit, gasPrice]
+      required: [data, dexContractAddress, gasLimit, gasPrice]
       properties:
         data:
+          type: string
+        dexContractAddress:
           type: string
         gasLimit:
           type: string

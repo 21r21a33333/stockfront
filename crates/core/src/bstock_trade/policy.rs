@@ -57,6 +57,20 @@ impl TradePolicy {
     pub(super) fn accepts_price_impact(&self, price_impact_percent: Decimal) -> bool {
         price_impact_percent.abs() <= self.max_price_impact_percent
     }
+
+    pub(super) fn bstock_for_pair(
+        &self,
+        sell_token: Address,
+        buy_token: Address,
+    ) -> Option<Address> {
+        let sell_is_settlement = self.settlement_tokens.contains(&sell_token);
+        let buy_is_settlement = self.settlement_tokens.contains(&buy_token);
+        match (sell_is_settlement, buy_is_settlement) {
+            (true, false) => Some(buy_token),
+            (false, true) => Some(sell_token),
+            _ => None,
+        }
+    }
 }
 
 #[cfg(test)]
@@ -71,5 +85,30 @@ mod tests {
         assert!(policy.accepts_price_impact(Decimal::new(-100, 2)));
         assert!(policy.accepts_price_impact(Decimal::new(100, 2)));
         assert!(!policy.accepts_price_impact(Decimal::new(-101, 2)));
+    }
+
+    #[test]
+    fn supported_pair_allows_both_trade_directions() {
+        let settlement_token = Address::with_last_byte(1);
+        let bstock = Address::with_last_byte(2);
+        let other_settlement_token = Address::with_last_byte(3);
+        let other_asset = Address::with_last_byte(4);
+        let policy = TradePolicy::new([settlement_token, other_settlement_token], 100, 50)
+            .unwrap_or_else(|error| panic!("valid policy rejected: {error}"));
+
+        assert_eq!(
+            policy.bstock_for_pair(settlement_token, bstock),
+            Some(bstock)
+        );
+        assert_eq!(
+            policy.bstock_for_pair(bstock, settlement_token),
+            Some(bstock)
+        );
+        assert_eq!(
+            policy.bstock_for_pair(settlement_token, other_settlement_token),
+            None
+        );
+        assert_eq!(policy.bstock_for_pair(bstock, other_asset), None);
+        assert_eq!(policy.bstock_for_pair(bstock, bstock), None);
     }
 }
