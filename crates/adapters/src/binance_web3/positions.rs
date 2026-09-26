@@ -3,7 +3,7 @@ use binance_web3_rwa::{
     models::{DefiPositions, GetDefiPositionsRequest},
 };
 use stockfront_core::{
-    bstock_borrowing::BorrowingReadError, bstock_market::BNB_CHAIN_ID,
+    bstock_borrowing::BorrowingProviderError, bstock_market::BNB_CHAIN_ID,
     wallet_portfolio::WalletAddress,
 };
 
@@ -18,7 +18,7 @@ impl BinanceWeb3Client {
     pub(crate) async fn defi_positions(
         &self,
         wallet: WalletAddress,
-    ) -> Result<DefiPositionSnapshot, BorrowingReadError> {
+    ) -> Result<DefiPositionSnapshot, BorrowingProviderError> {
         let mut request = GetDefiPositionsRequest::new(vec![wallet.as_address().to_string()]);
         request.binance_chain_ids = Some(vec![BNB_CHAIN_ID.to_string()]);
         let response = get_defi_positions(
@@ -28,18 +28,20 @@ impl BinanceWeb3Client {
             },
         )
         .await
-        .map_err(|_| BorrowingReadError::Unavailable)?;
+        .map_err(|_| BorrowingProviderError::Unavailable)?;
 
         if !is_business_success(response.code, response.success) {
-            return Err(BorrowingReadError::Unavailable);
+            return Err(BorrowingProviderError::Unavailable);
         }
 
         Ok(DefiPositionSnapshot {
             positions: response
                 .data
                 .map(|positions| *positions)
-                .ok_or(BorrowingReadError::InvalidData)?,
-            observed_at_ms: response.timestamp.ok_or(BorrowingReadError::InvalidData)?,
+                .ok_or(BorrowingProviderError::InvalidData)?,
+            observed_at_ms: response
+                .timestamp
+                .ok_or(BorrowingProviderError::InvalidData)?,
         })
     }
 }

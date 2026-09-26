@@ -5,7 +5,7 @@ use axum::{
     http::StatusCode,
     response::{IntoResponse, Response as AxumResponse},
 };
-use stockfront_core::bstock_borrowing::{BorrowingReadError, BorrowingServiceError};
+use stockfront_core::bstock_borrowing::{BorrowingProviderError, BorrowingServiceError};
 use stockfront_core::bstock_market::{BstockMarketError, CatalogError, QueryError};
 use stockfront_core::bstock_trade::{BstockTradeError, TradeGatewayError};
 use stockfront_core::wallet_portfolio::{
@@ -137,6 +137,21 @@ impl ApiError {
         "unsupported_debt_token",
         "the debt token is not supported",
     );
+    const INVALID_SUPPLY_AMOUNT: Self = Self::fixed(
+        StatusCode::BAD_REQUEST,
+        "invalid_supply_amount",
+        "supply amount must be greater than zero",
+    );
+    const BORROWING_REJECTED: Self = Self::fixed(
+        StatusCode::UNPROCESSABLE_ENTITY,
+        "borrowing_rejected",
+        "the borrowing provider rejected the request",
+    );
+    const BORROWING_TRANSACTION_NOT_FOUND: Self = Self::fixed(
+        StatusCode::NOT_FOUND,
+        "borrowing_transaction_not_found",
+        "the borrowing transaction was not found",
+    );
     const fn fixed(status: StatusCode, code: &'static str, message: &'static str) -> Self {
         Self {
             status,
@@ -168,7 +183,7 @@ impl From<JsonRejection> for ApiError {
     fn from(error: JsonRejection) -> Self {
         Self::dynamic(
             StatusCode::BAD_REQUEST,
-            "invalid_trade_request",
+            "invalid_request",
             error.body_text(),
         )
     }
@@ -247,18 +262,21 @@ impl From<BorrowingServiceError> for ApiError {
     fn from(error: BorrowingServiceError) -> Self {
         match error {
             BorrowingServiceError::Catalog(error) => error.into(),
-            BorrowingServiceError::Reader(error) => error.into(),
+            BorrowingServiceError::Provider(error) => error.into(),
+            BorrowingServiceError::InvalidAmount => Self::INVALID_SUPPLY_AMOUNT,
             BorrowingServiceError::UnsupportedCollateral => Self::UNSUPPORTED_COLLATERAL,
             BorrowingServiceError::UnsupportedDebtToken => Self::UNSUPPORTED_DEBT_TOKEN,
         }
     }
 }
 
-impl From<BorrowingReadError> for ApiError {
-    fn from(error: BorrowingReadError) -> Self {
+impl From<BorrowingProviderError> for ApiError {
+    fn from(error: BorrowingProviderError) -> Self {
         match error {
-            BorrowingReadError::Unavailable => Self::BORROWING_UNAVAILABLE,
-            BorrowingReadError::InvalidData => Self::INVALID_BORROWING_DATA,
+            BorrowingProviderError::Unavailable => Self::BORROWING_UNAVAILABLE,
+            BorrowingProviderError::Rejected => Self::BORROWING_REJECTED,
+            BorrowingProviderError::InvalidData => Self::INVALID_BORROWING_DATA,
+            BorrowingProviderError::TransactionNotFound => Self::BORROWING_TRANSACTION_NOT_FOUND,
         }
     }
 }

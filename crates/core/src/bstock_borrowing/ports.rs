@@ -1,19 +1,39 @@
-use alloy_primitives::Address;
+use alloy_primitives::{Address, B256};
 use async_trait::async_trait;
 use thiserror::Error;
 
 use crate::{
-    bstock_borrowing::{BorrowingAccount, BorrowingMarket},
+    bstock_borrowing::{
+        BorrowingAccount, BorrowingMarket, BorrowingTransactionStatus, PrepareSupplyRequest,
+        PreparedSupply,
+    },
     bstock_market::BstockId,
     wallet_portfolio::WalletAddress,
 };
 
 #[derive(Clone, Copy, Debug, Error, Eq, PartialEq)]
-pub enum BorrowingReadError {
-    #[error("borrowing data is temporarily unavailable")]
+pub enum BorrowingProviderError {
+    #[error("the borrowing provider is temporarily unavailable")]
     Unavailable,
+    #[error("the borrowing provider rejected the request")]
+    Rejected,
     #[error("the borrowing provider returned invalid data")]
     InvalidData,
+    #[error("the borrowing transaction was not found")]
+    TransactionNotFound,
+}
+
+#[async_trait]
+pub trait BorrowingActionGateway: Send + Sync {
+    async fn prepare_supply(
+        &self,
+        request: &PrepareSupplyRequest,
+    ) -> Result<PreparedSupply, BorrowingProviderError>;
+
+    async fn transaction_status(
+        &self,
+        transaction_hash: B256,
+    ) -> Result<BorrowingTransactionStatus, BorrowingProviderError>;
 }
 
 #[async_trait]
@@ -22,10 +42,10 @@ pub trait BorrowingReader: Send + Sync {
         &self,
         collateral_assets: &[BstockId],
         debt_tokens: &[Address],
-    ) -> Result<Vec<BorrowingMarket>, BorrowingReadError>;
+    ) -> Result<Vec<BorrowingMarket>, BorrowingProviderError>;
 
     async fn read_account(
         &self,
         wallet: WalletAddress,
-    ) -> Result<BorrowingAccount, BorrowingReadError>;
+    ) -> Result<BorrowingAccount, BorrowingProviderError>;
 }

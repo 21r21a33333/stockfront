@@ -4,6 +4,7 @@ mod auth;
 mod balances;
 mod catalog;
 mod client;
+mod defi;
 mod mapping;
 mod positions;
 mod trades;

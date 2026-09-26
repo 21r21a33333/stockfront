@@ -1,8 +1,13 @@
-use alloy_primitives::Address;
+use alloy_primitives::{Address, Bytes, U256};
 use rust_decimal::Decimal;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
-use crate::serialization::serialize_as_string;
+use crate::{
+    serialization::{
+        deserialize_from_string, serialize_as_string, serialize_bytes, serialize_optional_as_string,
+    },
+    wallet_portfolio::WalletAddress,
+};
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct BorrowingMarketQuery {
@@ -87,4 +92,100 @@ pub struct BorrowingAccount {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub health_factor: Option<Decimal>,
     pub observed_at_ms: i64,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PrepareSupplyRequest {
+    pub wallet: WalletAddress,
+    #[serde(deserialize_with = "deserialize_from_string")]
+    pub collateral_token: Address,
+    #[serde(deserialize_with = "deserialize_from_string")]
+    pub amount: Decimal,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum SupplyTransactionKind {
+    Approve,
+    Deposit,
+}
+
+#[derive(Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PreparedSupplyTransaction {
+    pub kind: SupplyTransactionKind,
+    #[serde(serialize_with = "serialize_as_string")]
+    pub to: Address,
+    #[serde(serialize_with = "serialize_bytes")]
+    pub data: Bytes,
+    #[serde(serialize_with = "serialize_as_string")]
+    pub value: U256,
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        serialize_with = "serialize_optional_as_string"
+    )]
+    pub gas_limit: Option<U256>,
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        serialize_with = "serialize_optional_as_string"
+    )]
+    pub gas_price: Option<U256>,
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        serialize_with = "serialize_optional_as_string"
+    )]
+    pub max_priority_fee_per_gas: Option<U256>,
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        serialize_with = "serialize_optional_as_string"
+    )]
+    pub max_fee_per_gas: Option<U256>,
+}
+
+#[derive(Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SupplyWarning {
+    pub code: String,
+    pub level: String,
+    pub message: String,
+}
+
+#[derive(Debug, Default, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SupplyPreview {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub estimated_network_fee: Option<Decimal>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub health_factor_before: Option<Decimal>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub health_factor_after: Option<Decimal>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub warnings: Vec<SupplyWarning>,
+}
+
+#[derive(Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PreparedSupply {
+    pub transactions: Vec<PreparedSupplyTransaction>,
+    pub preview: SupplyPreview,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum BorrowingTransactionState {
+    Pending,
+    Succeeded,
+    Failed,
+    Unknown,
+}
+
+#[derive(Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BorrowingTransactionStatus {
+    pub state: BorrowingTransactionState,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub block_number: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub executed_at_ms: Option<i64>,
 }

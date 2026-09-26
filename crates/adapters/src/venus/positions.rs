@@ -3,8 +3,8 @@ use binance_web3_rwa::models::{DefiPoolPosition, DefiPositionCollection, DefiPos
 use rust_decimal::Decimal;
 use stockfront_core::{
     bstock_borrowing::{
-        BorrowingAccount, BorrowingAsset, BorrowingPosition, BorrowingReadError, BorrowingToken,
-        BorrowingVenue,
+        BorrowingAccount, BorrowingAsset, BorrowingPosition, BorrowingProviderError,
+        BorrowingToken, BorrowingVenue,
     },
     bstock_market::BNB_CHAIN_ID,
     wallet_portfolio::WalletAddress,
@@ -18,7 +18,7 @@ impl VenusBorrowingReader {
     pub(super) async fn read_binance_account(
         &self,
         wallet: WalletAddress,
-    ) -> Result<BorrowingAccount, BorrowingReadError> {
+    ) -> Result<BorrowingAccount, BorrowingProviderError> {
         let snapshot = self.binance.defi_positions(wallet).await?;
         let mut positions = Vec::new();
         let mut total_supplied_usd = Decimal::ZERO;
@@ -55,7 +55,7 @@ impl VenusBorrowingReader {
     }
 }
 
-fn pool_position(pool: DefiPoolPosition) -> Result<Option<PositionRead>, BorrowingReadError> {
+fn pool_position(pool: DefiPoolPosition) -> Result<Option<PositionRead>, BorrowingProviderError> {
     let Some(pool_address) = pool
         .pool_ca
         .as_deref()
@@ -122,7 +122,7 @@ impl From<DefiPositionToken> for ProviderPositionToken {
 }
 
 impl TryFrom<ProviderPositionToken> for BorrowingAsset {
-    type Error = BorrowingReadError;
+    type Error = BorrowingProviderError;
 
     fn try_from(value: ProviderPositionToken) -> Result<Self, Self::Error> {
         let value = value.0;
@@ -130,7 +130,7 @@ impl TryFrom<ProviderPositionToken> for BorrowingAsset {
             token: BorrowingToken {
                 contract: required(value.token_address)?
                     .parse()
-                    .map_err(|_| BorrowingReadError::InvalidData)?,
+                    .map_err(|_| BorrowingProviderError::InvalidData)?,
                 symbol: required(value.token_symbol)?,
             },
             amount: parse_decimal(&required(value.token_amount)?)?,
@@ -141,7 +141,7 @@ impl TryFrom<ProviderPositionToken> for BorrowingAsset {
 
 fn collection_health_factor(
     collection: &DefiPositionCollection,
-) -> Result<Option<Decimal>, BorrowingReadError> {
+) -> Result<Option<Decimal>, BorrowingProviderError> {
     collection
         .position_collection_detail
         .as_ref()
@@ -152,11 +152,14 @@ fn collection_health_factor(
         .transpose()
 }
 
-fn checked_total(total: Decimal, assets: &[BorrowingAsset]) -> Result<Decimal, BorrowingReadError> {
+fn checked_total(
+    total: Decimal,
+    assets: &[BorrowingAsset],
+) -> Result<Decimal, BorrowingProviderError> {
     assets.iter().try_fold(total, |total, asset| {
         total
             .checked_add(asset.value_usd)
-            .ok_or(BorrowingReadError::InvalidData)
+            .ok_or(BorrowingProviderError::InvalidData)
     })
 }
 
@@ -167,10 +170,12 @@ fn minimum(left: Option<Decimal>, right: Option<Decimal>) -> Option<Decimal> {
     }
 }
 
-fn parse_decimal(value: &str) -> Result<Decimal, BorrowingReadError> {
-    value.parse().map_err(|_| BorrowingReadError::InvalidData)
+fn parse_decimal(value: &str) -> Result<Decimal, BorrowingProviderError> {
+    value
+        .parse()
+        .map_err(|_| BorrowingProviderError::InvalidData)
 }
 
-fn required<T>(value: Option<T>) -> Result<T, BorrowingReadError> {
-    value.ok_or(BorrowingReadError::InvalidData)
+fn required<T>(value: Option<T>) -> Result<T, BorrowingProviderError> {
+    value.ok_or(BorrowingProviderError::InvalidData)
 }

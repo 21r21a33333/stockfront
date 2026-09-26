@@ -61,8 +61,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
         Duration::from_secs(10),
     )?);
     let borrowing = Arc::new(BorrowingService::new(
-        binance,
+        binance.clone(),
         venus,
+        binance,
         BorrowingPolicy::new(borrow_debt_tokens)?,
     ));
     let app = bstock_router(bstock_market)

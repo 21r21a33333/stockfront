@@ -1,14 +1,16 @@
 use std::sync::Arc;
 
-use alloy_primitives::Address;
+use alloy_primitives::{Address, B256};
+use rust_decimal::Decimal;
 use thiserror::Error;
 
 use crate::{
     bstock_borrowing::{
-        BorrowingAccount, BorrowingMarket, BorrowingMarketQuery, BorrowingReadError,
-        BorrowingReader,
+        BorrowingAccount, BorrowingActionGateway, BorrowingMarket, BorrowingMarketQuery,
+        BorrowingProviderError, BorrowingReader, BorrowingTransactionStatus, PrepareSupplyRequest,
+        PreparedSupply,
     },
-    bstock_market::{BstockCatalog, CatalogError},
+    bstock_market::{BNB_CHAIN_ID, BstockCatalog, BstockId, CatalogError},
     wallet_portfolio::WalletAddress,
 };
 
@@ -45,7 +47,9 @@ pub enum BorrowingServiceError {
     #[error(transparent)]
     Catalog(#[from] CatalogError),
     #[error(transparent)]
-    Reader(#[from] BorrowingReadError),
+    Provider(#[from] BorrowingProviderError),
+    #[error("supply amount must be greater than zero")]
+    InvalidAmount,
     #[error("the collateral token is not a supported bStock")]
     UnsupportedCollateral,
     #[error("the debt token is not supported")]
@@ -55,6 +59,7 @@ pub enum BorrowingServiceError {
 pub struct BorrowingService {
     catalog: Arc<dyn BstockCatalog>,
     reader: Arc<dyn BorrowingReader>,
+    action_gateway: Arc<dyn BorrowingActionGateway>,
     policy: BorrowingPolicy,
 }
 
@@ -62,11 +67,13 @@ impl BorrowingService {
     pub fn new(
         catalog: Arc<dyn BstockCatalog>,
         reader: Arc<dyn BorrowingReader>,
+        action_gateway: Arc<dyn BorrowingActionGateway>,
         policy: BorrowingPolicy,
     ) -> Self {
         Self {
             catalog,
             reader,
+            action_gateway,
             policy,
         }
     }
@@ -115,12 +122,60 @@ impl BorrowingService {
     ///
     /// # Errors
     ///
-    /// Returns [`BorrowingServiceError::Reader`] when current account state cannot be read.
+    /// Returns [`BorrowingServiceError::Provider`] when current account state cannot be read.
     pub async fn account(
         &self,
         wallet: WalletAddress,
     ) -> Result<BorrowingAccount, BorrowingServiceError> {
         self.reader.read_account(wallet).await.map_err(Into::into)
+    }
+
+    /// Returns Binance's ordered wallet transactions for supplying a supported bStock to Venus.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`BorrowingServiceError`] when the amount or collateral is unsupported, or Binance
+    /// cannot prepare the transaction plan.
+    pub async fn prepare_supply(
+        &self,
+        request: &PrepareSupplyRequest,
+    ) -> Result<PreparedSupply, BorrowingServiceError> {
+        if request.amount <= Decimal::ZERO {
+            return Err(BorrowingServiceError::InvalidAmount);
+        }
+        let id = BstockId {
+            chain_id: BNB_CHAIN_ID,
+            contract: request.collateral_token,
+        };
+        let supported = self
+            .catalog
+            .list_bstocks()
+            .await?
+            .iter()
+            .any(|asset| asset.id == id);
+        if !supported {
+            return Err(BorrowingServiceError::UnsupportedCollateral);
+        }
+        self.action_gateway
+            .prepare_supply(request)
+            .await
+            .map_err(Into::into)
+    }
+
+    /// Returns Binance's current state for a submitted borrowing transaction.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`BorrowingServiceError::Provider`] when Binance is unavailable or the transaction
+    /// is unknown.
+    pub async fn transaction_status(
+        &self,
+        transaction_hash: B256,
+    ) -> Result<BorrowingTransactionStatus, BorrowingServiceError> {
+        self.action_gateway
+            .transaction_status(transaction_hash)
+            .await
+            .map_err(Into::into)
     }
 }
 
@@ -130,7 +185,9 @@ mod tests {
     use async_trait::async_trait;
 
     use crate::{
-        bstock_borrowing::{BorrowingReadError, BorrowingVenue},
+        bstock_borrowing::{
+            BorrowingProviderError, BorrowingTransactionState, BorrowingVenue, SupplyPreview,
+        },
         bstock_market::{AssetKind, BNB_CHAIN_ID, BstockDetails, BstockId, BstockSummary},
     };
     use rust_decimal::Decimal;
@@ -156,7 +213,7 @@ mod tests {
             &self,
             collateral_assets: &[BstockId],
             debt_tokens: &[Address],
-        ) -> Result<Vec<BorrowingMarket>, BorrowingReadError> {
+        ) -> Result<Vec<BorrowingMarket>, BorrowingProviderError> {
             assert_eq!(collateral_assets.len(), 1);
             assert_eq!(debt_tokens, &[Address::with_last_byte(2)]);
             Ok(Vec::new())
@@ -165,7 +222,7 @@ mod tests {
         async fn read_account(
             &self,
             _wallet: WalletAddress,
-        ) -> Result<BorrowingAccount, BorrowingReadError> {
+        ) -> Result<BorrowingAccount, BorrowingProviderError> {
             Ok(BorrowingAccount {
                 venue: BorrowingVenue::Venus,
                 chain_id: BNB_CHAIN_ID,
@@ -174,6 +231,33 @@ mod tests {
                 total_borrowed_usd: Decimal::ZERO,
                 health_factor: None,
                 observed_at_ms: 1,
+            })
+        }
+    }
+
+    struct RecordingActionGateway;
+
+    #[async_trait]
+    impl BorrowingActionGateway for RecordingActionGateway {
+        async fn prepare_supply(
+            &self,
+            request: &PrepareSupplyRequest,
+        ) -> Result<PreparedSupply, BorrowingProviderError> {
+            assert_eq!(request.collateral_token, Address::with_last_byte(1));
+            Ok(PreparedSupply {
+                transactions: Vec::new(),
+                preview: SupplyPreview::default(),
+            })
+        }
+
+        async fn transaction_status(
+            &self,
+            _transaction_hash: B256,
+        ) -> Result<BorrowingTransactionStatus, BorrowingProviderError> {
+            Ok(BorrowingTransactionStatus {
+                state: BorrowingTransactionState::Succeeded,
+                block_number: Some(1),
+                executed_at_ms: Some(1),
             })
         }
     }
@@ -216,10 +300,54 @@ mod tests {
         assert!(markets.is_empty());
     }
 
+    #[tokio::test]
+    async fn supply_rejects_invalid_requests_before_provider_io() {
+        let service = service();
+        let wallet = WalletAddress::try_from(Address::with_last_byte(3))
+            .unwrap_or_else(|error| panic!("valid wallet rejected: {error}"));
+
+        assert_eq!(
+            service
+                .prepare_supply(&PrepareSupplyRequest {
+                    wallet,
+                    collateral_token: Address::with_last_byte(1),
+                    amount: Decimal::ZERO,
+                })
+                .await,
+            Err(BorrowingServiceError::InvalidAmount)
+        );
+        assert_eq!(
+            service
+                .prepare_supply(&PrepareSupplyRequest {
+                    wallet,
+                    collateral_token: Address::with_last_byte(9),
+                    amount: Decimal::ONE,
+                })
+                .await,
+            Err(BorrowingServiceError::UnsupportedCollateral)
+        );
+    }
+
+    #[tokio::test]
+    async fn supported_supply_is_forwarded_to_the_action_gateway() {
+        let supply = service()
+            .prepare_supply(&PrepareSupplyRequest {
+                wallet: WalletAddress::try_from(Address::with_last_byte(3))
+                    .unwrap_or_else(|error| panic!("valid wallet rejected: {error}")),
+                collateral_token: Address::with_last_byte(1),
+                amount: Decimal::ONE,
+            })
+            .await
+            .unwrap_or_else(|error| panic!("supported supply rejected: {error}"));
+
+        assert!(supply.transactions.is_empty());
+    }
+
     fn service() -> BorrowingService {
         BorrowingService::new(
             Arc::new(FixedCatalog(vec![summary()])),
             Arc::new(RecordingReader),
+            Arc::new(RecordingActionGateway),
             BorrowingPolicy::new(vec![Address::with_last_byte(2)])
                 .unwrap_or_else(|error| panic!("valid policy rejected: {error}")),
         )

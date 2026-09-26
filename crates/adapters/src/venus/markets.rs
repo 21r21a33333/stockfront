@@ -5,8 +5,8 @@ use async_trait::async_trait;
 use rust_decimal::Decimal;
 use stockfront_core::{
     bstock_borrowing::{
-        BorrowingAccount, BorrowingMarket, BorrowingMarketUnavailableReason, BorrowingReadError,
-        BorrowingReader, BorrowingToken, BorrowingVenue,
+        BorrowingAccount, BorrowingMarket, BorrowingMarketUnavailableReason,
+        BorrowingProviderError, BorrowingReader, BorrowingToken, BorrowingVenue,
     },
     bstock_market::{BNB_CHAIN_ID, BstockId},
     wallet_portfolio::WalletAddress,
@@ -46,11 +46,11 @@ struct MarketState {
 }
 
 impl TryFrom<Market> for MarketState {
-    type Error = BorrowingReadError;
+    type Error = BorrowingProviderError;
 
     fn try_from(value: Market) -> Result<Self, Self::Error> {
         let token_decimals = u32::try_from(required(value.underlying_decimal)?)
-            .map_err(|_| BorrowingReadError::InvalidData)?;
+            .map_err(|_| BorrowingProviderError::InvalidData)?;
         let underlying_price = parse_u256(&required_nested(value.underlying_price_mantissa)?)?;
         let conditions = [
             (required_nested(value.is_listed)?, LISTED),
@@ -93,7 +93,7 @@ impl TryFrom<Market> for MarketState {
             cash: parse_u256(&required_nested(value.cash_mantissa)?)?,
             conditions,
             paused_actions: u32::try_from(required_nested(value.paused_actions_bitmap)?)
-                .map_err(|_| BorrowingReadError::InvalidData)?,
+                .map_err(|_| BorrowingProviderError::InvalidData)?,
         })
     }
 }
@@ -110,7 +110,7 @@ impl BorrowingReader for VenusBorrowingReader {
         &self,
         collateral_assets: &[BstockId],
         debt_tokens: &[Address],
-    ) -> Result<Vec<BorrowingMarket>, BorrowingReadError> {
+    ) -> Result<Vec<BorrowingMarket>, BorrowingProviderError> {
         let requested_tokens = collateral_assets
             .iter()
             .map(|asset| asset.contract)
@@ -141,7 +141,7 @@ impl BorrowingReader for VenusBorrowingReader {
     async fn read_account(
         &self,
         wallet: WalletAddress,
-    ) -> Result<BorrowingAccount, BorrowingReadError> {
+    ) -> Result<BorrowingAccount, BorrowingProviderError> {
         self.read_binance_account(wallet).await
     }
 }
@@ -150,7 +150,7 @@ impl VenusBorrowingReader {
     async fn market_states(
         &self,
         requested_tokens: &HashSet<Address>,
-    ) -> Result<HashMap<Address, MarketState>, BorrowingReadError> {
+    ) -> Result<HashMap<Address, MarketState>, BorrowingProviderError> {
         let mut page = 0;
         let mut fetched = 0;
         let mut states = HashMap::new();
@@ -166,9 +166,9 @@ impl VenusBorrowingReader {
                 },
             )
             .await
-            .map_err(|_| BorrowingReadError::Unavailable)?;
+            .map_err(|_| BorrowingProviderError::Unavailable)?;
             let total =
-                usize::try_from(response.total).map_err(|_| BorrowingReadError::InvalidData)?;
+                usize::try_from(response.total).map_err(|_| BorrowingProviderError::InvalidData)?;
             let result_count = response.result.len();
             fetched += result_count;
 
@@ -204,12 +204,12 @@ fn build_market(
     collateral: &MarketState,
     debt: &MarketState,
     observed_at_ms: i64,
-) -> Result<BorrowingMarket, BorrowingReadError> {
+) -> Result<BorrowingMarket, BorrowingProviderError> {
     let supplied = collateral
         .total_supply
         .checked_mul(collateral.exchange_rate)
         .and_then(|value| value.checked_div(U256::from(WAD)))
-        .ok_or(BorrowingReadError::InvalidData)?;
+        .ok_or(BorrowingProviderError::InvalidData)?;
     let remaining_supply_capacity = collateral.supply_cap.saturating_sub(supplied);
     let remaining_borrow_capacity = debt.borrow_cap.saturating_sub(debt.total_borrows);
     let available_borrow_liquidity = debt.cash.min(remaining_borrow_capacity);
@@ -283,33 +283,39 @@ fn action_paused(bitmap: u32, action: u32) -> bool {
     bitmap & (1 << action) != 0
 }
 
-fn parse_address(value: &str) -> Result<Address, BorrowingReadError> {
-    value.parse().map_err(|_| BorrowingReadError::InvalidData)
+fn parse_address(value: &str) -> Result<Address, BorrowingProviderError> {
+    value
+        .parse()
+        .map_err(|_| BorrowingProviderError::InvalidData)
 }
 
-fn parse_u256(value: &str) -> Result<U256, BorrowingReadError> {
-    value.parse().map_err(|_| BorrowingReadError::InvalidData)
+fn parse_u256(value: &str) -> Result<U256, BorrowingProviderError> {
+    value
+        .parse()
+        .map_err(|_| BorrowingProviderError::InvalidData)
 }
 
-fn parse_decimal(value: &str) -> Result<Decimal, BorrowingReadError> {
-    value.parse().map_err(|_| BorrowingReadError::InvalidData)
+fn parse_decimal(value: &str) -> Result<Decimal, BorrowingProviderError> {
+    value
+        .parse()
+        .map_err(|_| BorrowingProviderError::InvalidData)
 }
 
-fn decimal_from_u256(value: U256, decimals: u32) -> Result<Decimal, BorrowingReadError> {
+fn decimal_from_u256(value: U256, decimals: u32) -> Result<Decimal, BorrowingProviderError> {
     let scale = 10_u64
         .checked_pow(decimals)
         .map(Decimal::from)
-        .ok_or(BorrowingReadError::InvalidData)?;
+        .ok_or(BorrowingProviderError::InvalidData)?;
     parse_decimal(&value.to_string())?
         .checked_div(scale)
-        .ok_or(BorrowingReadError::InvalidData)
+        .ok_or(BorrowingProviderError::InvalidData)
 }
 
-fn required<T>(value: Option<T>) -> Result<T, BorrowingReadError> {
-    value.ok_or(BorrowingReadError::InvalidData)
+fn required<T>(value: Option<T>) -> Result<T, BorrowingProviderError> {
+    value.ok_or(BorrowingProviderError::InvalidData)
 }
 
 #[allow(clippy::option_option)]
-fn required_nested<T>(value: Option<Option<T>>) -> Result<T, BorrowingReadError> {
-    value.flatten().ok_or(BorrowingReadError::InvalidData)
+fn required_nested<T>(value: Option<Option<T>>) -> Result<T, BorrowingProviderError> {
+    value.flatten().ok_or(BorrowingProviderError::InvalidData)
 }

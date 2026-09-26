@@ -132,6 +132,7 @@ impl From<&str> for ContentType {
 }
 
 pub mod de_fi_data_api;
+pub mod de_fi_transaction_api;
 pub mod rwa_data_api;
 pub mod trading_api;
 pub mod wallet_api;
