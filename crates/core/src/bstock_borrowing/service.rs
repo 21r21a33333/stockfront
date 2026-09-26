@@ -232,7 +232,7 @@ impl BorrowingService {
             .map_err(Into::into)
     }
 
-    /// Returns Binance's ordered wallet transactions for withdrawing supplied bStock from Venus.
+    /// Returns an unsigned Venus transaction for withdrawing supplied bStock.
     ///
     /// # Errors
     ///

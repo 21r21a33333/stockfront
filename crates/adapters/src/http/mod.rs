@@ -1,4 +1,4 @@
-//! Inbound HTTP adapter for the bStock market slice.
+//! Inbound HTTP adapter for Stockfront's public API.
 
 mod error;
 mod handlers;

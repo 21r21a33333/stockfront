@@ -83,14 +83,18 @@ impl BorrowingActionGateway for VenusBorrowingAdapter {
             return Err(BorrowingProviderError::InsufficientBorrowLiquidity);
         }
         let data = IVToken::borrowCall { amount }.abi_encode().into();
-        self.binance
+        let mut action = self
+            .binance
             .prepare_evm_borrowing_action(
                 request.wallet,
                 BorrowingTransactionKind::Borrow,
                 market.market,
                 data,
             )
-            .await
+            .await?;
+        self.apply_borrow_risk(request.wallet, &market, request.amount, &mut action.preview)
+            .await?;
+        Ok(action)
     }
 
     async fn prepare_repayment_approval(
@@ -162,7 +166,37 @@ impl BorrowingActionGateway for VenusBorrowingAdapter {
         &self,
         request: &PrepareWithdrawalRequest,
     ) -> Result<PreparedBorrowingAction, BorrowingProviderError> {
-        self.binance.prepare_venus_withdrawal(request).await
+        let market = self.market_state(request.collateral_token).await?;
+        let data = match &request.amount {
+            PositionAmount::Exact { value } => IVToken::redeemUnderlyingCall {
+                redeemAmount: encode_units(*value, market.token_decimals)?,
+            }
+            .abi_encode()
+            .into(),
+            PositionAmount::Full => {
+                let vtoken_balance = IVToken::new(market.market, &self.provider)
+                    .balanceOf(request.wallet.as_address())
+                    .call()
+                    .await
+                    .map_err(|_| BorrowingProviderError::Unavailable)?;
+                if vtoken_balance == U256::ZERO {
+                    return Err(BorrowingProviderError::InsufficientSuppliedBalance);
+                }
+                IVToken::redeemCall {
+                    redeemTokens: vtoken_balance,
+                }
+                .abi_encode()
+                .into()
+            }
+        };
+        self.binance
+            .prepare_evm_borrowing_action(
+                request.wallet,
+                BorrowingTransactionKind::Withdraw,
+                market.market,
+                data,
+            )
+            .await
     }
 
     async fn transaction_status(
@@ -229,10 +263,20 @@ mod tests {
         }
         .abi_encode();
         let repay = IVToken::repayBorrowCall { amount: U256::MAX }.abi_encode();
+        let redeem = IVToken::redeemCall {
+            redeemTokens: U256::from(1_000_000),
+        }
+        .abi_encode();
+        let redeem_underlying = IVToken::redeemUnderlyingCall {
+            redeemAmount: U256::from(1_000_000),
+        }
+        .abi_encode();
 
         assert_eq!(&collateral[..4], &[0xc2, 0x99, 0x82, 0x38]);
         assert_eq!(&borrow[..4], &[0xc5, 0xeb, 0xea, 0xec]);
         assert_eq!(&repay[..4], &[0x0e, 0x75, 0x27, 0x02]);
+        assert_eq!(&redeem[..4], &[0xdb, 0x00, 0x6a, 0x75]);
+        assert_eq!(&redeem_underlying[..4], &[0x85, 0x2a, 0x12, 0xe3]);
     }
 
     #[test]

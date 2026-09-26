@@ -52,9 +52,6 @@ impl TryFrom<ProviderActionTransaction> for PreparedBorrowingTransaction {
                 models::defi_transaction::CallDataType::Deposit => {
                     BorrowingTransactionKind::Deposit
                 }
-                models::defi_transaction::CallDataType::Redeem => {
-                    BorrowingTransactionKind::Withdraw
-                }
                 _ => return Err(BorrowingProviderError::InvalidData),
             },
             to: parse(&to)?,
@@ -325,24 +322,5 @@ mod tests {
         assert_eq!(status.state, BorrowingTransactionState::Pending);
         assert_eq!(status.block_number, Some(123));
         assert_eq!(status.executed_at_ms, Some(1_748_601_600_000));
-    }
-
-    #[test]
-    fn redeem_plan_maps_to_a_withdrawal_transaction() {
-        let mut redeem = models::DefiTransaction::new();
-        redeem.call_data_type = Some(models::defi_transaction::CallDataType::Redeem);
-        redeem.to = Some(Some(Address::with_last_byte(3).to_string()));
-        redeem.data = Some("0x0506".to_owned());
-
-        let mut plan = models::DefiTransactionPlan::new();
-        plan.data_list = Some(vec![redeem]);
-        let withdrawal = PreparedBorrowingAction::try_from(ProviderPreparedAction(plan))
-            .unwrap_or_else(|error| panic!("valid withdrawal plan rejected: {error}"));
-
-        assert_eq!(withdrawal.transactions.len(), 1);
-        assert_eq!(
-            withdrawal.transactions[0].kind,
-            BorrowingTransactionKind::Withdraw
-        );
     }
 }

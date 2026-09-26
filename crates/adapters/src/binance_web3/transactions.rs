@@ -6,9 +6,10 @@ use binance_web3_rwa::{
     },
     models,
 };
+use rust_decimal::Decimal;
 use stockfront_core::{
     bstock_borrowing::{
-        BorrowingPreview, BorrowingProviderError, BorrowingTransactionKind,
+        BorrowingNetworkFee, BorrowingPreview, BorrowingProviderError, BorrowingTransactionKind,
         PreparedBorrowingAction, PreparedBorrowingTransaction,
     },
     bstock_market::BNB_CHAIN_ID,
@@ -86,6 +87,7 @@ impl BinanceWeb3Client {
                 .and_then(|price| price.medium_gas_price),
         )?;
         let gas_price = parse(&gas_price)?;
+        let estimated_network_fee = network_fee(gas_limit, gas_price)?;
 
         Ok(PreparedBorrowingAction {
             transactions: vec![PreparedBorrowingTransaction {
@@ -98,7 +100,47 @@ impl BinanceWeb3Client {
                 max_priority_fee_per_gas: None,
                 max_fee_per_gas: None,
             }],
-            preview: BorrowingPreview::default(),
+            preview: BorrowingPreview {
+                estimated_network_fee: Some(estimated_network_fee),
+                ..BorrowingPreview::default()
+            },
         })
+    }
+}
+
+fn network_fee(
+    gas_limit: U256,
+    gas_price: U256,
+) -> Result<BorrowingNetworkFee, BorrowingProviderError> {
+    const WEI_PER_BNB: u64 = 1_000_000_000_000_000_000;
+
+    let fee_wei = gas_limit
+        .checked_mul(gas_price)
+        .ok_or(BorrowingProviderError::InvalidData)?;
+    let amount = fee_wei
+        .to_string()
+        .parse::<Decimal>()
+        .map_err(|_| BorrowingProviderError::InvalidData)?
+        .checked_div(Decimal::from(WEI_PER_BNB))
+        .ok_or(BorrowingProviderError::InvalidData)?;
+    Ok(BorrowingNetworkFee {
+        amount,
+        token_symbol: "BNB".to_owned(),
+        value_usd: None,
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn network_fee_uses_prepared_gas_values() {
+        let fee = network_fee(U256::from(100_000), U256::from(50_000_000))
+            .unwrap_or_else(|error| panic!("valid gas fee rejected: {error}"));
+
+        assert_eq!(fee.amount, Decimal::new(5, 6));
+        assert_eq!(fee.token_symbol, "BNB");
+        assert_eq!(fee.value_usd, None);
     }
 }

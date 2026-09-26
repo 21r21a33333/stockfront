@@ -3,8 +3,7 @@ use binance_web3_rwa::{
     apis::{
         de_fi_data_api::{ListDefiInvestmentsParams, list_defi_investments},
         de_fi_transaction_api::{
-            BuildDefiDepositTransactionParams, BuildDefiRedeemTransactionParams,
-            build_defi_deposit_transaction, build_defi_redeem_transaction,
+            BuildDefiDepositTransactionParams, build_defi_deposit_transaction,
         },
         wallet_api::{GetTransactionDetailByHashParams, get_transaction_detail_by_hash},
     },
@@ -12,8 +11,8 @@ use binance_web3_rwa::{
 };
 use stockfront_core::{
     bstock_borrowing::{
-        BorrowingProviderError, BorrowingTransactionStatus, PositionAmount, PrepareSupplyRequest,
-        PrepareWithdrawalRequest, PreparedBorrowingAction,
+        BorrowingProviderError, BorrowingTransactionStatus, PrepareSupplyRequest,
+        PreparedBorrowingAction,
     },
     bstock_market::BNB_CHAIN_ID,
 };
@@ -51,42 +50,6 @@ impl BinanceWeb3Client {
         )
         .await
         .map_err(map_request_error)?;
-        ensure_business_success(response.code, response.success)?;
-        let plan = response.data.ok_or(BorrowingProviderError::InvalidData)?;
-        PreparedBorrowingAction::try_from(ProviderPreparedAction(*plan))
-    }
-
-    pub(crate) async fn prepare_venus_withdrawal(
-        &self,
-        request: &PrepareWithdrawalRequest,
-    ) -> Result<PreparedBorrowingAction, BorrowingProviderError> {
-        let investment_id = self.venus_investment_id(request.collateral_token).await?;
-        let mut body = models::BuildDefiRedeemRequest::new(
-            request.wallet.as_address().to_string(),
-            investment_id,
-        );
-        match &request.amount {
-            PositionAmount::Exact { value } => {
-                body.token = Some(Box::new(models::DefiTokenAmount::new(
-                    request.collateral_token.to_string(),
-                    value.to_string(),
-                )));
-            }
-            PositionAmount::Full => body.ratio = Some("1".to_owned()),
-        }
-        body.simulate = Some(true);
-
-        let response = build_defi_redeem_transaction(
-            &self.configuration,
-            BuildDefiRedeemTransactionParams {
-                build_defi_redeem_request: body,
-            },
-        )
-        .await
-        .map_err(map_request_error)?;
-        if response.code == Some(40_485) {
-            return Err(BorrowingProviderError::InsufficientSuppliedBalance);
-        }
         ensure_business_success(response.code, response.success)?;
         let plan = response.data.ok_or(BorrowingProviderError::InvalidData)?;
         PreparedBorrowingAction::try_from(ProviderPreparedAction(*plan))

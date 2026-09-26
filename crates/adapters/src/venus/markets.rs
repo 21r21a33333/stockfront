@@ -35,9 +35,10 @@ pub(super) struct MarketState {
     comptroller: Address,
     token: BorrowingToken,
     pub(super) token_decimals: u32,
+    pub(super) underlying_price_usd: Decimal,
     borrow_apy_percent: Decimal,
-    collateral_factor: U256,
-    liquidation_threshold: U256,
+    collateral_factor: Decimal,
+    pub(super) liquidation_threshold: Decimal,
     supply_cap: U256,
     borrow_cap: U256,
     total_supply: U256,
@@ -83,9 +84,16 @@ impl TryFrom<Market> for MarketState {
                 symbol: required(value.underlying_symbol)?,
             },
             token_decimals,
+            underlying_price_usd: decode_units(underlying_price, 18)?,
             borrow_apy_percent: parse(&required(value.borrow_apy)?)?,
-            collateral_factor: parse(&required_nested(value.collateral_factor_mantissa)?)?,
-            liquidation_threshold: parse(&required_nested(value.liquidation_threshold_mantissa)?)?,
+            collateral_factor: decode_units(
+                parse(&required_nested(value.collateral_factor_mantissa)?)?,
+                18,
+            )?,
+            liquidation_threshold: decode_units(
+                parse(&required_nested(value.liquidation_threshold_mantissa)?)?,
+                18,
+            )?,
             supply_cap: parse(&required_nested(value.supply_caps_mantissa)?)?,
             borrow_cap: parse(&required_nested(value.borrow_caps_mantissa)?)?,
             total_supply: parse(&required_nested(value.total_supply_mantissa)?)?,
@@ -174,7 +182,7 @@ impl VenusBorrowingAdapter {
             .ok_or(BorrowingProviderError::Rejected)
     }
 
-    async fn market_states(
+    pub(super) async fn market_states(
         &self,
         requested_tokens: &HashSet<Address>,
     ) -> Result<HashMap<Address, MarketState>, BorrowingProviderError> {
@@ -287,8 +295,8 @@ fn build_market(
         collateral_market: collateral.market,
         debt: debt.token.clone(),
         debt_market: debt.market,
-        collateral_factor: decode_units(collateral.collateral_factor, 18)?,
-        liquidation_threshold: decode_units(collateral.liquidation_threshold, 18)?,
+        collateral_factor: collateral.collateral_factor,
+        liquidation_threshold: collateral.liquidation_threshold,
         remaining_supply_capacity: decode_units(
             remaining_supply_capacity,
             collateral.token_decimals,
