@@ -25,7 +25,7 @@ This is the trusted entry and accounting layer used by every Stockfront strategy
 
 ### Borrow without selling
 
-Users can supply supported bStocks as collateral and borrow an approved stablecoin while retaining their stock and dividend exposure. Stockfront monitors the position and prepares user-signed actions to repay debt, add collateral, or exit.
+Users can supply supported bStocks to Venus, enable them as collateral, and borrow an approved stablecoin while retaining their stock exposure. Stockfront exposes the complete loan position and prepares wallet-signed supply, collateral, borrow, repay, and withdrawal actions with health-factor previews.
 
 ### Earn through a Conservative Carry Vault
 
@@ -33,9 +33,9 @@ The first pooled strategy is intentionally narrow:
 
 ```text
 Deposit NVDAB
-→ supply it as collateral on Lista
+→ supply it to an approved bStock collateral market
 → borrow a conservative amount of USDT
-→ lend USDT in one approved Aave V3 BNB market
+→ lend USDT in one approved BNB Chain market
 → compound the positive interest-rate spread
 ```
 
@@ -66,8 +66,8 @@ Alerts prepare concrete actions such as repaying debt, adding collateral, reduci
 The initial product is deliberately focused:
 
 1. bStock discovery, wallet portfolio, trade quotes, and wallet-signed execution.
-2. Borrowing against supported bStocks with direct onchain health verification.
-3. One capped Conservative Carry Vault using NVDAB, Lista, USDT, and one Aave market.
+2. Borrowing against supported bStocks through Venus with direct onchain health verification.
+3. One capped Conservative Carry Vault using NVDAB, USDT, and approved borrowing and lending markets.
 4. One verified PancakeSwap liquidity flow—or a transparent simulator when no pool passes the safety gate.
 5. Live carry, collateral-health, liquidity-range, and exit-liquidity monitoring.
 6. User-signed safety and exit actions.
@@ -97,9 +97,8 @@ Cross-chain execution, options strategies, payment cards, permissionless strateg
 | Asset registry and market data | Binance RWA API |
 | Wallet and DeFi discovery | Binance Wallet and DeFi APIs |
 | Quotes and transaction construction | Binance Trading and Transaction APIs |
-| Primary collateral and borrowing | Lista |
-| Secondary borrowing venue | Venus |
-| Initial stablecoin yield destination | Aave V3 on BNB Chain |
+| Direct bStock collateral and borrowing | Venus |
+| Candidate carry-vault markets | Lista and Aave V3 on BNB Chain, subject to live-market validation |
 | Swaps and liquidity | PancakeSwap V3 / Infinity |
 | Post-MVP perpetual hedging | Aster |
 | Collateral pricing | Venus Resilient Oracle |
