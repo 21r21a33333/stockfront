@@ -5,6 +5,7 @@ use axum::{
     http::StatusCode,
     response::{IntoResponse, Response as AxumResponse},
 };
+use stockfront_core::bstock_borrowing::{BorrowingProviderError, BorrowingServiceError};
 use stockfront_core::bstock_market::{BstockMarketError, CatalogError, QueryError};
 use stockfront_core::bstock_trade::{BstockTradeError, TradeGatewayError};
 use stockfront_core::wallet_portfolio::{
@@ -21,10 +22,10 @@ pub(super) struct ApiError {
 }
 
 impl ApiError {
-    pub(super) const INVALID_CONTRACT_ADDRESS: Self = Self::fixed(
+    pub(super) const INVALID_TOKEN_ADDRESS: Self = Self::fixed(
         StatusCode::BAD_REQUEST,
         "invalid_address",
-        "contract must be an EVM address",
+        "token must be an EVM address",
     );
     pub(super) const INVALID_WALLET_ADDRESS: Self = Self::fixed(
         StatusCode::BAD_REQUEST,
@@ -116,6 +117,71 @@ impl ApiError {
         "trade_transaction_not_found",
         "the trade transaction was not found",
     );
+    const BORROWING_UNAVAILABLE: Self = Self::fixed(
+        StatusCode::SERVICE_UNAVAILABLE,
+        "borrowing_unavailable",
+        "borrowing data is temporarily unavailable",
+    );
+    const INVALID_BORROWING_DATA: Self = Self::fixed(
+        StatusCode::BAD_GATEWAY,
+        "invalid_borrowing_data",
+        "the borrowing provider returned invalid data",
+    );
+    const UNSUPPORTED_COLLATERAL: Self = Self::fixed(
+        StatusCode::BAD_REQUEST,
+        "unsupported_collateral",
+        "the collateral token is not a supported bStock",
+    );
+    const UNSUPPORTED_DEBT_TOKEN: Self = Self::fixed(
+        StatusCode::BAD_REQUEST,
+        "unsupported_debt_token",
+        "the debt token is not supported",
+    );
+    const INVALID_SUPPLY_AMOUNT: Self = Self::fixed(
+        StatusCode::BAD_REQUEST,
+        "invalid_supply_amount",
+        "supply amount must be greater than zero",
+    );
+    const INVALID_BORROW_AMOUNT: Self = Self::fixed(
+        StatusCode::BAD_REQUEST,
+        "invalid_borrow_amount",
+        "borrow amount must be greater than zero",
+    );
+    const INVALID_REPAYMENT_AMOUNT: Self = Self::fixed(
+        StatusCode::BAD_REQUEST,
+        "invalid_repayment_amount",
+        "repayment amount must be greater than zero",
+    );
+    const INVALID_WITHDRAWAL_AMOUNT: Self = Self::fixed(
+        StatusCode::BAD_REQUEST,
+        "invalid_withdrawal_amount",
+        "withdrawal amount must be greater than zero",
+    );
+    const INSUFFICIENT_BORROW_LIQUIDITY: Self = Self::fixed(
+        StatusCode::UNPROCESSABLE_ENTITY,
+        "insufficient_borrow_liquidity",
+        "the borrowing market has insufficient liquidity",
+    );
+    const BORROWING_REJECTED: Self = Self::fixed(
+        StatusCode::UNPROCESSABLE_ENTITY,
+        "borrowing_rejected",
+        "the borrowing provider rejected the request",
+    );
+    const BORROWING_TRANSACTION_NOT_FOUND: Self = Self::fixed(
+        StatusCode::NOT_FOUND,
+        "borrowing_transaction_not_found",
+        "the borrowing transaction was not found",
+    );
+    const REPAYMENT_APPROVAL_REQUIRED: Self = Self::fixed(
+        StatusCode::CONFLICT,
+        "repayment_approval_required",
+        "the debt token must be approved before repayment",
+    );
+    const INSUFFICIENT_SUPPLIED_BALANCE: Self = Self::fixed(
+        StatusCode::UNPROCESSABLE_ENTITY,
+        "insufficient_supplied_balance",
+        "the wallet has insufficient supplied balance",
+    );
     const fn fixed(status: StatusCode, code: &'static str, message: &'static str) -> Self {
         Self {
             status,
@@ -147,7 +213,7 @@ impl From<JsonRejection> for ApiError {
     fn from(error: JsonRejection) -> Self {
         Self::dynamic(
             StatusCode::BAD_REQUEST,
-            "invalid_trade_request",
+            "invalid_request",
             error.body_text(),
         )
     }
@@ -218,6 +284,39 @@ impl From<TradeGatewayError> for ApiError {
             TradeGatewayError::QuoteMismatch => Self::QUOTE_MISMATCH,
             TradeGatewayError::OrderNotFound => Self::TRADE_ORDER_NOT_FOUND,
             TradeGatewayError::TransactionNotFound => Self::TRADE_TRANSACTION_NOT_FOUND,
+        }
+    }
+}
+
+impl From<BorrowingServiceError> for ApiError {
+    fn from(error: BorrowingServiceError) -> Self {
+        match error {
+            BorrowingServiceError::Catalog(error) => error.into(),
+            BorrowingServiceError::Provider(error) => error.into(),
+            BorrowingServiceError::InvalidSupplyAmount => Self::INVALID_SUPPLY_AMOUNT,
+            BorrowingServiceError::InvalidBorrowAmount => Self::INVALID_BORROW_AMOUNT,
+            BorrowingServiceError::InvalidRepaymentAmount => Self::INVALID_REPAYMENT_AMOUNT,
+            BorrowingServiceError::InvalidWithdrawalAmount => Self::INVALID_WITHDRAWAL_AMOUNT,
+            BorrowingServiceError::UnsupportedCollateral => Self::UNSUPPORTED_COLLATERAL,
+            BorrowingServiceError::UnsupportedDebtToken => Self::UNSUPPORTED_DEBT_TOKEN,
+        }
+    }
+}
+
+impl From<BorrowingProviderError> for ApiError {
+    fn from(error: BorrowingProviderError) -> Self {
+        match error {
+            BorrowingProviderError::Unavailable => Self::BORROWING_UNAVAILABLE,
+            BorrowingProviderError::Rejected => Self::BORROWING_REJECTED,
+            BorrowingProviderError::InvalidData => Self::INVALID_BORROWING_DATA,
+            BorrowingProviderError::InsufficientBorrowLiquidity => {
+                Self::INSUFFICIENT_BORROW_LIQUIDITY
+            }
+            BorrowingProviderError::TransactionNotFound => Self::BORROWING_TRANSACTION_NOT_FOUND,
+            BorrowingProviderError::RepaymentApprovalRequired => Self::REPAYMENT_APPROVAL_REQUIRED,
+            BorrowingProviderError::InsufficientSuppliedBalance => {
+                Self::INSUFFICIENT_SUPPLIED_BALANCE
+            }
         }
     }
 }

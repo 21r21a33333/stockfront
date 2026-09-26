@@ -26,7 +26,7 @@ pub(in crate::http) async fn get_bstock(
 ) -> ApiResult<BstockDetails> {
     let contract = contract
         .parse::<Address>()
-        .map_err(|_| ApiError::INVALID_CONTRACT_ADDRESS)?;
+        .map_err(|_| ApiError::INVALID_TOKEN_ADDRESS)?;
     let details = service
         .details(BstockId { chain_id, contract })
         .await?

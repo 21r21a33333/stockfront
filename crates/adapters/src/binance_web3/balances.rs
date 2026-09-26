@@ -18,7 +18,10 @@ use stockfront_core::{
     },
 };
 
-use super::client::{BinanceWeb3Client, is_business_success};
+use super::{
+    client::BinanceWeb3Client,
+    provider::{business_succeeded, parse, required_non_empty},
+};
 
 const MAX_TOKENS_PER_REQUEST: usize = 20;
 
@@ -48,7 +51,7 @@ impl BstockBalanceReader for BinanceWeb3Client {
             .await
             .map_err(|_| BalanceReaderError::Unavailable)?;
 
-            if !is_business_success(response.code, response.success) {
+            if !business_succeeded(response.code, response.success) {
                 return Err(BalanceReaderError::Unavailable);
             }
             let timestamp = response.timestamp.ok_or(BalanceReaderError::InvalidData)?;
@@ -102,15 +105,9 @@ impl TryFrom<ProviderBalance> for BstockBalance {
 
     fn try_from(value: ProviderBalance) -> Result<Self, Self::Error> {
         let token = value.0;
-        let contract = required(token.token_contract_address)?
-            .parse::<Address>()
-            .map_err(|_| BalanceReaderError::InvalidData)?;
-        let raw_amount = required(token.raw_balance)?
-            .parse()
-            .map_err(|_| BalanceReaderError::InvalidData)?;
-        let amount = required(token.balance)?
-            .parse::<Decimal>()
-            .map_err(|_| BalanceReaderError::InvalidData)?;
+        let contract = parse::<Address>(&required_non_empty(token.token_contract_address)?)?;
+        let raw_amount = parse(&required_non_empty(token.raw_balance)?)?;
+        let amount = parse::<Decimal>(&required_non_empty(token.balance)?)?;
 
         Ok(Self {
             id: BstockId {
@@ -121,10 +118,4 @@ impl TryFrom<ProviderBalance> for BstockBalance {
             amount,
         })
     }
-}
-
-fn required(value: Option<String>) -> Result<String, BalanceReaderError> {
-    value
-        .filter(|value| !value.is_empty())
-        .ok_or(BalanceReaderError::InvalidData)
 }

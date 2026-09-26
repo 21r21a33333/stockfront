@@ -16,7 +16,61 @@ tags:
   - name: RWA data
   - name: Wallet
   - name: Trading
+  - name: DeFi data
+  - name: DeFi transaction
+  - name: Transaction
 paths:
+  /api/v1/defi/data/investment/list:
+    post:
+      operationId: listDefiInvestments
+      tags: [DeFi data]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ListDefiInvestmentsRequest'
+      responses:
+        '200':
+          description: Matching DeFi investments or a Binance business error.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListDefiInvestmentsResponse'
+  /api/v1/defi/data/position/list:
+    post:
+      operationId: getDefiPositions
+      tags: [DeFi data]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GetDefiPositionsRequest'
+      responses:
+        '200':
+          description: DeFi positions or a Binance business error.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetDefiPositionsResponse'
+  /api/v1/defi/transaction/deposit:
+    post:
+      operationId: buildDefiDepositTransaction
+      tags: [DeFi transaction]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BuildDefiDepositRequest'
+      responses:
+        '200':
+          description: Ordered unsigned deposit transactions or a Binance business error.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BuildDefiDepositResponse'
   /api/v1/dex/balance/token-balances-by-address:
     post:
       operationId: getTokenBalancesByAddress
@@ -257,6 +311,71 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/GetTransactionStatusResponse'
+  /api/v1/dex/post-transaction/transaction-detail-by-txhash:
+    get:
+      operationId: getTransactionDetailByHash
+      tags: [Wallet]
+      parameters:
+        - $ref: '#/components/parameters/BinanceChainId'
+        - name: txHash
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: On-chain transaction details or a Binance business error.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetTransactionDetailByHashResponse'
+  /api/v1/dex/pre-transaction/gas-price:
+    get:
+      operationId: getGasPrice
+      tags: [Transaction]
+      parameters:
+        - $ref: '#/components/parameters/BinanceChainId'
+      responses:
+        '200':
+          description: Current chain gas prices or a Binance business error.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetGasPriceResponse'
+  /api/v1/dex/pre-transaction/gas-limit:
+    post:
+      operationId: getGasLimit
+      tags: [Transaction]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EvmPreTransactionRequest'
+      responses:
+        '200':
+          description: Estimated transaction gas limit or a Binance business error.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetGasLimitResponse'
+  /api/v1/dex/pre-transaction/simulate:
+    post:
+      operationId: simulateTransaction
+      tags: [Transaction]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EvmPreTransactionRequest'
+      responses:
+        '200':
+          description: Predicted transaction result or a Binance business error.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SimulateTransactionResponse'
 components:
   parameters:
     BinanceChainId:
@@ -285,6 +404,354 @@ components:
       schema:
         type: string
   schemas:
+    EvmPreTransactionRequest:
+      type: object
+      required: [binanceChainId, evmTx]
+      properties:
+        binanceChainId:
+          type: string
+        evmTx:
+          $ref: '#/components/schemas/EvmTransaction'
+    EvmTransaction:
+      type: object
+      required: [from, to, value, data]
+      properties:
+        from:
+          type: string
+        to:
+          type: string
+        value:
+          type: string
+        data:
+          type: string
+    GetGasPriceResponse:
+      allOf:
+        - $ref: '#/components/schemas/BusinessResponse'
+        - type: object
+          properties:
+            data:
+              $ref: '#/components/schemas/GasPrice'
+    GasPrice:
+      type: object
+      properties:
+        evmLegacyGasPrice:
+          $ref: '#/components/schemas/EvmLegacyGasPrice'
+    EvmLegacyGasPrice:
+      type: object
+      properties:
+        lowGasPrice:
+          type: string
+        mediumGasPrice:
+          type: string
+        highGasPrice:
+          type: string
+    GetGasLimitResponse:
+      allOf:
+        - $ref: '#/components/schemas/BusinessResponse'
+        - type: object
+          properties:
+            data:
+              $ref: '#/components/schemas/GasLimit'
+    GasLimit:
+      type: object
+      properties:
+        gasLimit:
+          type: string
+    SimulateTransactionResponse:
+      allOf:
+        - $ref: '#/components/schemas/BusinessResponse'
+        - type: object
+          properties:
+            data:
+              $ref: '#/components/schemas/SimulationResult'
+    SimulationResult:
+      type: object
+      properties:
+        status:
+          type: string
+        failReason:
+          type: string
+          nullable: true
+    ListDefiInvestmentsRequest:
+      type: object
+      required: [investType]
+      properties:
+        investType:
+          type: string
+          description: DeFi investment category.
+          enum: [Earn, LiquidityPool]
+        defiProtocolId:
+          type: string
+        tokenAddressList:
+          type: array
+          items:
+            type: string
+        binanceChainId:
+          type: string
+        page:
+          type: integer
+          minimum: 1
+        size:
+          type: integer
+          minimum: 1
+          maximum: 100
+    ListDefiInvestmentsResponse:
+      allOf:
+        - $ref: '#/components/schemas/BusinessResponse'
+        - type: object
+          properties:
+            data:
+              $ref: '#/components/schemas/DefiInvestmentPage'
+    DefiInvestmentPage:
+      type: object
+      properties:
+        page:
+          type: integer
+        size:
+          type: integer
+        total:
+          type: integer
+          format: int64
+        list:
+          type: array
+          items:
+            $ref: '#/components/schemas/DefiInvestment'
+    DefiInvestment:
+      type: object
+      properties:
+        investmentId:
+          type: string
+    BuildDefiDepositRequest:
+      type: object
+      required: [address, investmentId, token]
+      properties:
+        address:
+          type: string
+        investmentId:
+          type: string
+        token:
+          $ref: '#/components/schemas/DefiTokenAmount'
+        simulate:
+          type: boolean
+    DefiTokenAmount:
+      type: object
+      required: [tokenAddress, amount]
+      properties:
+        tokenAddress:
+          type: string
+        amount:
+          type: string
+    BuildDefiDepositResponse:
+      allOf:
+        - $ref: '#/components/schemas/BusinessResponse'
+        - type: object
+          properties:
+            data:
+              $ref: '#/components/schemas/DefiTransactionPlan'
+    DefiTransactionPlan:
+      type: object
+      properties:
+        dataList:
+          type: array
+          items:
+            $ref: '#/components/schemas/DefiTransaction'
+        preview:
+          $ref: '#/components/schemas/DefiTransactionPreview'
+    DefiTransaction:
+      type: object
+      properties:
+        callDataType:
+          type: string
+          description: Ordered on-chain action represented by this transaction.
+          enum: [APPROVE, DEPOSIT, REDEEM, LP_ADD, LP_REMOVE, CLAIM]
+        from:
+          type: string
+        to:
+          type: string
+          nullable: true
+        value:
+          type: string
+          nullable: true
+        data:
+          type: string
+        gasLimit:
+          type: string
+          nullable: true
+        gasPrice:
+          type: string
+          nullable: true
+        maxPriorityFeePerGas:
+          type: string
+          nullable: true
+        maxFeePerGas:
+          type: string
+          nullable: true
+    DefiTransactionPreview:
+      type: object
+      properties:
+        feeAndContract:
+          $ref: '#/components/schemas/DefiFeeAndContract'
+        healthFactor:
+          $ref: '#/components/schemas/DefiHealthFactor'
+        warnings:
+          type: array
+          items:
+            $ref: '#/components/schemas/DefiWarning'
+    DefiFeeAndContract:
+      type: object
+      properties:
+        estimatedNetworkFee:
+          $ref: '#/components/schemas/DefiNetworkFee'
+    DefiNetworkFee:
+      type: object
+      properties:
+        amount:
+          type: string
+          nullable: true
+        tokenSymbol:
+          type: string
+        valueUsd:
+          type: string
+          nullable: true
+    DefiHealthFactor:
+      type: object
+      properties:
+        before:
+          type: string
+          nullable: true
+        after:
+          type: string
+          nullable: true
+    DefiWarning:
+      type: object
+      properties:
+        code:
+          type: string
+        level:
+          type: string
+        message:
+          type: string
+    GetTransactionDetailByHashResponse:
+      allOf:
+        - $ref: '#/components/schemas/BusinessResponse'
+        - type: object
+          properties:
+            data:
+              type: array
+              items:
+                $ref: '#/components/schemas/TransactionDetail'
+    TransactionDetail:
+      type: object
+      properties:
+        height:
+          type: string
+        txTime:
+          type: string
+        txhash:
+          type: string
+        txStatus:
+          type: string
+    GetDefiPositionsRequest:
+      type: object
+      required: [addresses]
+      properties:
+        addresses:
+          type: array
+          maxItems: 3
+          items:
+            type: string
+        binanceChainIds:
+          type: array
+          items:
+            type: string
+    GetDefiPositionsResponse:
+      allOf:
+        - $ref: '#/components/schemas/BusinessResponse'
+        - type: object
+          properties:
+            data:
+              $ref: '#/components/schemas/DefiPositions'
+    DefiPositions:
+      type: object
+      properties:
+        totalValue:
+          type: string
+        addressList:
+          type: array
+          items:
+            $ref: '#/components/schemas/DefiAddressPosition'
+    DefiAddressPosition:
+      type: object
+      properties:
+        protocolList:
+          type: array
+          items:
+            $ref: '#/components/schemas/DefiProtocolPosition'
+    DefiProtocolPosition:
+      type: object
+      properties:
+        binanceChainId:
+          type: string
+        defiProtocolId:
+          type: string
+        protocolTotalValue:
+          type: string
+        poolList:
+          type: array
+          items:
+            $ref: '#/components/schemas/DefiPoolPosition'
+    DefiPoolPosition:
+      type: object
+      properties:
+        poolCa:
+          type: string
+        positionCollectionList:
+          type: array
+          items:
+            $ref: '#/components/schemas/DefiPositionCollection'
+    DefiPositionCollection:
+      type: object
+      properties:
+        positionCollectionDetail:
+          $ref: '#/components/schemas/DefiPositionCollectionDetail'
+        positionList:
+          type: array
+          items:
+            $ref: '#/components/schemas/DefiPosition'
+    DefiPositionCollectionDetail:
+      type: object
+      nullable: true
+      properties:
+        healthFactor:
+          type: string
+          nullable: true
+    DefiPosition:
+      type: object
+      properties:
+        tokenList:
+          $ref: '#/components/schemas/DefiPositionTokens'
+    DefiPositionTokens:
+      type: object
+      properties:
+        supply:
+          type: array
+          items:
+            $ref: '#/components/schemas/DefiPositionToken'
+        borrow:
+          type: array
+          items:
+            $ref: '#/components/schemas/DefiPositionToken'
+    DefiPositionToken:
+      type: object
+      properties:
+        tokenAddress:
+          type: string
+        tokenSymbol:
+          type: string
+        tokenAmount:
+          type: string
+        tokenValue:
+          type: string
     RfqVenue:
       type: string
       description: Supported Binance RFQ settlement venue.

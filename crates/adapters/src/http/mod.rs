@@ -1,4 +1,4 @@
-//! Inbound HTTP adapter for the bStock market slice.
+//! Inbound HTTP adapter for Stockfront's public API.
 
 mod error;
 mod handlers;
@@ -12,8 +12,8 @@ use axum::{
     routing::{get, post},
 };
 use stockfront_core::{
-    bstock_market::BstockMarketService, bstock_trade::BstockTradeService,
-    wallet_portfolio::WalletPortfolioService,
+    bstock_borrowing::BorrowingService, bstock_market::BstockMarketService,
+    bstock_trade::BstockTradeService, wallet_portfolio::WalletPortfolioService,
 };
 
 pub fn bstock_router(service: Arc<BstockMarketService>) -> Router {
@@ -31,6 +31,44 @@ pub fn wallet_router(service: Arc<WalletPortfolioService>) -> Router {
         .route(
             "/v1/wallets/{address}/portfolio",
             get(handlers::wallets::portfolio),
+        )
+        .with_state(service)
+}
+
+pub fn borrowing_router(service: Arc<BorrowingService>) -> Router {
+    Router::new()
+        .route("/v1/borrowing/markets", get(handlers::borrowing::markets))
+        .route(
+            "/v1/wallets/{address}/loans",
+            get(handlers::borrowing::account),
+        )
+        .route(
+            "/v1/borrowing/supplies/prepare",
+            post(handlers::borrowing::prepare_supply),
+        )
+        .route(
+            "/v1/borrowing/collateral/prepare",
+            post(handlers::borrowing::prepare_collateral),
+        )
+        .route(
+            "/v1/borrowing/borrows/prepare",
+            post(handlers::borrowing::prepare_borrow),
+        )
+        .route(
+            "/v1/borrowing/repayments/approval",
+            post(handlers::borrowing::prepare_repayment_approval),
+        )
+        .route(
+            "/v1/borrowing/repayments/prepare",
+            post(handlers::borrowing::prepare_repayment),
+        )
+        .route(
+            "/v1/borrowing/withdrawals/prepare",
+            post(handlers::borrowing::prepare_withdrawal),
+        )
+        .route(
+            "/v1/borrowing/transactions/{transaction_hash}",
+            get(handlers::borrowing::transaction_status),
         )
         .with_state(service)
 }
