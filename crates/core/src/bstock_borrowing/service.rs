@@ -7,8 +7,8 @@ use thiserror::Error;
 use crate::{
     bstock_borrowing::{
         BorrowingAccount, BorrowingActionGateway, BorrowingMarket, BorrowingMarketQuery,
-        BorrowingProviderError, BorrowingReader, BorrowingTransactionStatus, PrepareSupplyRequest,
-        PreparedSupply,
+        BorrowingProviderError, BorrowingReader, BorrowingTransactionStatus, PrepareBorrowRequest,
+        PrepareCollateralRequest, PrepareSupplyRequest, PreparedBorrowingAction,
     },
     bstock_market::{BNB_CHAIN_ID, BstockCatalog, BstockId, CatalogError},
     wallet_portfolio::WalletAddress,
@@ -49,7 +49,9 @@ pub enum BorrowingServiceError {
     #[error(transparent)]
     Provider(#[from] BorrowingProviderError),
     #[error("supply amount must be greater than zero")]
-    InvalidAmount,
+    InvalidSupplyAmount,
+    #[error("borrow amount must be greater than zero")]
+    InvalidBorrowAmount,
     #[error("the collateral token is not a supported bStock")]
     UnsupportedCollateral,
     #[error("the debt token is not supported")]
@@ -139,25 +141,54 @@ impl BorrowingService {
     pub async fn prepare_supply(
         &self,
         request: &PrepareSupplyRequest,
-    ) -> Result<PreparedSupply, BorrowingServiceError> {
+    ) -> Result<PreparedBorrowingAction, BorrowingServiceError> {
         if request.amount <= Decimal::ZERO {
-            return Err(BorrowingServiceError::InvalidAmount);
+            return Err(BorrowingServiceError::InvalidSupplyAmount);
         }
-        let id = BstockId {
-            chain_id: BNB_CHAIN_ID,
-            contract: request.collateral_token,
-        };
-        let supported = self
-            .catalog
-            .list_bstocks()
-            .await?
-            .iter()
-            .any(|asset| asset.id == id);
-        if !supported {
-            return Err(BorrowingServiceError::UnsupportedCollateral);
-        }
+        self.ensure_supported_collateral(request.collateral_token)
+            .await?;
         self.action_gateway
             .prepare_supply(request)
+            .await
+            .map_err(Into::into)
+    }
+
+    /// Returns an unsigned Venus transaction that enables supplied bStock as collateral.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`BorrowingServiceError`] when the token is unsupported or the action cannot be
+    /// prepared. An already-enabled market returns an empty transaction plan.
+    pub async fn prepare_collateral(
+        &self,
+        request: &PrepareCollateralRequest,
+    ) -> Result<PreparedBorrowingAction, BorrowingServiceError> {
+        self.ensure_supported_collateral(request.collateral_token)
+            .await?;
+        self.action_gateway
+            .prepare_collateral(request)
+            .await
+            .map_err(Into::into)
+    }
+
+    /// Returns an unsigned Venus transaction that borrows a supported debt token.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`BorrowingServiceError`] when the amount or token is unsupported, or the action
+    /// cannot be prepared.
+    pub async fn prepare_borrow(
+        &self,
+        request: &PrepareBorrowRequest,
+    ) -> Result<PreparedBorrowingAction, BorrowingServiceError> {
+        if request.amount <= Decimal::ZERO {
+            return Err(BorrowingServiceError::InvalidBorrowAmount);
+        }
+        if !self.policy.debt_tokens.contains(&request.debt_token) {
+            return Err(BorrowingServiceError::UnsupportedDebtToken);
+        }
+        self.action_gateway
+            .prepare_borrow(request)
             .await
             .map_err(Into::into)
     }
@@ -177,6 +208,27 @@ impl BorrowingService {
             .await
             .map_err(Into::into)
     }
+
+    async fn ensure_supported_collateral(
+        &self,
+        collateral_token: Address,
+    ) -> Result<(), BorrowingServiceError> {
+        let id = BstockId {
+            chain_id: BNB_CHAIN_ID,
+            contract: collateral_token,
+        };
+        if self
+            .catalog
+            .list_bstocks()
+            .await?
+            .iter()
+            .any(|asset| asset.id == id)
+        {
+            Ok(())
+        } else {
+            Err(BorrowingServiceError::UnsupportedCollateral)
+        }
+    }
 }
 
 #[cfg(test)]
@@ -186,7 +238,7 @@ mod tests {
 
     use crate::{
         bstock_borrowing::{
-            BorrowingProviderError, BorrowingTransactionState, BorrowingVenue, SupplyPreview,
+            BorrowingPreview, BorrowingProviderError, BorrowingTransactionState, BorrowingVenue,
         },
         bstock_market::{AssetKind, BNB_CHAIN_ID, BstockDetails, BstockId, BstockSummary},
     };
@@ -242,11 +294,33 @@ mod tests {
         async fn prepare_supply(
             &self,
             request: &PrepareSupplyRequest,
-        ) -> Result<PreparedSupply, BorrowingProviderError> {
+        ) -> Result<PreparedBorrowingAction, BorrowingProviderError> {
             assert_eq!(request.collateral_token, Address::with_last_byte(1));
-            Ok(PreparedSupply {
+            Ok(PreparedBorrowingAction {
                 transactions: Vec::new(),
-                preview: SupplyPreview::default(),
+                preview: BorrowingPreview::default(),
+            })
+        }
+
+        async fn prepare_collateral(
+            &self,
+            request: &PrepareCollateralRequest,
+        ) -> Result<PreparedBorrowingAction, BorrowingProviderError> {
+            assert_eq!(request.collateral_token, Address::with_last_byte(1));
+            Ok(PreparedBorrowingAction {
+                transactions: Vec::new(),
+                preview: BorrowingPreview::default(),
+            })
+        }
+
+        async fn prepare_borrow(
+            &self,
+            request: &PrepareBorrowRequest,
+        ) -> Result<PreparedBorrowingAction, BorrowingProviderError> {
+            assert_eq!(request.debt_token, Address::with_last_byte(2));
+            Ok(PreparedBorrowingAction {
+                transactions: Vec::new(),
+                preview: BorrowingPreview::default(),
             })
         }
 
@@ -314,7 +388,7 @@ mod tests {
                     amount: Decimal::ZERO,
                 })
                 .await,
-            Err(BorrowingServiceError::InvalidAmount)
+            Err(BorrowingServiceError::InvalidSupplyAmount)
         );
         assert_eq!(
             service
@@ -341,6 +415,69 @@ mod tests {
             .unwrap_or_else(|error| panic!("supported supply rejected: {error}"));
 
         assert!(supply.transactions.is_empty());
+    }
+
+    #[tokio::test]
+    async fn collateral_and_borrow_reject_unsupported_requests_before_provider_io() {
+        let service = service();
+        let wallet = WalletAddress::try_from(Address::with_last_byte(3))
+            .unwrap_or_else(|error| panic!("valid wallet rejected: {error}"));
+
+        assert_eq!(
+            service
+                .prepare_collateral(&PrepareCollateralRequest {
+                    wallet,
+                    collateral_token: Address::with_last_byte(9),
+                })
+                .await,
+            Err(BorrowingServiceError::UnsupportedCollateral)
+        );
+        assert_eq!(
+            service
+                .prepare_borrow(&PrepareBorrowRequest {
+                    wallet,
+                    debt_token: Address::with_last_byte(2),
+                    amount: Decimal::ZERO,
+                })
+                .await,
+            Err(BorrowingServiceError::InvalidBorrowAmount)
+        );
+        assert_eq!(
+            service
+                .prepare_borrow(&PrepareBorrowRequest {
+                    wallet,
+                    debt_token: Address::with_last_byte(9),
+                    amount: Decimal::ONE,
+                })
+                .await,
+            Err(BorrowingServiceError::UnsupportedDebtToken)
+        );
+    }
+
+    #[tokio::test]
+    async fn supported_collateral_and_borrow_are_forwarded_to_the_action_gateway() {
+        let service = service();
+        let wallet = WalletAddress::try_from(Address::with_last_byte(3))
+            .unwrap_or_else(|error| panic!("valid wallet rejected: {error}"));
+
+        let collateral = service
+            .prepare_collateral(&PrepareCollateralRequest {
+                wallet,
+                collateral_token: Address::with_last_byte(1),
+            })
+            .await
+            .unwrap_or_else(|error| panic!("supported collateral rejected: {error}"));
+        let borrow = service
+            .prepare_borrow(&PrepareBorrowRequest {
+                wallet,
+                debt_token: Address::with_last_byte(2),
+                amount: Decimal::ONE,
+            })
+            .await
+            .unwrap_or_else(|error| panic!("supported borrow rejected: {error}"));
+
+        assert!(collateral.transactions.is_empty());
+        assert!(borrow.transactions.is_empty());
     }
 
     fn service() -> BorrowingService {

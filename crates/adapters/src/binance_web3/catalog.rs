@@ -10,8 +10,9 @@ use stockfront_core::bstock_market::{
 
 use super::{
     BSTOCK_PLATFORM_ID,
-    client::{BinanceWeb3Client, is_business_success},
+    client::BinanceWeb3Client,
     mapping::{ProviderDetails, ProviderToken},
+    provider::business_succeeded,
 };
 
 impl BinanceWeb3Client {
@@ -26,7 +27,7 @@ impl BinanceWeb3Client {
         )
         .await
         .map_err(|_| CatalogError::Unavailable)?;
-        if !is_business_success(response.code, response.success) {
+        if !business_succeeded(response.code, response.success) {
             return Err(CatalogError::Unavailable);
         }
 
@@ -73,9 +74,9 @@ impl BinanceWeb3Client {
         let (profile_response, market_response, price_response) =
             tokio::try_join!(profile_request, market_request, price_request)?;
 
-        if !is_business_success(profile_response.code, profile_response.success)
-            || !is_business_success(market_response.code, market_response.success)
-            || !is_business_success(price_response.code, price_response.success)
+        if !business_succeeded(profile_response.code, profile_response.success)
+            || !business_succeeded(market_response.code, market_response.success)
+            || !business_succeeded(price_response.code, price_response.success)
         {
             return Err(CatalogError::Unavailable);
         }
@@ -134,6 +135,6 @@ mod tests {
 
     #[test]
     fn business_error_in_http_success_response_is_rejected() {
-        assert!(!is_business_success(Some(40_001), Some(false)));
+        assert!(!business_succeeded(Some(40_001), Some(false)));
     }
 }

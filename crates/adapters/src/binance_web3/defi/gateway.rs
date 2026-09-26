@@ -1,5 +1,4 @@
 use alloy_primitives::B256;
-use async_trait::async_trait;
 use binance_web3_rwa::{
     apis::{
         de_fi_data_api::{ListDefiInvestmentsParams, list_defi_investments},
@@ -12,25 +11,25 @@ use binance_web3_rwa::{
 };
 use stockfront_core::{
     bstock_borrowing::{
-        BorrowingActionGateway, BorrowingProviderError, BorrowingTransactionStatus,
-        PrepareSupplyRequest, PreparedSupply,
+        BorrowingProviderError, BorrowingTransactionStatus, PrepareSupplyRequest,
+        PreparedBorrowingAction,
     },
     bstock_market::BNB_CHAIN_ID,
 };
 
 use super::{
-    super::client::{BinanceWeb3Client, is_business_success},
+    super::client::BinanceWeb3Client,
+    super::provider::{ensure_business_success, map_request_error},
     mapping::{ProviderPreparedSupply, ProviderTransactionDetails},
 };
 
 const VENUS_PROTOCOL_ID: &str = "venus";
 
-#[async_trait]
-impl BorrowingActionGateway for BinanceWeb3Client {
-    async fn prepare_supply(
+impl BinanceWeb3Client {
+    pub(crate) async fn prepare_venus_supply(
         &self,
         request: &PrepareSupplyRequest,
-    ) -> Result<PreparedSupply, BorrowingProviderError> {
+    ) -> Result<PreparedBorrowingAction, BorrowingProviderError> {
         let investment_id = self.venus_investment_id(request).await?;
         let token = models::DefiTokenAmount::new(
             request.collateral_token.to_string(),
@@ -50,13 +49,13 @@ impl BorrowingActionGateway for BinanceWeb3Client {
             },
         )
         .await
-        .map_err(map_provider_error)?;
+        .map_err(map_request_error)?;
         ensure_business_success(response.code, response.success)?;
         let plan = response.data.ok_or(BorrowingProviderError::InvalidData)?;
-        PreparedSupply::try_from(ProviderPreparedSupply(*plan))
+        PreparedBorrowingAction::try_from(ProviderPreparedSupply(*plan))
     }
 
-    async fn transaction_status(
+    pub(crate) async fn borrowing_transaction_status(
         &self,
         transaction_hash: B256,
     ) -> Result<BorrowingTransactionStatus, BorrowingProviderError> {
@@ -79,9 +78,6 @@ impl BorrowingActionGateway for BinanceWeb3Client {
             .ok_or(BorrowingProviderError::TransactionNotFound)?;
         BorrowingTransactionStatus::try_from(ProviderTransactionDetails(details))
     }
-}
-
-impl BinanceWeb3Client {
     async fn venus_investment_id(
         &self,
         request: &PrepareSupplyRequest,
@@ -102,7 +98,7 @@ impl BinanceWeb3Client {
             },
         )
         .await
-        .map_err(map_provider_error)?;
+        .map_err(map_request_error)?;
         ensure_business_success(response.code, response.success)?;
         let investments = response.data.and_then(|page| page.list).unwrap_or_default();
         let investment = investments
@@ -116,39 +112,6 @@ impl BinanceWeb3Client {
     }
 }
 
-fn ensure_business_success(
-    code: Option<i32>,
-    success: Option<bool>,
-) -> Result<(), BorrowingProviderError> {
-    if is_business_success(code, success) {
-        Ok(())
-    } else {
-        match code {
-            Some(40_000..=49_999) if !matches!(code, Some(40_101..=40_104 | 42_900)) => {
-                Err(BorrowingProviderError::Rejected)
-            }
-            _ => Err(BorrowingProviderError::Unavailable),
-        }
-    }
-}
-
-fn map_provider_error<T>(error: binance_web3_rwa::apis::Error<T>) -> BorrowingProviderError {
-    match error {
-        binance_web3_rwa::apis::Error::ResponseError(response)
-            if response.status.is_client_error()
-                && !matches!(
-                    response.status,
-                    reqwest::StatusCode::UNAUTHORIZED
-                        | reqwest::StatusCode::FORBIDDEN
-                        | reqwest::StatusCode::TOO_MANY_REQUESTS
-                ) =>
-        {
-            BorrowingProviderError::Rejected
-        }
-        _ => BorrowingProviderError::Unavailable,
-    }
-}
-
 fn map_transaction_provider_error<T>(
     error: binance_web3_rwa::apis::Error<T>,
 ) -> BorrowingProviderError {
@@ -158,6 +121,6 @@ fn map_transaction_provider_error<T>(
         {
             BorrowingProviderError::TransactionNotFound
         }
-        error => map_provider_error(error),
+        error => map_request_error(error).into(),
     }
 }

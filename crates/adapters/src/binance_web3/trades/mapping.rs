@@ -1,5 +1,3 @@
-use std::str::FromStr;
-
 use alloy_primitives::Address;
 use binance_web3_rwa::models;
 use rust_decimal::Decimal;
@@ -9,6 +7,8 @@ use stockfront_core::bstock_trade::{
     TradeOrderStatus, TradeQuote, TradeQuoteRequest, TradeTransactionState, TradeTransactionStatus,
 };
 use uuid::Uuid;
+
+use super::super::provider::{parse, parse_optional, required};
 
 pub(super) struct ProviderQuote<'request> {
     pub(super) value: models::AggregatedQuote,
@@ -223,7 +223,7 @@ fn parse_decimal(value: &str) -> Result<Decimal, TradeGatewayError> {
     } else {
         value
     };
-    parse(normalized)
+    Ok(parse(normalized)?)
 }
 
 fn parse_optional_seconds_as_millis(value: Option<&str>) -> Result<Option<i64>, TradeGatewayError> {
@@ -234,24 +234,6 @@ fn parse_optional_seconds_as_millis(value: Option<&str>) -> Result<Option<i64>, 
                 .ok_or(TradeGatewayError::InvalidData)
         })
         .transpose()
-}
-
-fn parse<T>(value: &str) -> Result<T, TradeGatewayError>
-where
-    T: FromStr,
-{
-    value.parse().map_err(|_| TradeGatewayError::InvalidData)
-}
-
-fn parse_optional<T>(value: Option<&str>) -> Result<Option<T>, TradeGatewayError>
-where
-    T: FromStr,
-{
-    value.map(parse).transpose()
-}
-
-fn required(value: Option<String>) -> Result<String, TradeGatewayError> {
-    value.ok_or(TradeGatewayError::InvalidData)
 }
 
 #[cfg(test)]

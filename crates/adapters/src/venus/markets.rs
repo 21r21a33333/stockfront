@@ -16,7 +16,10 @@ use venus_api::{
     models::Market,
 };
 
-use super::client::VenusBorrowingReader;
+use super::{
+    client::VenusBorrowingAdapter,
+    conversion::{decode_units, parse, required, required_nested},
+};
 
 const PAGE_SIZE: i32 = 100;
 const WAD: u64 = 1_000_000_000_000_000_000;
@@ -27,11 +30,11 @@ const BORROWABLE: u8 = 1 << 1;
 const COLLATERAL_ELIGIBLE: u8 = 1 << 2;
 const ORACLE_VALID: u8 = 1 << 3;
 
-struct MarketState {
-    market: Address,
+pub(super) struct MarketState {
+    pub(super) market: Address,
     comptroller: Address,
     token: BorrowingToken,
-    token_decimals: u32,
+    pub(super) token_decimals: u32,
     borrow_apy_percent: Decimal,
     collateral_factor: U256,
     liquidation_threshold: U256,
@@ -51,7 +54,7 @@ impl TryFrom<Market> for MarketState {
     fn try_from(value: Market) -> Result<Self, Self::Error> {
         let token_decimals = u32::try_from(required(value.underlying_decimal)?)
             .map_err(|_| BorrowingProviderError::InvalidData)?;
-        let underlying_price = parse_u256(&required_nested(value.underlying_price_mantissa)?)?;
+        let underlying_price: U256 = parse(&required_nested(value.underlying_price_mantissa)?)?;
         let conditions = [
             (required_nested(value.is_listed)?, LISTED),
             (required_nested(value.is_borrowable)?, BORROWABLE),
@@ -73,24 +76,22 @@ impl TryFrom<Market> for MarketState {
         );
 
         Ok(Self {
-            market: parse_address(&value.address)?,
-            comptroller: parse_address(&value.pool_comptroller_address)?,
+            market: parse(&value.address)?,
+            comptroller: parse(&value.pool_comptroller_address)?,
             token: BorrowingToken {
-                contract: parse_address(&required(value.underlying_address)?)?,
+                contract: parse(&required(value.underlying_address)?)?,
                 symbol: required(value.underlying_symbol)?,
             },
             token_decimals,
-            borrow_apy_percent: parse_decimal(&required(value.borrow_apy)?)?,
-            collateral_factor: parse_u256(&required_nested(value.collateral_factor_mantissa)?)?,
-            liquidation_threshold: parse_u256(&required_nested(
-                value.liquidation_threshold_mantissa,
-            )?)?,
-            supply_cap: parse_u256(&required_nested(value.supply_caps_mantissa)?)?,
-            borrow_cap: parse_u256(&required_nested(value.borrow_caps_mantissa)?)?,
-            total_supply: parse_u256(&required_nested(value.total_supply_mantissa)?)?,
-            exchange_rate: parse_u256(&required_nested(value.exchange_rate_mantissa)?)?,
-            total_borrows: parse_u256(&required_nested(value.total_borrows_mantissa)?)?,
-            cash: parse_u256(&required_nested(value.cash_mantissa)?)?,
+            borrow_apy_percent: parse(&required(value.borrow_apy)?)?,
+            collateral_factor: parse(&required_nested(value.collateral_factor_mantissa)?)?,
+            liquidation_threshold: parse(&required_nested(value.liquidation_threshold_mantissa)?)?,
+            supply_cap: parse(&required_nested(value.supply_caps_mantissa)?)?,
+            borrow_cap: parse(&required_nested(value.borrow_caps_mantissa)?)?,
+            total_supply: parse(&required_nested(value.total_supply_mantissa)?)?,
+            exchange_rate: parse(&required_nested(value.exchange_rate_mantissa)?)?,
+            total_borrows: parse(&required_nested(value.total_borrows_mantissa)?)?,
+            cash: parse(&required_nested(value.cash_mantissa)?)?,
             conditions,
             paused_actions: u32::try_from(required_nested(value.paused_actions_bitmap)?)
                 .map_err(|_| BorrowingProviderError::InvalidData)?,
@@ -102,10 +103,26 @@ impl MarketState {
     fn has(&self, condition: u8) -> bool {
         self.conditions & condition != 0
     }
+
+    pub(super) fn accepts_collateral(&self) -> bool {
+        self.has(LISTED) && self.has(COLLATERAL_ELIGIBLE) && self.has(ORACLE_VALID)
+    }
+
+    pub(super) fn accepts_borrow(&self) -> bool {
+        self.has(LISTED)
+            && self.has(BORROWABLE)
+            && self.has(ORACLE_VALID)
+            && !action_paused(self.paused_actions, BORROW_ACTION)
+    }
+
+    pub(super) fn available_borrow_liquidity(&self) -> U256 {
+        self.cash
+            .min(self.borrow_cap.saturating_sub(self.total_borrows))
+    }
 }
 
 #[async_trait]
-impl BorrowingReader for VenusBorrowingReader {
+impl BorrowingReader for VenusBorrowingAdapter {
     async fn read_markets(
         &self,
         collateral_assets: &[BstockId],
@@ -146,7 +163,17 @@ impl BorrowingReader for VenusBorrowingReader {
     }
 }
 
-impl VenusBorrowingReader {
+impl VenusBorrowingAdapter {
+    pub(super) async fn market_state(
+        &self,
+        token: Address,
+    ) -> Result<MarketState, BorrowingProviderError> {
+        self.market_states(&HashSet::from([token]))
+            .await?
+            .remove(&token)
+            .ok_or(BorrowingProviderError::Rejected)
+    }
+
     async fn market_states(
         &self,
         requested_tokens: &HashSet<Address>,
@@ -260,16 +287,13 @@ fn build_market(
         collateral_market: collateral.market,
         debt: debt.token.clone(),
         debt_market: debt.market,
-        collateral_factor: decimal_from_u256(collateral.collateral_factor, 18)?,
-        liquidation_threshold: decimal_from_u256(collateral.liquidation_threshold, 18)?,
-        remaining_supply_capacity: decimal_from_u256(
+        collateral_factor: decode_units(collateral.collateral_factor, 18)?,
+        liquidation_threshold: decode_units(collateral.liquidation_threshold, 18)?,
+        remaining_supply_capacity: decode_units(
             remaining_supply_capacity,
             collateral.token_decimals,
         )?,
-        available_borrow_liquidity: decimal_from_u256(
-            available_borrow_liquidity,
-            debt.token_decimals,
-        )?,
+        available_borrow_liquidity: decode_units(available_borrow_liquidity, debt.token_decimals)?,
         borrow_apy_percent: debt.borrow_apy_percent,
         supply_available,
         borrow_available,
@@ -281,41 +305,4 @@ fn build_market(
 
 fn action_paused(bitmap: u32, action: u32) -> bool {
     bitmap & (1 << action) != 0
-}
-
-fn parse_address(value: &str) -> Result<Address, BorrowingProviderError> {
-    value
-        .parse()
-        .map_err(|_| BorrowingProviderError::InvalidData)
-}
-
-fn parse_u256(value: &str) -> Result<U256, BorrowingProviderError> {
-    value
-        .parse()
-        .map_err(|_| BorrowingProviderError::InvalidData)
-}
-
-fn parse_decimal(value: &str) -> Result<Decimal, BorrowingProviderError> {
-    value
-        .parse()
-        .map_err(|_| BorrowingProviderError::InvalidData)
-}
-
-fn decimal_from_u256(value: U256, decimals: u32) -> Result<Decimal, BorrowingProviderError> {
-    let scale = 10_u64
-        .checked_pow(decimals)
-        .map(Decimal::from)
-        .ok_or(BorrowingProviderError::InvalidData)?;
-    parse_decimal(&value.to_string())?
-        .checked_div(scale)
-        .ok_or(BorrowingProviderError::InvalidData)
-}
-
-fn required<T>(value: Option<T>) -> Result<T, BorrowingProviderError> {
-    value.ok_or(BorrowingProviderError::InvalidData)
-}
-
-#[allow(clippy::option_option)]
-fn required_nested<T>(value: Option<Option<T>>) -> Result<T, BorrowingProviderError> {
-    value.flatten().ok_or(BorrowingProviderError::InvalidData)
 }

@@ -4,8 +4,8 @@ use thiserror::Error;
 
 use crate::{
     bstock_borrowing::{
-        BorrowingAccount, BorrowingMarket, BorrowingTransactionStatus, PrepareSupplyRequest,
-        PreparedSupply,
+        BorrowingAccount, BorrowingMarket, BorrowingTransactionStatus, PrepareBorrowRequest,
+        PrepareCollateralRequest, PrepareSupplyRequest, PreparedBorrowingAction,
     },
     bstock_market::BstockId,
     wallet_portfolio::WalletAddress,
@@ -19,6 +19,8 @@ pub enum BorrowingProviderError {
     Rejected,
     #[error("the borrowing provider returned invalid data")]
     InvalidData,
+    #[error("the borrowing market has insufficient liquidity")]
+    InsufficientBorrowLiquidity,
     #[error("the borrowing transaction was not found")]
     TransactionNotFound,
 }
@@ -28,7 +30,17 @@ pub trait BorrowingActionGateway: Send + Sync {
     async fn prepare_supply(
         &self,
         request: &PrepareSupplyRequest,
-    ) -> Result<PreparedSupply, BorrowingProviderError>;
+    ) -> Result<PreparedBorrowingAction, BorrowingProviderError>;
+
+    async fn prepare_collateral(
+        &self,
+        request: &PrepareCollateralRequest,
+    ) -> Result<PreparedBorrowingAction, BorrowingProviderError>;
+
+    async fn prepare_borrow(
+        &self,
+        request: &PrepareBorrowRequest,
+    ) -> Result<PreparedBorrowingAction, BorrowingProviderError>;
 
     async fn transaction_status(
         &self,

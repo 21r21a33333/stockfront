@@ -142,6 +142,16 @@ impl ApiError {
         "invalid_supply_amount",
         "supply amount must be greater than zero",
     );
+    const INVALID_BORROW_AMOUNT: Self = Self::fixed(
+        StatusCode::BAD_REQUEST,
+        "invalid_borrow_amount",
+        "borrow amount must be greater than zero",
+    );
+    const INSUFFICIENT_BORROW_LIQUIDITY: Self = Self::fixed(
+        StatusCode::UNPROCESSABLE_ENTITY,
+        "insufficient_borrow_liquidity",
+        "the borrowing market has insufficient liquidity",
+    );
     const BORROWING_REJECTED: Self = Self::fixed(
         StatusCode::UNPROCESSABLE_ENTITY,
         "borrowing_rejected",
@@ -263,7 +273,8 @@ impl From<BorrowingServiceError> for ApiError {
         match error {
             BorrowingServiceError::Catalog(error) => error.into(),
             BorrowingServiceError::Provider(error) => error.into(),
-            BorrowingServiceError::InvalidAmount => Self::INVALID_SUPPLY_AMOUNT,
+            BorrowingServiceError::InvalidSupplyAmount => Self::INVALID_SUPPLY_AMOUNT,
+            BorrowingServiceError::InvalidBorrowAmount => Self::INVALID_BORROW_AMOUNT,
             BorrowingServiceError::UnsupportedCollateral => Self::UNSUPPORTED_COLLATERAL,
             BorrowingServiceError::UnsupportedDebtToken => Self::UNSUPPORTED_DEBT_TOKEN,
         }
@@ -276,6 +287,9 @@ impl From<BorrowingProviderError> for ApiError {
             BorrowingProviderError::Unavailable => Self::BORROWING_UNAVAILABLE,
             BorrowingProviderError::Rejected => Self::BORROWING_REJECTED,
             BorrowingProviderError::InvalidData => Self::INVALID_BORROWING_DATA,
+            BorrowingProviderError::InsufficientBorrowLiquidity => {
+                Self::INSUFFICIENT_BORROW_LIQUIDITY
+            }
             BorrowingProviderError::TransactionNotFound => Self::BORROWING_TRANSACTION_NOT_FOUND,
         }
     }

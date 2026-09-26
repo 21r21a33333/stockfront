@@ -34,7 +34,3 @@ impl BinanceWeb3Client {
         Ok(Self { configuration })
     }
 }
-
-pub(super) fn is_business_success(code: Option<i32>, success: Option<bool>) -> bool {
-    code == Some(0) && success != Some(false)
-}

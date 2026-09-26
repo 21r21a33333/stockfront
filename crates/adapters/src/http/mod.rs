@@ -47,6 +47,14 @@ pub fn borrowing_router(service: Arc<BorrowingService>) -> Router {
             post(handlers::borrowing::prepare_supply),
         )
         .route(
+            "/v1/borrowing/collateral/prepare",
+            post(handlers::borrowing::prepare_collateral),
+        )
+        .route(
+            "/v1/borrowing/borrows/prepare",
+            post(handlers::borrowing::prepare_borrow),
+        )
+        .route(
             "/v1/borrowing/transactions/{transaction_hash}",
             get(handlers::borrowing::transaction_status),
         )

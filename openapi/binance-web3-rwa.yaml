@@ -18,6 +18,7 @@ tags:
   - name: Trading
   - name: DeFi data
   - name: DeFi transaction
+  - name: Transaction
 paths:
   /api/v1/defi/data/investment/list:
     post:
@@ -328,6 +329,53 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/GetTransactionDetailByHashResponse'
+  /api/v1/dex/pre-transaction/gas-price:
+    get:
+      operationId: getGasPrice
+      tags: [Transaction]
+      parameters:
+        - $ref: '#/components/parameters/BinanceChainId'
+      responses:
+        '200':
+          description: Current chain gas prices or a Binance business error.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetGasPriceResponse'
+  /api/v1/dex/pre-transaction/gas-limit:
+    post:
+      operationId: getGasLimit
+      tags: [Transaction]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EvmPreTransactionRequest'
+      responses:
+        '200':
+          description: Estimated transaction gas limit or a Binance business error.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetGasLimitResponse'
+  /api/v1/dex/pre-transaction/simulate:
+    post:
+      operationId: simulateTransaction
+      tags: [Transaction]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EvmPreTransactionRequest'
+      responses:
+        '200':
+          description: Predicted transaction result or a Binance business error.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SimulateTransactionResponse'
 components:
   parameters:
     BinanceChainId:
@@ -356,6 +404,74 @@ components:
       schema:
         type: string
   schemas:
+    EvmPreTransactionRequest:
+      type: object
+      required: [binanceChainId, evmTx]
+      properties:
+        binanceChainId:
+          type: string
+        evmTx:
+          $ref: '#/components/schemas/EvmTransaction'
+    EvmTransaction:
+      type: object
+      required: [from, to, value, data]
+      properties:
+        from:
+          type: string
+        to:
+          type: string
+        value:
+          type: string
+        data:
+          type: string
+    GetGasPriceResponse:
+      allOf:
+        - $ref: '#/components/schemas/BusinessResponse'
+        - type: object
+          properties:
+            data:
+              $ref: '#/components/schemas/GasPrice'
+    GasPrice:
+      type: object
+      properties:
+        evmLegacyGasPrice:
+          $ref: '#/components/schemas/EvmLegacyGasPrice'
+    EvmLegacyGasPrice:
+      type: object
+      properties:
+        lowGasPrice:
+          type: string
+        mediumGasPrice:
+          type: string
+        highGasPrice:
+          type: string
+    GetGasLimitResponse:
+      allOf:
+        - $ref: '#/components/schemas/BusinessResponse'
+        - type: object
+          properties:
+            data:
+              $ref: '#/components/schemas/GasLimit'
+    GasLimit:
+      type: object
+      properties:
+        gasLimit:
+          type: string
+    SimulateTransactionResponse:
+      allOf:
+        - $ref: '#/components/schemas/BusinessResponse'
+        - type: object
+          properties:
+            data:
+              $ref: '#/components/schemas/SimulationResult'
+    SimulationResult:
+      type: object
+      properties:
+        status:
+          type: string
+        failReason:
+          type: string
+          nullable: true
     ListDefiInvestmentsRequest:
       type: object
       required: [investType]

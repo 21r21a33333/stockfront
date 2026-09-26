@@ -5,6 +5,7 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+alloy = { version = "2.5.0", default-features = false, features = ["contract", "provider-http", "reqwest-rustls-tls"] }
 alloy-primitives.workspace = true
 async-trait.workspace = true
 axum.workspace = true
@@ -24,6 +25,7 @@ tokio = { workspace = true, features = ["rt", "sync"] }
 uuid = { workspace = true, features = ["v4"] }
 venus-api = { path = "../venus-api" }
 zeroize = "1.8.2"
+url = "2.5.7"
 
 [dev-dependencies]
 alloy = { version = "2.5.0", default-features = false, features = ["contract", "provider-http", "reqwest-rustls-tls", "rpc-types", "signer-local"] }

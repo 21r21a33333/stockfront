@@ -7,7 +7,7 @@ use stockfront_core::{
     wallet_portfolio::WalletAddress,
 };
 
-use super::client::{BinanceWeb3Client, is_business_success};
+use super::{client::BinanceWeb3Client, provider::business_succeeded};
 
 pub(crate) struct DefiPositionSnapshot {
     pub(crate) positions: DefiPositions,
@@ -30,7 +30,7 @@ impl BinanceWeb3Client {
         .await
         .map_err(|_| BorrowingProviderError::Unavailable)?;
 
-        if !is_business_success(response.code, response.success) {
+        if !business_succeeded(response.code, response.success) {
             return Err(BorrowingProviderError::Unavailable);
         }
 

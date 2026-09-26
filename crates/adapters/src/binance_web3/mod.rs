@@ -7,7 +7,9 @@ mod client;
 mod defi;
 mod mapping;
 mod positions;
+mod provider;
 mod trades;
+mod transactions;
 
 pub use auth::BinanceConfigurationError;
 pub use client::BinanceWeb3Client;

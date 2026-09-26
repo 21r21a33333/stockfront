@@ -4041,6 +4041,7 @@ dependencies = [
  "stockfront-core",
  "thiserror",
  "tokio",
+ "url",
  "uuid",
  "venus-api",
  "zeroize",

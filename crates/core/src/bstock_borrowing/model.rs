@@ -104,17 +104,37 @@ pub struct PrepareSupplyRequest {
     pub amount: Decimal,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PrepareCollateralRequest {
+    pub wallet: WalletAddress,
+    #[serde(deserialize_with = "deserialize_from_string")]
+    pub collateral_token: Address,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PrepareBorrowRequest {
+    pub wallet: WalletAddress,
+    #[serde(deserialize_with = "deserialize_from_string")]
+    pub debt_token: Address,
+    #[serde(deserialize_with = "deserialize_from_string")]
+    pub amount: Decimal,
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
-pub enum SupplyTransactionKind {
+pub enum BorrowingTransactionKind {
     Approve,
     Deposit,
+    EnableCollateral,
+    Borrow,
 }
 
 #[derive(Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct PreparedSupplyTransaction {
-    pub kind: SupplyTransactionKind,
+pub struct PreparedBorrowingTransaction {
+    pub kind: BorrowingTransactionKind,
     #[serde(serialize_with = "serialize_as_string")]
     pub to: Address,
     #[serde(serialize_with = "serialize_bytes")]
@@ -145,7 +165,7 @@ pub struct PreparedSupplyTransaction {
 
 #[derive(Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct SupplyWarning {
+pub struct BorrowingWarning {
     pub code: String,
     pub level: String,
     pub message: String,
@@ -153,7 +173,7 @@ pub struct SupplyWarning {
 
 #[derive(Debug, Default, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct SupplyPreview {
+pub struct BorrowingPreview {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub estimated_network_fee: Option<Decimal>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -161,14 +181,14 @@ pub struct SupplyPreview {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub health_factor_after: Option<Decimal>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub warnings: Vec<SupplyWarning>,
+    pub warnings: Vec<BorrowingWarning>,
 }
 
 #[derive(Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct PreparedSupply {
-    pub transactions: Vec<PreparedSupplyTransaction>,
-    pub preview: SupplyPreview,
+pub struct PreparedBorrowingAction {
+    pub transactions: Vec<PreparedBorrowingTransaction>,
+    pub preview: BorrowingPreview,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]

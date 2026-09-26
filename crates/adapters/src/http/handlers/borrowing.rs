@@ -8,7 +8,8 @@ use axum::{
 use stockfront_core::{
     bstock_borrowing::{
         BorrowingAccount, BorrowingMarket, BorrowingMarketQuery, BorrowingService,
-        BorrowingTransactionStatus, PrepareSupplyRequest, PreparedSupply,
+        BorrowingTransactionStatus, PrepareBorrowRequest, PrepareCollateralRequest,
+        PrepareSupplyRequest, PreparedBorrowingAction,
     },
     bstock_market::Address,
     wallet_portfolio::WalletAddress,
@@ -46,10 +47,28 @@ pub(in crate::http) async fn account(
 pub(in crate::http) async fn prepare_supply(
     State(service): State<Arc<BorrowingService>>,
     request: Result<Json<PrepareSupplyRequest>, JsonRejection>,
-) -> ApiResult<PreparedSupply> {
+) -> ApiResult<PreparedBorrowingAction> {
     let Json(request) = request?;
     let supply = service.prepare_supply(&request).await?;
     Ok(Response::ok(supply))
+}
+
+pub(in crate::http) async fn prepare_collateral(
+    State(service): State<Arc<BorrowingService>>,
+    request: Result<Json<PrepareCollateralRequest>, JsonRejection>,
+) -> ApiResult<PreparedBorrowingAction> {
+    let Json(request) = request?;
+    let collateral = service.prepare_collateral(&request).await?;
+    Ok(Response::ok(collateral))
+}
+
+pub(in crate::http) async fn prepare_borrow(
+    State(service): State<Arc<BorrowingService>>,
+    request: Result<Json<PrepareBorrowRequest>, JsonRejection>,
+) -> ApiResult<PreparedBorrowingAction> {
+    let Json(request) = request?;
+    let borrow = service.prepare_borrow(&request).await?;
+    Ok(Response::ok(borrow))
 }
 
 pub(in crate::http) async fn transaction_status(

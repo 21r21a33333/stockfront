@@ -10,11 +10,14 @@ use stockfront_core::{
     wallet_portfolio::WalletAddress,
 };
 
-use super::client::VenusBorrowingReader;
+use super::{
+    client::VenusBorrowingAdapter,
+    conversion::{parse, required},
+};
 
 const VENUS_PROTOCOL_ID: &str = "venus";
 
-impl VenusBorrowingReader {
+impl VenusBorrowingAdapter {
     pub(super) async fn read_binance_account(
         &self,
         wallet: WalletAddress,
@@ -128,13 +131,11 @@ impl TryFrom<ProviderPositionToken> for BorrowingAsset {
         let value = value.0;
         Ok(Self {
             token: BorrowingToken {
-                contract: required(value.token_address)?
-                    .parse()
-                    .map_err(|_| BorrowingProviderError::InvalidData)?,
+                contract: parse(&required(value.token_address)?)?,
                 symbol: required(value.token_symbol)?,
             },
-            amount: parse_decimal(&required(value.token_amount)?)?,
-            value_usd: parse_decimal(&required(value.token_value)?)?,
+            amount: parse(&required(value.token_amount)?)?,
+            value_usd: parse(&required(value.token_value)?)?,
         })
     }
 }
@@ -148,7 +149,7 @@ fn collection_health_factor(
         .and_then(Option::as_ref)
         .and_then(|detail| detail.health_factor.as_ref())
         .and_then(Option::as_ref)
-        .map(|value| parse_decimal(value))
+        .map(|value| parse(value))
         .transpose()
 }
 
@@ -168,14 +169,4 @@ fn minimum(left: Option<Decimal>, right: Option<Decimal>) -> Option<Decimal> {
         (Some(left), Some(right)) => Some(left.min(right)),
         (left, right) => left.or(right),
     }
-}
-
-fn parse_decimal(value: &str) -> Result<Decimal, BorrowingProviderError> {
-    value
-        .parse()
-        .map_err(|_| BorrowingProviderError::InvalidData)
-}
-
-fn required<T>(value: Option<T>) -> Result<T, BorrowingProviderError> {
-    value.ok_or(BorrowingProviderError::InvalidData)
 }

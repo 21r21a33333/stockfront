@@ -9,6 +9,7 @@ src/apis/de_fi_transaction_api.rs
 src/apis/mod.rs
 src/apis/rwa_data_api.rs
 src/apis/trading_api.rs
+src/apis/transaction_api.rs
 src/apis/wallet_api.rs
 src/lib.rs
 src/models/aggregated_quote.rs
@@ -38,10 +39,17 @@ src/models/defi_transaction.rs
 src/models/defi_transaction_plan.rs
 src/models/defi_transaction_preview.rs
 src/models/defi_warning.rs
+src/models/evm_legacy_gas_price.rs
+src/models/evm_pre_transaction_request.rs
+src/models/evm_transaction.rs
+src/models/gas_limit.rs
+src/models/gas_price.rs
 src/models/get_aggregated_quote_response.rs
 src/models/get_defi_positions_request.rs
 src/models/get_defi_positions_response.rs
 src/models/get_erc20_approve_transaction_response.rs
+src/models/get_gas_limit_response.rs
+src/models/get_gas_price_response.rs
 src/models/get_rfq_order_status_response.rs
 src/models/get_token_balances_by_address_request.rs
 src/models/get_token_balances_by_address_response.rs
@@ -64,6 +72,8 @@ src/models/rwa_underlying_info.rs
 src/models/rwa_underlying_info_response.rs
 src/models/rwa_underlying_market_data.rs
 src/models/rwa_underlying_market_data_response.rs
+src/models/simulate_transaction_response.rs
+src/models/simulation_result.rs
 src/models/submit_rfq_order_request.rs
 src/models/submit_rfq_order_response.rs
 src/models/submitted_rfq_order.rs

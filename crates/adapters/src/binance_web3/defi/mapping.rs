@@ -1,15 +1,16 @@
-use std::str::FromStr;
-
-use alloy_primitives::U256;
 use binance_web3_rwa::models;
+use rust_decimal::Decimal;
 use stockfront_core::bstock_borrowing::{
-    BorrowingProviderError, BorrowingTransactionState, BorrowingTransactionStatus, PreparedSupply,
-    PreparedSupplyTransaction, SupplyPreview, SupplyTransactionKind, SupplyWarning,
+    BorrowingPreview, BorrowingProviderError, BorrowingTransactionKind, BorrowingTransactionState,
+    BorrowingTransactionStatus, BorrowingWarning, PreparedBorrowingAction,
+    PreparedBorrowingTransaction,
 };
+
+use super::super::provider::{parse, parse_optional, parse_optional_u256, required};
 
 pub(super) struct ProviderPreparedSupply(pub(super) models::DefiTransactionPlan);
 
-impl TryFrom<ProviderPreparedSupply> for PreparedSupply {
+impl TryFrom<ProviderPreparedSupply> for PreparedBorrowingAction {
     type Error = BorrowingProviderError;
 
     fn try_from(value: ProviderPreparedSupply) -> Result<Self, Self::Error> {
@@ -20,11 +21,11 @@ impl TryFrom<ProviderPreparedSupply> for PreparedSupply {
             .ok_or(BorrowingProviderError::InvalidData)?
             .into_iter()
             .map(ProviderSupplyTransaction)
-            .map(PreparedSupplyTransaction::try_from)
+            .map(PreparedBorrowingTransaction::try_from)
             .collect::<Result<Vec<_>, _>>()?;
         let preview = plan
             .preview
-            .map(|preview| SupplyPreview::try_from(ProviderSupplyPreview(*preview)))
+            .map(|preview| BorrowingPreview::try_from(ProviderSupplyPreview(*preview)))
             .transpose()?
             .unwrap_or_default();
         Ok(Self {
@@ -36,7 +37,7 @@ impl TryFrom<ProviderPreparedSupply> for PreparedSupply {
 
 struct ProviderSupplyTransaction(models::DefiTransaction);
 
-impl TryFrom<ProviderSupplyTransaction> for PreparedSupplyTransaction {
+impl TryFrom<ProviderSupplyTransaction> for PreparedBorrowingTransaction {
     type Error = BorrowingProviderError;
 
     fn try_from(value: ProviderSupplyTransaction) -> Result<Self, Self::Error> {
@@ -45,26 +46,30 @@ impl TryFrom<ProviderSupplyTransaction> for PreparedSupplyTransaction {
         let data = required(value.data)?;
         Ok(Self {
             kind: match required(value.call_data_type)? {
-                models::defi_transaction::CallDataType::Approve => SupplyTransactionKind::Approve,
-                models::defi_transaction::CallDataType::Deposit => SupplyTransactionKind::Deposit,
+                models::defi_transaction::CallDataType::Approve => {
+                    BorrowingTransactionKind::Approve
+                }
+                models::defi_transaction::CallDataType::Deposit => {
+                    BorrowingTransactionKind::Deposit
+                }
                 _ => return Err(BorrowingProviderError::InvalidData),
             },
             to: parse(&to)?,
             data: parse(&data)?,
-            value: parse_optional_number(value.value.flatten().as_deref())?.unwrap_or_default(),
-            gas_limit: parse_optional_number(value.gas_limit.flatten().as_deref())?,
-            gas_price: parse_optional_number(value.gas_price.flatten().as_deref())?,
-            max_priority_fee_per_gas: parse_optional_number(
+            value: parse_optional_u256(value.value.flatten().as_deref())?.unwrap_or_default(),
+            gas_limit: parse_optional_u256(value.gas_limit.flatten().as_deref())?,
+            gas_price: parse_optional_u256(value.gas_price.flatten().as_deref())?,
+            max_priority_fee_per_gas: parse_optional_u256(
                 value.max_priority_fee_per_gas.flatten().as_deref(),
             )?,
-            max_fee_per_gas: parse_optional_number(value.max_fee_per_gas.flatten().as_deref())?,
+            max_fee_per_gas: parse_optional_u256(value.max_fee_per_gas.flatten().as_deref())?,
         })
     }
 }
 
 struct ProviderSupplyPreview(models::DefiTransactionPreview);
 
-impl TryFrom<ProviderSupplyPreview> for SupplyPreview {
+impl TryFrom<ProviderSupplyPreview> for BorrowingPreview {
     type Error = BorrowingProviderError;
 
     fn try_from(value: ProviderSupplyPreview) -> Result<Self, Self::Error> {
@@ -77,11 +82,12 @@ impl TryFrom<ProviderSupplyPreview> for SupplyPreview {
             .transpose()?;
         let (health_factor_before, health_factor_after) = value
             .health_factor
-            .map(|health_factor| {
-                Ok((
-                    parse_optional(health_factor.before.flatten().as_deref())?,
-                    parse_optional(health_factor.after.flatten().as_deref())?,
-                ))
+            .map(|health_factor| -> Result<_, BorrowingProviderError> {
+                let before: Option<Decimal> =
+                    parse_optional(health_factor.before.flatten().as_deref())?;
+                let after: Option<Decimal> =
+                    parse_optional(health_factor.after.flatten().as_deref())?;
+                Ok((before, after))
             })
             .transpose()?
             .unwrap_or_default();
@@ -90,7 +96,7 @@ impl TryFrom<ProviderSupplyPreview> for SupplyPreview {
             .unwrap_or_default()
             .into_iter()
             .filter_map(|warning| {
-                Some(SupplyWarning {
+                Some(BorrowingWarning {
                     code: warning.code?,
                     level: warning.level?,
                     message: warning.message?,
@@ -157,41 +163,9 @@ fn transaction_state(details: &[models::TransactionDetail]) -> BorrowingTransact
     }
 }
 
-fn parse_optional_number(value: Option<&str>) -> Result<Option<U256>, BorrowingProviderError> {
-    value.map(parse_number).transpose()
-}
-
-fn parse_number(value: &str) -> Result<U256, BorrowingProviderError> {
-    if let Some(hex) = value.strip_prefix("0x") {
-        U256::from_str_radix(hex, 16).map_err(|_| BorrowingProviderError::InvalidData)
-    } else {
-        parse(value)
-    }
-}
-
-fn parse_optional<T>(value: Option<&str>) -> Result<Option<T>, BorrowingProviderError>
-where
-    T: FromStr,
-{
-    value.map(parse).transpose()
-}
-
-fn parse<T>(value: &str) -> Result<T, BorrowingProviderError>
-where
-    T: FromStr,
-{
-    value
-        .parse()
-        .map_err(|_| BorrowingProviderError::InvalidData)
-}
-
-fn required<T>(value: Option<T>) -> Result<T, BorrowingProviderError> {
-    value.ok_or(BorrowingProviderError::InvalidData)
-}
-
 #[cfg(test)]
 mod tests {
-    use alloy_primitives::Address;
+    use alloy_primitives::{Address, U256};
 
     use super::*;
 
@@ -230,13 +204,19 @@ mod tests {
         let mut plan = models::DefiTransactionPlan::new();
         plan.data_list = Some(vec![approval, deposit]);
         plan.preview = Some(Box::new(preview));
-        let supply = PreparedSupply::try_from(ProviderPreparedSupply(plan))
+        let supply = PreparedBorrowingAction::try_from(ProviderPreparedSupply(plan))
             .unwrap_or_else(|error| panic!("valid supply plan rejected: {error}"));
 
         assert_eq!(supply.transactions.len(), 2);
-        assert_eq!(supply.transactions[0].kind, SupplyTransactionKind::Approve);
+        assert_eq!(
+            supply.transactions[0].kind,
+            BorrowingTransactionKind::Approve
+        );
         assert_eq!(supply.transactions[0].gas_limit, Some(U256::from(21_000)));
-        assert_eq!(supply.transactions[1].kind, SupplyTransactionKind::Deposit);
+        assert_eq!(
+            supply.transactions[1].kind,
+            BorrowingTransactionKind::Deposit
+        );
         assert_eq!(supply.transactions[1].gas_limit, Some(U256::from(30_000)));
         assert_eq!(
             supply

@@ -20,7 +20,10 @@ use stockfront_core::{
 };
 
 use super::{
-    super::client::{BinanceWeb3Client, is_business_success},
+    super::{
+        client::BinanceWeb3Client,
+        provider::{ensure_business_success, map_request_error},
+    },
     mapping::{
         ProviderApproval, ProviderOrderStatus, ProviderPreparedTrade, ProviderQuote,
         ProviderSubmittedOrder, ProviderTransactionStatus, provider_venue,
@@ -44,7 +47,7 @@ impl BstockTradeGateway for BinanceWeb3Client {
             },
         )
         .await
-        .map_err(map_provider_error)?;
+        .map_err(map_request_error)?;
         ensure_business_success(response.code, response.success)?;
         Ok(response
             .data
@@ -74,7 +77,7 @@ impl BstockTradeGateway for BinanceWeb3Client {
             },
         )
         .await
-        .map_err(map_provider_error)?;
+        .map_err(map_request_error)?;
         ensure_business_success(response.code, response.success)?;
         let approval = response
             .data
@@ -106,7 +109,7 @@ impl BstockTradeGateway for BinanceWeb3Client {
             },
         )
         .await
-        .map_err(map_provider_error)?;
+        .map_err(map_request_error)?;
         ensure_quote_business_success(response.code, response.success)?;
         let prepared = response.data.ok_or(TradeGatewayError::InvalidData)?;
         PreparedTrade::try_from(ProviderPreparedTrade {
@@ -133,7 +136,7 @@ impl BstockTradeGateway for BinanceWeb3Client {
             },
         )
         .await
-        .map_err(map_provider_error)?;
+        .map_err(map_request_error)?;
         ensure_quote_business_success(response.code, response.success)?;
         let submitted = response.data.ok_or(TradeGatewayError::InvalidData)?;
         Ok(ProviderSubmittedOrder(*submitted).into())
@@ -153,7 +156,7 @@ impl BstockTradeGateway for BinanceWeb3Client {
             {
                 TradeGatewayError::OrderNotFound
             }
-            error => map_provider_error(error),
+            error => map_request_error(error).into(),
         })?;
         if matches!(response.code, Some(40_363 | 404 | 40_404)) {
             return Err(TradeGatewayError::OrderNotFound);
@@ -175,45 +178,12 @@ impl BstockTradeGateway for BinanceWeb3Client {
             },
         )
         .await
-        .map_err(map_provider_error)?;
+        .map_err(map_request_error)?;
         ensure_business_success(response.code, response.success)?;
         let status = response
             .data
             .ok_or(TradeGatewayError::TransactionNotFound)?;
         TradeTransactionStatus::try_from(ProviderTransactionStatus(*status))
-    }
-}
-
-fn ensure_business_success(
-    code: Option<i32>,
-    success: Option<bool>,
-) -> Result<(), TradeGatewayError> {
-    if is_business_success(code, success) {
-        Ok(())
-    } else {
-        match code {
-            Some(40_000..=49_999) if !matches!(code, Some(40_101..=40_104 | 42_900)) => {
-                Err(TradeGatewayError::Rejected)
-            }
-            _ => Err(TradeGatewayError::Unavailable),
-        }
-    }
-}
-
-fn map_provider_error<T>(error: binance_web3_rwa::apis::Error<T>) -> TradeGatewayError {
-    match error {
-        binance_web3_rwa::apis::Error::ResponseError(response)
-            if response.status.is_client_error()
-                && !matches!(
-                    response.status,
-                    reqwest::StatusCode::UNAUTHORIZED
-                        | reqwest::StatusCode::FORBIDDEN
-                        | reqwest::StatusCode::TOO_MANY_REQUESTS
-                ) =>
-        {
-            TradeGatewayError::Rejected
-        }
-        _ => TradeGatewayError::Unavailable,
     }
 }
 
@@ -224,6 +194,6 @@ fn ensure_quote_business_success(
     match code {
         Some(40_401) => Err(TradeGatewayError::QuoteExpired),
         Some(40_462) => Err(TradeGatewayError::QuoteMismatch),
-        _ => ensure_business_success(code, success),
+        _ => ensure_business_success(code, success).map_err(Into::into),
     }
 }

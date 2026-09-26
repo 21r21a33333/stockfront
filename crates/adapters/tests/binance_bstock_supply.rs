@@ -1,21 +1,24 @@
+#[path = "support/borrowing.rs"]
+mod borrowing_support;
 mod support;
 
 use std::{env, error::Error};
 
 use alloy_primitives::{Address, B256, address};
 use stockfront_core::bstock_borrowing::{
-    BorrowingActionGateway, BorrowingProviderError, PrepareSupplyRequest, SupplyTransactionKind,
+    BorrowingActionGateway, BorrowingProviderError, BorrowingTransactionKind, PrepareSupplyRequest,
 };
 use stockfront_core::wallet_portfolio::WalletAddress;
 
-use support::live_client;
+use borrowing_support::live_venus_adapter;
 
 const NVIDIA_BSTOCK: Address = address!("02fca66c1d1afb4e2a7884261eb00f63598a7436");
 
 #[tokio::test]
 #[ignore = "requires live Binance Web3 credentials, STOCKFRONT_TEST_WALLET, and an active Venus bStock investment"]
 async fn prepares_live_bstock_supply_from_binance() -> Result<(), Box<dyn Error>> {
-    let supply = live_client()?
+    let supply = live_venus_adapter()
+        .await?
         .prepare_supply(&PrepareSupplyRequest {
             wallet: test_wallet()?,
             collateral_token: NVIDIA_BSTOCK,
@@ -35,7 +38,7 @@ async fn prepares_live_bstock_supply_from_binance() -> Result<(), Box<dyn Error>
             .transactions
             .last()
             .map(|transaction| transaction.kind),
-        Some(SupplyTransactionKind::Deposit)
+        Some(BorrowingTransactionKind::Deposit)
     );
     Ok(())
 }
@@ -49,7 +52,8 @@ fn test_wallet() -> Result<WalletAddress, Box<dyn Error>> {
 #[tokio::test]
 #[ignore = "requires live Binance Web3 credentials"]
 async fn reports_unknown_live_borrowing_transaction() -> Result<(), Box<dyn Error>> {
-    let error = live_client()?
+    let error = live_venus_adapter()
+        .await?
         .transaction_status(B256::ZERO)
         .await
         .expect_err("zero transaction hash unexpectedly exists");
