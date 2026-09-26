@@ -20,7 +20,22 @@ impl BorrowingActionGateway for VenusBorrowingAdapter {
         &self,
         request: &PrepareSupplyRequest,
     ) -> Result<PreparedBorrowingAction, BorrowingProviderError> {
-        self.binance.prepare_venus_supply(request).await
+        let market = self.market_state(request.collateral_token).await?;
+        let amount = encode_units(request.amount, market.token_decimals)?;
+        let mut action = self.binance.prepare_venus_supply(request).await?;
+        if let Some(approval) = action
+            .transactions
+            .iter_mut()
+            .find(|transaction| transaction.kind == BorrowingTransactionKind::Approve)
+        {
+            approval.data = IERC20::approveCall {
+                spender: market.market,
+                amount,
+            }
+            .abi_encode()
+            .into();
+        }
+        Ok(action)
     }
 
     async fn prepare_collateral(

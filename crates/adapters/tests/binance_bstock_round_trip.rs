@@ -7,7 +7,7 @@ use std::{env, error::Error, io, time::Duration};
 use alloy::{
     network::{EthereumWallet, TransactionBuilder},
     primitives::{Address, B256, Bytes, U256},
-    providers::{Provider, ProviderBuilder},
+    providers::{DynProvider, Provider, ProviderBuilder},
     rpc::types::TransactionRequest,
     signers::local::PrivateKeySigner,
     sol,
@@ -27,6 +27,8 @@ use zeroize::Zeroizing;
 use trade_support::{NVIDIA_BSTOCK, USDT, live_trade_service};
 
 const DEFAULT_BSC_RPC_URL: &str = "https://bsc-dataseed.bnbchain.org";
+const TESLA_BSTOCK: Address =
+    alloy::primitives::address!("5b1910eAaD6450E50f816082Aa078C41F10C292f");
 const SIX_USDT: &str = "6000000000000000000";
 const MINIMUM_BNB_FOR_GAS: &str = "500000000000000";
 const LIVE_TRADE_CONFIRMATION_ENV: &str = "STOCKFRONT_E2E_CONFIRM";
@@ -48,9 +50,100 @@ struct PurchasedBstock {
     transaction_hash: B256,
 }
 
+struct LiveTradeContext {
+    provider: DynProvider,
+    service: BstockTradeService,
+    wallet: WalletAddress,
+}
+
+#[tokio::test]
+#[ignore = "spends 6 USDT and BNB on BSC mainnet and keeps the purchased TSLAB"]
+async fn buys_tesla_bstock_for_borrowing_on_bsc() -> Result<(), Box<dyn Error>> {
+    let context = live_trade_context().await?;
+    let buy_amount = SIX_USDT.parse::<U256>()?;
+    if token_balance(&context.provider, USDT, context.wallet.as_address()).await? < buy_amount {
+        return Err(io::Error::other("wallet needs at least 6 USDT").into());
+    }
+
+    let starting_balance =
+        token_balance(&context.provider, TESLA_BSTOCK, context.wallet.as_address()).await?;
+    let purchase = buy_bstock(
+        &context.provider,
+        &context.service,
+        context.wallet,
+        USDT,
+        TESLA_BSTOCK,
+        buy_amount,
+    )
+    .await?;
+    let final_balance =
+        token_balance(&context.provider, TESLA_BSTOCK, context.wallet.as_address()).await?;
+    if final_balance <= starting_balance {
+        return Err(io::Error::other("purchase did not increase the TSLAB balance").into());
+    }
+
+    let status = wait_for_settlement(&context.service, purchase.transaction_hash).await?;
+    assert_settlement_direction(&status, USDT, TESLA_BSTOCK)
+}
+
 #[tokio::test]
 #[ignore = "spends real USDT and BNB on BSC mainnet"]
 async fn buys_and_sells_nvidia_bstock_on_bsc() -> Result<(), Box<dyn Error>> {
+    let context = live_trade_context().await?;
+    let buy_amount = SIX_USDT.parse::<U256>()?;
+    let starting_usdt = token_balance(&context.provider, USDT, context.wallet.as_address()).await?;
+    if starting_usdt < buy_amount {
+        return Err(io::Error::other("wallet needs at least 6 USDT").into());
+    }
+    let starting_bstock = token_balance(
+        &context.provider,
+        NVIDIA_BSTOCK,
+        context.wallet.as_address(),
+    )
+    .await?;
+    let purchase = buy_bstock(
+        &context.provider,
+        &context.service,
+        context.wallet,
+        USDT,
+        NVIDIA_BSTOCK,
+        buy_amount,
+    )
+    .await?;
+    let usdt_after_buy =
+        token_balance(&context.provider, USDT, context.wallet.as_address()).await?;
+    let sale_transaction_hash = sell_bstock(
+        &context.provider,
+        &context.service,
+        context.wallet,
+        NVIDIA_BSTOCK,
+        USDT,
+        purchase.amount,
+    )
+    .await?;
+
+    let final_bstock = token_balance(
+        &context.provider,
+        NVIDIA_BSTOCK,
+        context.wallet.as_address(),
+    )
+    .await?;
+    if final_bstock != starting_bstock {
+        return Err(io::Error::other("round trip left an unexpected NVDAB balance").into());
+    }
+
+    let final_usdt = token_balance(&context.provider, USDT, context.wallet.as_address()).await?;
+    if final_usdt <= usdt_after_buy {
+        return Err(io::Error::other("sale did not return USDT to the wallet").into());
+    }
+
+    let purchase_status = wait_for_settlement(&context.service, purchase.transaction_hash).await?;
+    assert_settlement_direction(&purchase_status, USDT, NVIDIA_BSTOCK)?;
+    let sale_status = wait_for_settlement(&context.service, sale_transaction_hash).await?;
+    assert_settlement_direction(&sale_status, NVIDIA_BSTOCK, USDT)
+}
+
+async fn live_trade_context() -> Result<LiveTradeContext, Box<dyn Error>> {
     if env::var(LIVE_TRADE_CONFIRMATION_ENV).ok().as_deref() != Some(LIVE_TRADE_CONFIRMATION) {
         return Err(io::Error::other(format!(
             "set {LIVE_TRADE_CONFIRMATION_ENV}={LIVE_TRADE_CONFIRMATION} to arm the live-money test"
@@ -68,60 +161,24 @@ async fn buys_and_sells_nvidia_bstock_on_bsc() -> Result<(), Box<dyn Error>> {
     let provider = ProviderBuilder::new()
         .wallet(wallet)
         .connect(&rpc_url)
-        .await?;
+        .await?
+        .erased();
     if provider.get_chain_id().await? != BNB_CHAIN_ID {
         return Err(io::Error::other("BSC RPC did not report chain ID 56").into());
     }
 
-    let buy_amount = SIX_USDT.parse::<U256>()?;
     let minimum_gas_balance = MINIMUM_BNB_FOR_GAS.parse::<U256>()?;
     let wallet_address = WalletAddress::try_from(wallet_address)?;
     let service = live_trade_service(USDT, ROUND_TRIP_SLIPPAGE_BPS)?;
 
-    let starting_usdt = token_balance(&provider, USDT, wallet_address.as_address()).await?;
-    if starting_usdt < buy_amount {
-        return Err(io::Error::other("wallet needs at least 6 USDT").into());
-    }
     if provider.get_balance(wallet_address.as_address()).await? < minimum_gas_balance {
         return Err(io::Error::other("wallet needs at least 0.0005 BNB for gas").into());
     }
-    let starting_bstock =
-        token_balance(&provider, NVIDIA_BSTOCK, wallet_address.as_address()).await?;
-    let purchase = buy_bstock(
-        &provider,
-        &service,
-        wallet_address,
-        USDT,
-        NVIDIA_BSTOCK,
-        buy_amount,
-    )
-    .await?;
-    let usdt_after_buy = token_balance(&provider, USDT, wallet_address.as_address()).await?;
-    let sale_transaction_hash = sell_bstock(
-        &provider,
-        &service,
-        wallet_address,
-        NVIDIA_BSTOCK,
-        USDT,
-        purchase.amount,
-    )
-    .await?;
-
-    let final_bstock = token_balance(&provider, NVIDIA_BSTOCK, wallet_address.as_address()).await?;
-    if final_bstock != starting_bstock {
-        return Err(io::Error::other("round trip left an unexpected NVDAB balance").into());
-    }
-
-    let final_usdt = token_balance(&provider, USDT, wallet_address.as_address()).await?;
-    if final_usdt <= usdt_after_buy {
-        return Err(io::Error::other("sale did not return USDT to the wallet").into());
-    }
-
-    let purchase_status = wait_for_settlement(&service, purchase.transaction_hash).await?;
-    assert_settlement_direction(&purchase_status, USDT, NVIDIA_BSTOCK)?;
-    let sale_status = wait_for_settlement(&service, sale_transaction_hash).await?;
-    assert_settlement_direction(&sale_status, NVIDIA_BSTOCK, USDT)?;
-    Ok(())
+    Ok(LiveTradeContext {
+        provider,
+        service,
+        wallet: wallet_address,
+    })
 }
 
 async fn buy_bstock(
@@ -148,9 +205,9 @@ async fn buy_bstock(
     let balance = token_balance(provider, bstock, wallet.as_address()).await?;
     let bought = balance
         .checked_sub(starting_balance)
-        .ok_or_else(|| io::Error::other("NVDAB balance did not increase after purchase"))?;
+        .ok_or_else(|| io::Error::other("bStock balance did not increase after purchase"))?;
     if bought.is_zero() {
-        return Err(io::Error::other("purchase received zero NVDAB").into());
+        return Err(io::Error::other("purchase received zero bStock").into());
     }
     Ok(PurchasedBstock {
         amount: bought,

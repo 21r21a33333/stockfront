@@ -63,6 +63,7 @@ Never write scaffolding, generated clients, production code or tests before the 
 - Do not test trivial constructors, derives, route registration, static configuration or empty composition glue.
 - Core rules receive deterministic unit tests. Adapters receive integration tests against controlled fixtures or pinned forks when their behavior warrants it.
 - Every test must have a clear failure mode and user or protocol consequence.
+- Live-provider scenarios must validate every field Stockfront exposes, including units, provider sentinel values, transaction order and Stockfront-owned authorization scope. A successful response or non-empty calldata alone is not sufficient evidence before broadcasting funds.
 
 ## Comments and documentation
 

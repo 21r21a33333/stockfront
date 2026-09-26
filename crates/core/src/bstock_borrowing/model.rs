@@ -201,11 +201,20 @@ pub struct BorrowingWarning {
     pub message: String,
 }
 
+#[derive(Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BorrowingNetworkFee {
+    pub amount: Decimal,
+    pub token_symbol: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub value_usd: Option<Decimal>,
+}
+
 #[derive(Debug, Default, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BorrowingPreview {
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub estimated_network_fee: Option<Decimal>,
+    pub estimated_network_fee: Option<BorrowingNetworkFee>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub health_factor_before: Option<Decimal>,
     #[serde(skip_serializing_if = "Option::is_none")]

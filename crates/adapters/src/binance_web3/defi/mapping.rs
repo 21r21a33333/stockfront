@@ -1,9 +1,9 @@
 use binance_web3_rwa::models;
 use rust_decimal::Decimal;
 use stockfront_core::bstock_borrowing::{
-    BorrowingPreview, BorrowingProviderError, BorrowingTransactionKind, BorrowingTransactionState,
-    BorrowingTransactionStatus, BorrowingWarning, PreparedBorrowingAction,
-    PreparedBorrowingTransaction,
+    BorrowingNetworkFee, BorrowingPreview, BorrowingProviderError, BorrowingTransactionKind,
+    BorrowingTransactionState, BorrowingTransactionStatus, BorrowingWarning,
+    PreparedBorrowingAction, PreparedBorrowingTransaction,
 };
 
 use super::super::provider::{parse, parse_optional, parse_optional_u256, required};
@@ -80,8 +80,16 @@ impl TryFrom<ProviderActionPreview> for BorrowingPreview {
         let estimated_network_fee = value
             .fee_and_contract
             .and_then(|fee| fee.estimated_network_fee)
-            .and_then(|fee| fee.amount.flatten())
-            .map(|amount| parse(&amount))
+            .map(|fee| -> Result<_, BorrowingProviderError> {
+                let amount = parse(&required(fee.amount.flatten())?)?;
+                let token_symbol = required(fee.token_symbol)?;
+                let value_usd = parse_optional(fee.value_usd.flatten().as_deref())?;
+                Ok(BorrowingNetworkFee {
+                    amount,
+                    token_symbol,
+                    value_usd,
+                })
+            })
             .transpose()?;
         let (health_factor_before, health_factor_after) = value
             .health_factor
@@ -94,6 +102,8 @@ impl TryFrom<ProviderActionPreview> for BorrowingPreview {
             })
             .transpose()?
             .unwrap_or_default();
+        let (health_factor_before, health_factor_after) =
+            normalize_health_factors(health_factor_before, health_factor_after);
         let warnings = value
             .warnings
             .unwrap_or_default()
@@ -112,6 +122,17 @@ impl TryFrom<ProviderActionPreview> for BorrowingPreview {
             health_factor_after,
             warnings,
         })
+    }
+}
+
+fn normalize_health_factors(
+    before: Option<Decimal>,
+    after: Option<Decimal>,
+) -> (Option<Decimal>, Option<Decimal>) {
+    if before == Some(Decimal::ZERO) && after == Some(Decimal::ZERO) {
+        (None, None)
+    } else {
+        (before, after)
     }
 }
 
@@ -190,6 +211,8 @@ mod tests {
 
         let mut network_fee = models::DefiNetworkFee::new();
         network_fee.amount = Some(Some("0.0001".to_owned()));
+        network_fee.token_symbol = Some("BNB".to_owned());
+        network_fee.value_usd = Some(Some("0.06".to_owned()));
         let mut fee_and_contract = models::DefiFeeAndContract::new();
         fee_and_contract.estimated_network_fee = Some(Box::new(network_fee));
         let mut health_factor = models::DefiHealthFactor::new();
@@ -225,8 +248,25 @@ mod tests {
             supply
                 .preview
                 .estimated_network_fee
-                .map(|value| value.to_string()),
+                .as_ref()
+                .map(|fee| fee.amount.to_string()),
             Some("0.0001".to_owned())
+        );
+        assert_eq!(
+            supply
+                .preview
+                .estimated_network_fee
+                .as_ref()
+                .map(|fee| fee.token_symbol.as_str()),
+            Some("BNB")
+        );
+        assert_eq!(
+            supply
+                .preview
+                .estimated_network_fee
+                .and_then(|fee| fee.value_usd)
+                .map(|value| value.to_string()),
+            Some("0.06".to_owned())
         );
         assert_eq!(
             supply
@@ -243,6 +283,29 @@ mod tests {
             Some("2.1".to_owned())
         );
         assert_eq!(supply.preview.warnings.len(), 1);
+    }
+
+    #[test]
+    fn zero_health_factor_pair_is_not_exposed_as_liquidation_risk() {
+        let mut deposit = models::DefiTransaction::new();
+        deposit.call_data_type = Some(models::defi_transaction::CallDataType::Deposit);
+        deposit.to = Some(Some(Address::with_last_byte(2).to_string()));
+        deposit.data = Some("0x0304".to_owned());
+
+        let mut health_factor = models::DefiHealthFactor::new();
+        health_factor.before = Some(Some("0".to_owned()));
+        health_factor.after = Some(Some("0".to_owned()));
+        let mut preview = models::DefiTransactionPreview::new();
+        preview.health_factor = Some(Box::new(health_factor));
+        let mut plan = models::DefiTransactionPlan::new();
+        plan.data_list = Some(vec![deposit]);
+        plan.preview = Some(Box::new(preview));
+
+        let action = PreparedBorrowingAction::try_from(ProviderPreparedAction(plan))
+            .unwrap_or_else(|error| panic!("valid supply plan rejected: {error}"));
+
+        assert_eq!(action.preview.health_factor_before, None);
+        assert_eq!(action.preview.health_factor_after, None);
     }
 
     #[test]

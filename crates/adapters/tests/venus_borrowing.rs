@@ -20,9 +20,9 @@ const TSLAB: alloy_primitives::Address = address!("5b1910eAaD6450E50f816082Aa078
 const USDT: alloy_primitives::Address = address!("55d398326f99059fF775485246999027B3197955");
 
 #[tokio::test]
-#[ignore = "requires Binance Web3 credentials and live provider access"]
-async fn reads_bstock_market_and_empty_pooled_account() -> Result<(), Box<dyn Error>> {
-    let reader = live_venus_adapter().await?;
+#[ignore = "requires live Venus and BNB Chain provider access"]
+async fn reads_live_bstock_borrowing_market() -> Result<(), Box<dyn Error>> {
+    let reader = live_venus_adapter(false).await?;
     let markets = reader
         .read_markets(
             &[BstockId {
@@ -38,13 +38,25 @@ async fn reads_bstock_market_and_empty_pooled_account() -> Result<(), Box<dyn Er
     assert_eq!(markets[0].debt.contract, USDT);
     assert!(markets[0].observed_at_ms > 0);
 
-    let wallet = WalletAddress::try_from(address!("0000000000000000000000000000000000000001"))?;
+    let market = &markets[0];
+    assert!(market.oracle_valid);
+    assert!(market.supply_available);
+    assert!(market.borrow_available);
+    assert!(market.remaining_supply_capacity.is_sign_positive());
+    assert!(market.available_borrow_liquidity.is_sign_positive());
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires Binance Web3 credentials, STOCKFRONT_TEST_WALLET, and live provider access"]
+async fn reads_live_wallet_borrowing_account() -> Result<(), Box<dyn Error>> {
+    let reader = live_venus_adapter(true).await?;
+    let wallet_address: Address = env::var("STOCKFRONT_TEST_WALLET")?.parse()?;
+    let wallet = WalletAddress::try_from(wallet_address)?;
     let account = reader
         .read_account(wallet)
         .await
         .map_err(|error| io::Error::other(format!("account read failed: {error}")))?;
-    assert!(account.positions.is_empty());
-    assert!(account.health_factor.is_none());
     assert_eq!(account.chain_id, BNB_CHAIN_ID);
     assert!(account.observed_at_ms > 0);
     Ok(())
@@ -53,7 +65,7 @@ async fn reads_bstock_market_and_empty_pooled_account() -> Result<(), Box<dyn Er
 #[tokio::test]
 #[ignore = "requires Binance Web3 credentials and a STOCKFRONT_TEST_WALLET with supplied Venus collateral"]
 async fn prepares_live_collateral_activation_and_borrow() -> Result<(), Box<dyn Error>> {
-    let adapter = live_venus_adapter().await?;
+    let adapter = live_venus_adapter(true).await?;
     let wallet_address: Address = env::var("STOCKFRONT_TEST_WALLET")?.parse()?;
     let wallet = WalletAddress::try_from(wallet_address)?;
 
