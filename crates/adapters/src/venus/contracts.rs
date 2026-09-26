@@ -7,7 +7,16 @@ sol! {
         function enterMarkets(address[] vTokens) external returns (uint256[]);
     }
 
+    #[sol(rpc)]
     interface IVToken {
         function borrow(uint256 amount) external returns (uint256);
+        function borrowBalanceCurrent(address account) external returns (uint256);
+        function repayBorrow(uint256 amount) external returns (uint256);
+    }
+
+    #[sol(rpc)]
+    interface IERC20 {
+        function allowance(address owner, address spender) external view returns (uint256);
+        function approve(address spender, uint256 amount) external returns (bool);
     }
 }

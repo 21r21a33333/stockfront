@@ -6,8 +6,9 @@ pub use model::{
     BorrowingAccount, BorrowingAsset, BorrowingMarket, BorrowingMarketQuery,
     BorrowingMarketUnavailableReason, BorrowingPosition, BorrowingPreview, BorrowingToken,
     BorrowingTransactionKind, BorrowingTransactionState, BorrowingTransactionStatus,
-    BorrowingVenue, BorrowingWarning, PrepareBorrowRequest, PrepareCollateralRequest,
-    PrepareSupplyRequest, PreparedBorrowingAction, PreparedBorrowingTransaction,
+    BorrowingVenue, BorrowingWarning, PositionAmount, PrepareBorrowRequest,
+    PrepareCollateralRequest, PrepareRepaymentRequest, PrepareSupplyRequest,
+    PrepareWithdrawalRequest, PreparedBorrowingAction, PreparedBorrowingTransaction,
 };
 pub use ports::{BorrowingActionGateway, BorrowingProviderError, BorrowingReader};
 pub use service::{BorrowingPolicy, BorrowingPolicyError, BorrowingService, BorrowingServiceError};

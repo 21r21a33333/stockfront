@@ -7,8 +7,9 @@ use thiserror::Error;
 use crate::{
     bstock_borrowing::{
         BorrowingAccount, BorrowingActionGateway, BorrowingMarket, BorrowingMarketQuery,
-        BorrowingProviderError, BorrowingReader, BorrowingTransactionStatus, PrepareBorrowRequest,
-        PrepareCollateralRequest, PrepareSupplyRequest, PreparedBorrowingAction,
+        BorrowingProviderError, BorrowingReader, BorrowingTransactionStatus, PositionAmount,
+        PrepareBorrowRequest, PrepareCollateralRequest, PrepareRepaymentRequest,
+        PrepareSupplyRequest, PrepareWithdrawalRequest, PreparedBorrowingAction,
     },
     bstock_market::{BNB_CHAIN_ID, BstockCatalog, BstockId, CatalogError},
     wallet_portfolio::WalletAddress,
@@ -52,6 +53,10 @@ pub enum BorrowingServiceError {
     InvalidSupplyAmount,
     #[error("borrow amount must be greater than zero")]
     InvalidBorrowAmount,
+    #[error("repayment amount must be greater than zero")]
+    InvalidRepaymentAmount,
+    #[error("withdrawal amount must be greater than zero")]
+    InvalidWithdrawalAmount,
     #[error("the collateral token is not a supported bStock")]
     UnsupportedCollateral,
     #[error("the debt token is not supported")]
@@ -193,6 +198,61 @@ impl BorrowingService {
             .map_err(Into::into)
     }
 
+    /// Returns an exact, finite token approval required by a Venus repayment.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`BorrowingServiceError`] when the amount or debt token is unsupported, or the
+    /// action cannot be prepared. A sufficient existing allowance returns an empty plan.
+    pub async fn prepare_repayment_approval(
+        &self,
+        request: &PrepareRepaymentRequest,
+    ) -> Result<PreparedBorrowingAction, BorrowingServiceError> {
+        self.validate_repayment(request)?;
+        self.action_gateway
+            .prepare_repayment_approval(request)
+            .await
+            .map_err(Into::into)
+    }
+
+    /// Returns an unsigned Venus repayment transaction.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`BorrowingServiceError`] when the amount or debt token is unsupported, approval
+    /// is required, or the action cannot be prepared.
+    pub async fn prepare_repayment(
+        &self,
+        request: &PrepareRepaymentRequest,
+    ) -> Result<PreparedBorrowingAction, BorrowingServiceError> {
+        self.validate_repayment(request)?;
+        self.action_gateway
+            .prepare_repayment(request)
+            .await
+            .map_err(Into::into)
+    }
+
+    /// Returns Binance's ordered wallet transactions for withdrawing supplied bStock from Venus.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`BorrowingServiceError`] when the amount or collateral is unsupported, or Binance
+    /// cannot prepare the transaction plan.
+    pub async fn prepare_withdrawal(
+        &self,
+        request: &PrepareWithdrawalRequest,
+    ) -> Result<PreparedBorrowingAction, BorrowingServiceError> {
+        if invalid_exact_amount(&request.amount) {
+            return Err(BorrowingServiceError::InvalidWithdrawalAmount);
+        }
+        self.ensure_supported_collateral(request.collateral_token)
+            .await?;
+        self.action_gateway
+            .prepare_withdrawal(request)
+            .await
+            .map_err(Into::into)
+    }
+
     /// Returns Binance's current state for a submitted borrowing transaction.
     ///
     /// # Errors
@@ -229,6 +289,23 @@ impl BorrowingService {
             Err(BorrowingServiceError::UnsupportedCollateral)
         }
     }
+
+    fn validate_repayment(
+        &self,
+        request: &PrepareRepaymentRequest,
+    ) -> Result<(), BorrowingServiceError> {
+        if invalid_exact_amount(&request.amount) {
+            return Err(BorrowingServiceError::InvalidRepaymentAmount);
+        }
+        if !self.policy.debt_tokens.contains(&request.debt_token) {
+            return Err(BorrowingServiceError::UnsupportedDebtToken);
+        }
+        Ok(())
+    }
+}
+
+fn invalid_exact_amount(amount: &PositionAmount) -> bool {
+    matches!(amount, PositionAmount::Exact { value } if *value <= Decimal::ZERO)
 }
 
 #[cfg(test)]
@@ -318,6 +395,39 @@ mod tests {
             request: &PrepareBorrowRequest,
         ) -> Result<PreparedBorrowingAction, BorrowingProviderError> {
             assert_eq!(request.debt_token, Address::with_last_byte(2));
+            Ok(PreparedBorrowingAction {
+                transactions: Vec::new(),
+                preview: BorrowingPreview::default(),
+            })
+        }
+
+        async fn prepare_repayment_approval(
+            &self,
+            request: &PrepareRepaymentRequest,
+        ) -> Result<PreparedBorrowingAction, BorrowingProviderError> {
+            assert_eq!(request.debt_token, Address::with_last_byte(2));
+            Ok(PreparedBorrowingAction {
+                transactions: Vec::new(),
+                preview: BorrowingPreview::default(),
+            })
+        }
+
+        async fn prepare_repayment(
+            &self,
+            request: &PrepareRepaymentRequest,
+        ) -> Result<PreparedBorrowingAction, BorrowingProviderError> {
+            assert_eq!(request.debt_token, Address::with_last_byte(2));
+            Ok(PreparedBorrowingAction {
+                transactions: Vec::new(),
+                preview: BorrowingPreview::default(),
+            })
+        }
+
+        async fn prepare_withdrawal(
+            &self,
+            request: &PrepareWithdrawalRequest,
+        ) -> Result<PreparedBorrowingAction, BorrowingProviderError> {
+            assert_eq!(request.collateral_token, Address::with_last_byte(1));
             Ok(PreparedBorrowingAction {
                 transactions: Vec::new(),
                 preview: BorrowingPreview::default(),
@@ -478,6 +588,72 @@ mod tests {
 
         assert!(collateral.transactions.is_empty());
         assert!(borrow.transactions.is_empty());
+    }
+
+    #[tokio::test]
+    async fn repayment_and_withdrawal_validate_exact_amounts_and_supported_tokens() {
+        let service = service();
+        let wallet = WalletAddress::try_from(Address::with_last_byte(3))
+            .unwrap_or_else(|error| panic!("valid wallet rejected: {error}"));
+
+        assert_eq!(
+            service
+                .prepare_repayment(&PrepareRepaymentRequest {
+                    wallet,
+                    debt_token: Address::with_last_byte(2),
+                    amount: PositionAmount::Exact {
+                        value: Decimal::ZERO,
+                    },
+                })
+                .await,
+            Err(BorrowingServiceError::InvalidRepaymentAmount)
+        );
+        assert_eq!(
+            service
+                .prepare_withdrawal(&PrepareWithdrawalRequest {
+                    wallet,
+                    collateral_token: Address::with_last_byte(9),
+                    amount: PositionAmount::Full,
+                })
+                .await,
+            Err(BorrowingServiceError::UnsupportedCollateral)
+        );
+    }
+
+    #[tokio::test]
+    async fn full_repayment_and_withdrawal_are_forwarded() {
+        let service = service();
+        let wallet = WalletAddress::try_from(Address::with_last_byte(3))
+            .unwrap_or_else(|error| panic!("valid wallet rejected: {error}"));
+
+        let approval = service
+            .prepare_repayment_approval(&PrepareRepaymentRequest {
+                wallet,
+                debt_token: Address::with_last_byte(2),
+                amount: PositionAmount::Full,
+            })
+            .await
+            .unwrap_or_else(|error| panic!("supported repayment approval rejected: {error}"));
+        let repayment = service
+            .prepare_repayment(&PrepareRepaymentRequest {
+                wallet,
+                debt_token: Address::with_last_byte(2),
+                amount: PositionAmount::Full,
+            })
+            .await
+            .unwrap_or_else(|error| panic!("supported repayment rejected: {error}"));
+        let withdrawal = service
+            .prepare_withdrawal(&PrepareWithdrawalRequest {
+                wallet,
+                collateral_token: Address::with_last_byte(1),
+                amount: PositionAmount::Full,
+            })
+            .await
+            .unwrap_or_else(|error| panic!("supported withdrawal rejected: {error}"));
+
+        assert!(approval.transactions.is_empty());
+        assert!(repayment.transactions.is_empty());
+        assert!(withdrawal.transactions.is_empty());
     }
 
     fn service() -> BorrowingService {

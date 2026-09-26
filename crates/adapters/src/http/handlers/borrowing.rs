@@ -9,7 +9,8 @@ use stockfront_core::{
     bstock_borrowing::{
         BorrowingAccount, BorrowingMarket, BorrowingMarketQuery, BorrowingService,
         BorrowingTransactionStatus, PrepareBorrowRequest, PrepareCollateralRequest,
-        PrepareSupplyRequest, PreparedBorrowingAction,
+        PrepareRepaymentRequest, PrepareSupplyRequest, PrepareWithdrawalRequest,
+        PreparedBorrowingAction,
     },
     bstock_market::Address,
     wallet_portfolio::WalletAddress,
@@ -69,6 +70,33 @@ pub(in crate::http) async fn prepare_borrow(
     let Json(request) = request?;
     let borrow = service.prepare_borrow(&request).await?;
     Ok(Response::ok(borrow))
+}
+
+pub(in crate::http) async fn prepare_repayment_approval(
+    State(service): State<Arc<BorrowingService>>,
+    request: Result<Json<PrepareRepaymentRequest>, JsonRejection>,
+) -> ApiResult<PreparedBorrowingAction> {
+    let Json(request) = request?;
+    let approval = service.prepare_repayment_approval(&request).await?;
+    Ok(Response::ok(approval))
+}
+
+pub(in crate::http) async fn prepare_repayment(
+    State(service): State<Arc<BorrowingService>>,
+    request: Result<Json<PrepareRepaymentRequest>, JsonRejection>,
+) -> ApiResult<PreparedBorrowingAction> {
+    let Json(request) = request?;
+    let repayment = service.prepare_repayment(&request).await?;
+    Ok(Response::ok(repayment))
+}
+
+pub(in crate::http) async fn prepare_withdrawal(
+    State(service): State<Arc<BorrowingService>>,
+    request: Result<Json<PrepareWithdrawalRequest>, JsonRejection>,
+) -> ApiResult<PreparedBorrowingAction> {
+    let Json(request) = request?;
+    let withdrawal = service.prepare_withdrawal(&request).await?;
+    Ok(Response::ok(withdrawal))
 }
 
 pub(in crate::http) async fn transaction_status(

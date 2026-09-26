@@ -147,6 +147,16 @@ impl ApiError {
         "invalid_borrow_amount",
         "borrow amount must be greater than zero",
     );
+    const INVALID_REPAYMENT_AMOUNT: Self = Self::fixed(
+        StatusCode::BAD_REQUEST,
+        "invalid_repayment_amount",
+        "repayment amount must be greater than zero",
+    );
+    const INVALID_WITHDRAWAL_AMOUNT: Self = Self::fixed(
+        StatusCode::BAD_REQUEST,
+        "invalid_withdrawal_amount",
+        "withdrawal amount must be greater than zero",
+    );
     const INSUFFICIENT_BORROW_LIQUIDITY: Self = Self::fixed(
         StatusCode::UNPROCESSABLE_ENTITY,
         "insufficient_borrow_liquidity",
@@ -161,6 +171,16 @@ impl ApiError {
         StatusCode::NOT_FOUND,
         "borrowing_transaction_not_found",
         "the borrowing transaction was not found",
+    );
+    const REPAYMENT_APPROVAL_REQUIRED: Self = Self::fixed(
+        StatusCode::CONFLICT,
+        "repayment_approval_required",
+        "the debt token must be approved before repayment",
+    );
+    const INSUFFICIENT_SUPPLIED_BALANCE: Self = Self::fixed(
+        StatusCode::UNPROCESSABLE_ENTITY,
+        "insufficient_supplied_balance",
+        "the wallet has insufficient supplied balance",
     );
     const fn fixed(status: StatusCode, code: &'static str, message: &'static str) -> Self {
         Self {
@@ -275,6 +295,8 @@ impl From<BorrowingServiceError> for ApiError {
             BorrowingServiceError::Provider(error) => error.into(),
             BorrowingServiceError::InvalidSupplyAmount => Self::INVALID_SUPPLY_AMOUNT,
             BorrowingServiceError::InvalidBorrowAmount => Self::INVALID_BORROW_AMOUNT,
+            BorrowingServiceError::InvalidRepaymentAmount => Self::INVALID_REPAYMENT_AMOUNT,
+            BorrowingServiceError::InvalidWithdrawalAmount => Self::INVALID_WITHDRAWAL_AMOUNT,
             BorrowingServiceError::UnsupportedCollateral => Self::UNSUPPORTED_COLLATERAL,
             BorrowingServiceError::UnsupportedDebtToken => Self::UNSUPPORTED_DEBT_TOKEN,
         }
@@ -291,6 +313,10 @@ impl From<BorrowingProviderError> for ApiError {
                 Self::INSUFFICIENT_BORROW_LIQUIDITY
             }
             BorrowingProviderError::TransactionNotFound => Self::BORROWING_TRANSACTION_NOT_FOUND,
+            BorrowingProviderError::RepaymentApprovalRequired => Self::REPAYMENT_APPROVAL_REQUIRED,
+            BorrowingProviderError::InsufficientSuppliedBalance => {
+                Self::INSUFFICIENT_SUPPLIED_BALANCE
+            }
         }
     }
 }

@@ -122,6 +122,34 @@ pub struct PrepareBorrowRequest {
     pub amount: Decimal,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize)]
+#[serde(tag = "mode", rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum PositionAmount {
+    Exact {
+        #[serde(deserialize_with = "deserialize_from_string")]
+        value: Decimal,
+    },
+    Full,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PrepareRepaymentRequest {
+    pub wallet: WalletAddress,
+    #[serde(deserialize_with = "deserialize_from_string")]
+    pub debt_token: Address,
+    pub amount: PositionAmount,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PrepareWithdrawalRequest {
+    pub wallet: WalletAddress,
+    #[serde(deserialize_with = "deserialize_from_string")]
+    pub collateral_token: Address,
+    pub amount: PositionAmount,
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum BorrowingTransactionKind {
@@ -129,6 +157,8 @@ pub enum BorrowingTransactionKind {
     Deposit,
     EnableCollateral,
     Borrow,
+    Repay,
+    Withdraw,
 }
 
 #[derive(Debug, Eq, PartialEq, Serialize)]

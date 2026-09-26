@@ -5,7 +5,8 @@ use thiserror::Error;
 use crate::{
     bstock_borrowing::{
         BorrowingAccount, BorrowingMarket, BorrowingTransactionStatus, PrepareBorrowRequest,
-        PrepareCollateralRequest, PrepareSupplyRequest, PreparedBorrowingAction,
+        PrepareCollateralRequest, PrepareRepaymentRequest, PrepareSupplyRequest,
+        PrepareWithdrawalRequest, PreparedBorrowingAction,
     },
     bstock_market::BstockId,
     wallet_portfolio::WalletAddress,
@@ -21,6 +22,10 @@ pub enum BorrowingProviderError {
     InvalidData,
     #[error("the borrowing market has insufficient liquidity")]
     InsufficientBorrowLiquidity,
+    #[error("repayment approval is required")]
+    RepaymentApprovalRequired,
+    #[error("the wallet has insufficient supplied balance")]
+    InsufficientSuppliedBalance,
     #[error("the borrowing transaction was not found")]
     TransactionNotFound,
 }
@@ -40,6 +45,21 @@ pub trait BorrowingActionGateway: Send + Sync {
     async fn prepare_borrow(
         &self,
         request: &PrepareBorrowRequest,
+    ) -> Result<PreparedBorrowingAction, BorrowingProviderError>;
+
+    async fn prepare_repayment_approval(
+        &self,
+        request: &PrepareRepaymentRequest,
+    ) -> Result<PreparedBorrowingAction, BorrowingProviderError>;
+
+    async fn prepare_repayment(
+        &self,
+        request: &PrepareRepaymentRequest,
+    ) -> Result<PreparedBorrowingAction, BorrowingProviderError>;
+
+    async fn prepare_withdrawal(
+        &self,
+        request: &PrepareWithdrawalRequest,
     ) -> Result<PreparedBorrowingAction, BorrowingProviderError>;
 
     async fn transaction_status(

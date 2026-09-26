@@ -8,24 +8,24 @@ use stockfront_core::bstock_borrowing::{
 
 use super::super::provider::{parse, parse_optional, parse_optional_u256, required};
 
-pub(super) struct ProviderPreparedSupply(pub(super) models::DefiTransactionPlan);
+pub(super) struct ProviderPreparedAction(pub(super) models::DefiTransactionPlan);
 
-impl TryFrom<ProviderPreparedSupply> for PreparedBorrowingAction {
+impl TryFrom<ProviderPreparedAction> for PreparedBorrowingAction {
     type Error = BorrowingProviderError;
 
-    fn try_from(value: ProviderPreparedSupply) -> Result<Self, Self::Error> {
+    fn try_from(value: ProviderPreparedAction) -> Result<Self, Self::Error> {
         let plan = value.0;
         let transactions = plan
             .data_list
             .filter(|transactions| !transactions.is_empty())
             .ok_or(BorrowingProviderError::InvalidData)?
             .into_iter()
-            .map(ProviderSupplyTransaction)
+            .map(ProviderActionTransaction)
             .map(PreparedBorrowingTransaction::try_from)
             .collect::<Result<Vec<_>, _>>()?;
         let preview = plan
             .preview
-            .map(|preview| BorrowingPreview::try_from(ProviderSupplyPreview(*preview)))
+            .map(|preview| BorrowingPreview::try_from(ProviderActionPreview(*preview)))
             .transpose()?
             .unwrap_or_default();
         Ok(Self {
@@ -35,12 +35,12 @@ impl TryFrom<ProviderPreparedSupply> for PreparedBorrowingAction {
     }
 }
 
-struct ProviderSupplyTransaction(models::DefiTransaction);
+struct ProviderActionTransaction(models::DefiTransaction);
 
-impl TryFrom<ProviderSupplyTransaction> for PreparedBorrowingTransaction {
+impl TryFrom<ProviderActionTransaction> for PreparedBorrowingTransaction {
     type Error = BorrowingProviderError;
 
-    fn try_from(value: ProviderSupplyTransaction) -> Result<Self, Self::Error> {
+    fn try_from(value: ProviderActionTransaction) -> Result<Self, Self::Error> {
         let value = value.0;
         let to = required(value.to.flatten())?;
         let data = required(value.data)?;
@@ -51,6 +51,9 @@ impl TryFrom<ProviderSupplyTransaction> for PreparedBorrowingTransaction {
                 }
                 models::defi_transaction::CallDataType::Deposit => {
                     BorrowingTransactionKind::Deposit
+                }
+                models::defi_transaction::CallDataType::Redeem => {
+                    BorrowingTransactionKind::Withdraw
                 }
                 _ => return Err(BorrowingProviderError::InvalidData),
             },
@@ -67,12 +70,12 @@ impl TryFrom<ProviderSupplyTransaction> for PreparedBorrowingTransaction {
     }
 }
 
-struct ProviderSupplyPreview(models::DefiTransactionPreview);
+struct ProviderActionPreview(models::DefiTransactionPreview);
 
-impl TryFrom<ProviderSupplyPreview> for BorrowingPreview {
+impl TryFrom<ProviderActionPreview> for BorrowingPreview {
     type Error = BorrowingProviderError;
 
-    fn try_from(value: ProviderSupplyPreview) -> Result<Self, Self::Error> {
+    fn try_from(value: ProviderActionPreview) -> Result<Self, Self::Error> {
         let value = value.0;
         let estimated_network_fee = value
             .fee_and_contract
@@ -204,7 +207,7 @@ mod tests {
         let mut plan = models::DefiTransactionPlan::new();
         plan.data_list = Some(vec![approval, deposit]);
         plan.preview = Some(Box::new(preview));
-        let supply = PreparedBorrowingAction::try_from(ProviderPreparedSupply(plan))
+        let supply = PreparedBorrowingAction::try_from(ProviderPreparedAction(plan))
             .unwrap_or_else(|error| panic!("valid supply plan rejected: {error}"));
 
         assert_eq!(supply.transactions.len(), 2);
@@ -259,5 +262,24 @@ mod tests {
         assert_eq!(status.state, BorrowingTransactionState::Pending);
         assert_eq!(status.block_number, Some(123));
         assert_eq!(status.executed_at_ms, Some(1_748_601_600_000));
+    }
+
+    #[test]
+    fn redeem_plan_maps_to_a_withdrawal_transaction() {
+        let mut redeem = models::DefiTransaction::new();
+        redeem.call_data_type = Some(models::defi_transaction::CallDataType::Redeem);
+        redeem.to = Some(Some(Address::with_last_byte(3).to_string()));
+        redeem.data = Some("0x0506".to_owned());
+
+        let mut plan = models::DefiTransactionPlan::new();
+        plan.data_list = Some(vec![redeem]);
+        let withdrawal = PreparedBorrowingAction::try_from(ProviderPreparedAction(plan))
+            .unwrap_or_else(|error| panic!("valid withdrawal plan rejected: {error}"));
+
+        assert_eq!(withdrawal.transactions.len(), 1);
+        assert_eq!(
+            withdrawal.transactions[0].kind,
+            BorrowingTransactionKind::Withdraw
+        );
     }
 }
