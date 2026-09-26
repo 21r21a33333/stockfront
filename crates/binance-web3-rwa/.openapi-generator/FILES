@@ -4,6 +4,7 @@ Cargo.toml
 README.md
 git_push.sh
 src/apis/configuration.rs
+src/apis/de_fi_data_api.rs
 src/apis/mod.rs
 src/apis/rwa_data_api.rs
 src/apis/trading_api.rs
@@ -15,7 +16,18 @@ src/models/build_swap_transaction_data.rs
 src/models/build_swap_transaction_response.rs
 src/models/business_response.rs
 src/models/company_info.rs
+src/models/defi_address_position.rs
+src/models/defi_pool_position.rs
+src/models/defi_position.rs
+src/models/defi_position_collection.rs
+src/models/defi_position_collection_detail.rs
+src/models/defi_position_token.rs
+src/models/defi_position_tokens.rs
+src/models/defi_positions.rs
+src/models/defi_protocol_position.rs
 src/models/get_aggregated_quote_response.rs
+src/models/get_defi_positions_request.rs
+src/models/get_defi_positions_response.rs
 src/models/get_erc20_approve_transaction_response.rs
 src/models/get_rfq_order_status_response.rs
 src/models/get_token_balances_by_address_request.rs

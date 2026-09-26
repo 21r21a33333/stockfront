@@ -16,7 +16,25 @@ tags:
   - name: RWA data
   - name: Wallet
   - name: Trading
+  - name: DeFi data
 paths:
+  /api/v1/defi/data/position/list:
+    post:
+      operationId: getDefiPositions
+      tags: [DeFi data]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GetDefiPositionsRequest'
+      responses:
+        '200':
+          description: DeFi positions or a Binance business error.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetDefiPositionsResponse'
   /api/v1/dex/balance/token-balances-by-address:
     post:
       operationId: getTokenBalancesByAddress
@@ -285,6 +303,107 @@ components:
       schema:
         type: string
   schemas:
+    GetDefiPositionsRequest:
+      type: object
+      required: [addresses]
+      properties:
+        addresses:
+          type: array
+          maxItems: 3
+          items:
+            type: string
+        binanceChainIds:
+          type: array
+          items:
+            type: string
+    GetDefiPositionsResponse:
+      allOf:
+        - $ref: '#/components/schemas/BusinessResponse'
+        - type: object
+          properties:
+            data:
+              $ref: '#/components/schemas/DefiPositions'
+    DefiPositions:
+      type: object
+      properties:
+        totalValue:
+          type: string
+        addressList:
+          type: array
+          items:
+            $ref: '#/components/schemas/DefiAddressPosition'
+    DefiAddressPosition:
+      type: object
+      properties:
+        protocolList:
+          type: array
+          items:
+            $ref: '#/components/schemas/DefiProtocolPosition'
+    DefiProtocolPosition:
+      type: object
+      properties:
+        binanceChainId:
+          type: string
+        defiProtocolId:
+          type: string
+        protocolTotalValue:
+          type: string
+        poolList:
+          type: array
+          items:
+            $ref: '#/components/schemas/DefiPoolPosition'
+    DefiPoolPosition:
+      type: object
+      properties:
+        poolCa:
+          type: string
+        positionCollectionList:
+          type: array
+          items:
+            $ref: '#/components/schemas/DefiPositionCollection'
+    DefiPositionCollection:
+      type: object
+      properties:
+        positionCollectionDetail:
+          $ref: '#/components/schemas/DefiPositionCollectionDetail'
+        positionList:
+          type: array
+          items:
+            $ref: '#/components/schemas/DefiPosition'
+    DefiPositionCollectionDetail:
+      type: object
+      nullable: true
+      properties:
+        healthFactor:
+          type: string
+          nullable: true
+    DefiPosition:
+      type: object
+      properties:
+        tokenList:
+          $ref: '#/components/schemas/DefiPositionTokens'
+    DefiPositionTokens:
+      type: object
+      properties:
+        supply:
+          type: array
+          items:
+            $ref: '#/components/schemas/DefiPositionToken'
+        borrow:
+          type: array
+          items:
+            $ref: '#/components/schemas/DefiPositionToken'
+    DefiPositionToken:
+      type: object
+      properties:
+        tokenAddress:
+          type: string
+        tokenSymbol:
+          type: string
+        tokenAmount:
+          type: string
+        tokenValue:
+          type: string
     RfqVenue:
       type: string
       description: Supported Binance RFQ settlement venue.

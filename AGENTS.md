@@ -9,6 +9,21 @@
 - Before presenting an integration LLD, inspect the current official documentation, OpenAPI contracts, generated SDKs and existing endpoints for every required capability. Record what will be reused and justify any custom RPC, indexer or equivalent infrastructure only after official options have been ruled out.
 - Re-check provider capabilities immediately before implementation because external APIs and SDKs change.
 
+### Mandatory implementation gates
+
+Every phase and every task within a phase must follow this sequence without skipping a gate:
+
+1. Research and preflight the task using current primary sources, official APIs, OpenAPI contracts, SDKs and mature reference implementations.
+2. Compare viable implementation options, identify what can be reused, remove unnecessary custom infrastructure and recommend the smallest production-grade design.
+3. Present the task-specific HLD and LLD, including scope, data flow, domain and port boundaries, exact provider/API usage, public API contract, error behavior, security constraints, tests and acceptance criteria.
+4. Stop and wait for explicit user review and approval of that HLD/LLD. Research, agreement on a general phase design or a request to continue research is not implementation approval.
+5. Implement only the approved design. If implementation research reveals a material design change, stop, present the revised HLD/LLD and obtain approval before continuing.
+6. Re-audit the implementation for redundant validation, types, adapters, bootstrap code, dependencies and configuration; remove everything without a current consumer or owned invariant.
+7. Run formatting, Clippy with warnings denied and the relevant tests, then present a concise file-review roadmap.
+8. Wait for user review before committing. Commit only when explicitly requested.
+
+Never write scaffolding, generated clients, production code or tests before the task-specific HLD/LLD has been approved. A request such as “continue” does not waive an earlier missing design gate.
+
 ## Architecture
 
 - `stockfront-core` owns domain types, rules, use cases and outbound ports. It must remain deterministic and I/O-free.

@@ -4,6 +4,7 @@ members = [
     "crates/app",
     "crates/binance-web3-rwa",
     "crates/core",
+    "crates/venus-api",
 ]
 resolver = "3"
 

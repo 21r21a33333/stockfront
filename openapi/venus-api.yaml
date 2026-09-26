@@ -1,0 +1,144 @@
+openapi: 3.0.3
+info:
+  title: Venus Protocol API compatibility subset
+  description: Stockfront's narrow generated-client contract for Venus market discovery metadata.
+  version: 1.73.0-stockfront.1
+servers:
+  - url: https://api.venus.io
+paths:
+  /markets:
+    get:
+      operationId: getMarkets
+      tags: [Markets]
+      parameters:
+        - name: accept-version
+          in: header
+          required: true
+          schema:
+            type: string
+            enum: [stable]
+        - name: chainId
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: int32
+            default: 100
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: int32
+            default: 0
+      responses:
+        "200":
+          description: Listed Venus markets.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MarketsResponse"
+        default:
+          description: Venus API error.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+components:
+  schemas:
+    MarketsResponse:
+      type: object
+      required: [limit, page, total, result]
+      properties:
+        limit:
+          type: integer
+          format: int32
+        page:
+          type: integer
+          format: int32
+        total:
+          type: integer
+          format: int32
+        result:
+          type: array
+          items:
+            $ref: "#/components/schemas/Market"
+    Market:
+      type: object
+      required:
+        - address
+        - chainId
+        - poolComptrollerAddress
+        - underlyingAddress
+        - underlyingSymbol
+        - underlyingDecimal
+        - borrowApy
+      properties:
+        address:
+          type: string
+        chainId:
+          type: string
+        poolComptrollerAddress:
+          type: string
+        underlyingAddress:
+          type: string
+          nullable: true
+        underlyingSymbol:
+          type: string
+          nullable: true
+        underlyingDecimal:
+          type: integer
+          format: int32
+          nullable: true
+        borrowApy:
+          type: string
+          nullable: true
+        exchangeRateMantissa:
+          type: string
+          nullable: true
+        underlyingPriceMantissa:
+          type: string
+          nullable: true
+        totalBorrowsMantissa:
+          type: string
+          nullable: true
+        totalSupplyMantissa:
+          type: string
+          nullable: true
+        cashMantissa:
+          type: string
+          nullable: true
+        collateralFactorMantissa:
+          type: string
+          nullable: true
+        liquidationThresholdMantissa:
+          type: string
+          nullable: true
+        isBorrowable:
+          type: boolean
+          nullable: true
+        canBeCollateral:
+          type: boolean
+          nullable: true
+        supplyCapsMantissa:
+          type: string
+          nullable: true
+        borrowCapsMantissa:
+          type: string
+          nullable: true
+        pausedActionsBitmap:
+          type: integer
+          format: int32
+          nullable: true
+        isListed:
+          type: boolean
+          nullable: true
+        isPriceInvalid:
+          type: boolean
+          nullable: true

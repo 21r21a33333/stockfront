@@ -15,6 +15,9 @@ const DEFAULT_TRADE_SETTLEMENT_TOKENS: &str =
     "0x55d398326f99059ff775485246999027b3197955,0x8ac76a51cc950d9822d68b83fe1ad97b32cd580d";
 const DEFAULT_MAX_TRADE_PRICE_IMPACT_BPS: &str = "100";
 const DEFAULT_TRADE_SLIPPAGE_BPS: &str = "50";
+const DEFAULT_VENUS_API_BASE_URL: &str = "https://api.venus.io";
+const DEFAULT_VENUS_COMPTROLLER: &str = "0xfD36E2c2a6789Db23113685031d7F16329158384";
+const DEFAULT_BORROW_DEBT_TOKENS: &str = "0x55d398326f99059fF775485246999027B3197955";
 
 #[derive(Deserialize)]
 pub(super) struct Settings {
@@ -30,6 +33,11 @@ pub(super) struct Settings {
     pub(super) max_trade_price_impact_bps: u32,
     #[serde(deserialize_with = "deserialize_from_str")]
     pub(super) trade_slippage_bps: u32,
+    pub(super) venus_api_base_url: String,
+    #[serde(deserialize_with = "deserialize_address")]
+    pub(super) venus_comptroller: Address,
+    #[serde(deserialize_with = "deserialize_addresses")]
+    pub(super) borrow_debt_tokens: Vec<Address>,
 }
 
 impl Settings {
@@ -44,6 +52,12 @@ impl Settings {
             .unwrap_or_else(|_| DEFAULT_MAX_TRADE_PRICE_IMPACT_BPS.to_owned());
         let trade_slippage_bps = env::var("STOCKFRONT_TRADE_SLIPPAGE_BPS")
             .unwrap_or_else(|_| DEFAULT_TRADE_SLIPPAGE_BPS.to_owned());
+        let venus_api_base_url = env::var("VENUS_API_BASE_URL")
+            .unwrap_or_else(|_| DEFAULT_VENUS_API_BASE_URL.to_owned());
+        let venus_comptroller = env::var("VENUS_COMPTROLLER_ADDRESS")
+            .unwrap_or_else(|_| DEFAULT_VENUS_COMPTROLLER.to_owned());
+        let borrow_debt_tokens = env::var("STOCKFRONT_BORROW_DEBT_TOKENS")
+            .unwrap_or_else(|_| DEFAULT_BORROW_DEBT_TOKENS.to_owned());
         let fields = [
             ("binance_web3_api_key", BINANCE_WEB3_API_KEY),
             ("binance_web3_api_secret", BINANCE_WEB3_API_SECRET),
@@ -55,6 +69,9 @@ impl Settings {
                 max_trade_price_impact_bps.as_str(),
             ),
             ("trade_slippage_bps", trade_slippage_bps.as_str()),
+            ("venus_api_base_url", venus_api_base_url.as_str()),
+            ("venus_comptroller", venus_comptroller.as_str()),
+            ("borrow_debt_tokens", borrow_debt_tokens.as_str()),
         ];
         let values = fields
             .into_iter()
@@ -63,6 +80,15 @@ impl Settings {
         Self::deserialize(MapDeserializer::<_, de::value::Error>::new(values))
             .map_err(|error| SettingsError::Deserialize(error.to_string()))
     }
+}
+
+fn deserialize_address<'de, D>(deserializer: D) -> Result<Address, D::Error>
+where
+    D: de::Deserializer<'de>,
+{
+    String::deserialize(deserializer)?
+        .parse()
+        .map_err(|_| de::Error::custom("invalid EVM address"))
 }
 
 fn deserialize_addresses<'de, D>(deserializer: D) -> Result<Vec<Address>, D::Error>

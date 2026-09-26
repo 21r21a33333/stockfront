@@ -5,6 +5,7 @@ use axum::{
     http::StatusCode,
     response::{IntoResponse, Response as AxumResponse},
 };
+use stockfront_core::bstock_borrowing::{BorrowingReadError, BorrowingServiceError};
 use stockfront_core::bstock_market::{BstockMarketError, CatalogError, QueryError};
 use stockfront_core::bstock_trade::{BstockTradeError, TradeGatewayError};
 use stockfront_core::wallet_portfolio::{
@@ -21,10 +22,10 @@ pub(super) struct ApiError {
 }
 
 impl ApiError {
-    pub(super) const INVALID_CONTRACT_ADDRESS: Self = Self::fixed(
+    pub(super) const INVALID_TOKEN_ADDRESS: Self = Self::fixed(
         StatusCode::BAD_REQUEST,
         "invalid_address",
-        "contract must be an EVM address",
+        "token must be an EVM address",
     );
     pub(super) const INVALID_WALLET_ADDRESS: Self = Self::fixed(
         StatusCode::BAD_REQUEST,
@@ -115,6 +116,26 @@ impl ApiError {
         StatusCode::NOT_FOUND,
         "trade_transaction_not_found",
         "the trade transaction was not found",
+    );
+    const BORROWING_UNAVAILABLE: Self = Self::fixed(
+        StatusCode::SERVICE_UNAVAILABLE,
+        "borrowing_unavailable",
+        "borrowing data is temporarily unavailable",
+    );
+    const INVALID_BORROWING_DATA: Self = Self::fixed(
+        StatusCode::BAD_GATEWAY,
+        "invalid_borrowing_data",
+        "the borrowing provider returned invalid data",
+    );
+    const UNSUPPORTED_COLLATERAL: Self = Self::fixed(
+        StatusCode::BAD_REQUEST,
+        "unsupported_collateral",
+        "the collateral token is not a supported bStock",
+    );
+    const UNSUPPORTED_DEBT_TOKEN: Self = Self::fixed(
+        StatusCode::BAD_REQUEST,
+        "unsupported_debt_token",
+        "the debt token is not supported",
     );
     const fn fixed(status: StatusCode, code: &'static str, message: &'static str) -> Self {
         Self {
@@ -218,6 +239,26 @@ impl From<TradeGatewayError> for ApiError {
             TradeGatewayError::QuoteMismatch => Self::QUOTE_MISMATCH,
             TradeGatewayError::OrderNotFound => Self::TRADE_ORDER_NOT_FOUND,
             TradeGatewayError::TransactionNotFound => Self::TRADE_TRANSACTION_NOT_FOUND,
+        }
+    }
+}
+
+impl From<BorrowingServiceError> for ApiError {
+    fn from(error: BorrowingServiceError) -> Self {
+        match error {
+            BorrowingServiceError::Catalog(error) => error.into(),
+            BorrowingServiceError::Reader(error) => error.into(),
+            BorrowingServiceError::UnsupportedCollateral => Self::UNSUPPORTED_COLLATERAL,
+            BorrowingServiceError::UnsupportedDebtToken => Self::UNSUPPORTED_DEBT_TOKEN,
+        }
+    }
+}
+
+impl From<BorrowingReadError> for ApiError {
+    fn from(error: BorrowingReadError) -> Self {
+        match error {
+            BorrowingReadError::Unavailable => Self::BORROWING_UNAVAILABLE,
+            BorrowingReadError::InvalidData => Self::INVALID_BORROWING_DATA,
         }
     }
 }

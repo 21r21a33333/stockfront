@@ -4042,6 +4042,7 @@ dependencies = [
  "thiserror",
  "tokio",
  "uuid",
+ "venus-api",
  "zeroize",
 ]
 
@@ -4529,6 +4530,20 @@ name = "vcpkg"
 version = "0.2.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "accd4ea62f7bb7a82fe23066fb0957d48ef677f6eeb8215f372f52e48bb32426"
+
+[[package]]
+name = "venus-api"
+version = "0.1.0"
+dependencies = [
+ "reqwest",
+ "reqwest-middleware",
+ "serde",
+ "serde_json",
+ "serde_path_to_error",
+ "serde_repr",
+ "serde_with",
+ "url",
+]
 
 [[package]]
 name = "version_check"

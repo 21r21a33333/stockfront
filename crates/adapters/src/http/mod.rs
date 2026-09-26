@@ -12,8 +12,8 @@ use axum::{
     routing::{get, post},
 };
 use stockfront_core::{
-    bstock_market::BstockMarketService, bstock_trade::BstockTradeService,
-    wallet_portfolio::WalletPortfolioService,
+    bstock_borrowing::BorrowingService, bstock_market::BstockMarketService,
+    bstock_trade::BstockTradeService, wallet_portfolio::WalletPortfolioService,
 };
 
 pub fn bstock_router(service: Arc<BstockMarketService>) -> Router {
@@ -31,6 +31,16 @@ pub fn wallet_router(service: Arc<WalletPortfolioService>) -> Router {
         .route(
             "/v1/wallets/{address}/portfolio",
             get(handlers::wallets::portfolio),
+        )
+        .with_state(service)
+}
+
+pub fn borrowing_router(service: Arc<BorrowingService>) -> Router {
+    Router::new()
+        .route("/v1/borrowing/markets", get(handlers::borrowing::markets))
+        .route(
+            "/v1/wallets/{address}/loans",
+            get(handlers::borrowing::account),
         )
         .with_state(service)
 }
