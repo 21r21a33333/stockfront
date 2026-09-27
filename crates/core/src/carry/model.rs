@@ -1,8 +1,13 @@
 use alloy_primitives::Address;
 use rust_decimal::Decimal;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
-use crate::bstock_borrowing::BorrowingToken;
+use crate::{
+    bstock_borrowing::BorrowingToken,
+    prepared_action::{ActionWarning, NetworkFee, PreparedTransaction},
+    serialization::deserialize_from_string,
+    wallet_portfolio::WalletAddress,
+};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct CarryOpportunityQuery {
@@ -71,4 +76,71 @@ pub struct CarryOpportunity {
     pub qualification: CarryQualification,
     pub reasons: Vec<CarryOpportunityReason>,
     pub observed_at_ms: i64,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PrepareCarryDepositRequest {
+    pub wallet: WalletAddress,
+    #[serde(deserialize_with = "deserialize_from_string")]
+    pub collateral_token: Address,
+    pub investment_id: String,
+    #[serde(deserialize_with = "deserialize_from_string")]
+    pub amount: Decimal,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct EarnDepositCommand {
+    pub wallet: WalletAddress,
+    pub investment_id: String,
+    pub asset: Address,
+    pub amount: Decimal,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum CarryTransactionKind {
+    Approve,
+    Deposit,
+}
+
+pub type PreparedCarryTransaction = PreparedTransaction<CarryTransactionKind>;
+
+#[derive(Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CarryBalanceChange {
+    pub token: BorrowingToken,
+    pub amount: Decimal,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub value_usd: Option<Decimal>,
+}
+
+#[derive(Debug, Default, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CarryDepositPreview {
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub balance_changes: Vec<CarryBalanceChange>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub estimated_network_fee: Option<NetworkFee>,
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        serialize_with = "crate::serialization::serialize_optional_as_string"
+    )]
+    pub interact_with: Option<Address>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub warnings: Vec<ActionWarning>,
+}
+
+#[derive(Debug, Eq, PartialEq)]
+pub struct CarryDepositPlan {
+    pub transactions: Vec<PreparedCarryTransaction>,
+    pub preview: CarryDepositPreview,
+}
+
+#[derive(Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PreparedCarryDeposit {
+    pub opportunity: CarryOpportunity,
+    pub transactions: Vec<PreparedCarryTransaction>,
+    pub preview: CarryDepositPreview,
 }

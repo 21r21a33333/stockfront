@@ -21,6 +21,8 @@ src/models/build_swap_transaction_response.rs
 src/models/business_response.rs
 src/models/company_info.rs
 src/models/defi_address_position.rs
+src/models/defi_balance_change.rs
+src/models/defi_contract.rs
 src/models/defi_fee_and_contract.rs
 src/models/defi_health_factor.rs
 src/models/defi_investment.rs

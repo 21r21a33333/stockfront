@@ -1,10 +1,13 @@
 mod support;
 
-use std::{collections::HashSet, error::Error};
+use std::{collections::HashSet, env, error::Error, io};
 
-use alloy_primitives::address;
+use alloy_primitives::{Address, U256, address};
 use rust_decimal::Decimal;
-use stockfront_core::carry::EarnOpportunityReader;
+use stockfront_core::{
+    carry::{CarryTransactionKind, EarnActionGateway, EarnDepositCommand, EarnOpportunityReader},
+    wallet_portfolio::WalletAddress,
+};
 
 use support::live_client;
 
@@ -40,6 +43,78 @@ async fn discovers_live_usdt_earn_opportunities() -> Result<(), Box<dyn Error>> 
                 .reported_tvl_usd
                 .is_none_or(|tvl| tvl >= Decimal::ZERO)
             && opportunity.observed_at_ms > 0
+    }));
+
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires live Binance Web3 credentials, STOCKFRONT_TEST_WALLET, and a reviewed carry investment"]
+async fn prepares_live_carry_deposit() -> Result<(), Box<dyn Error>> {
+    let client = live_client()?;
+    let investment_id = env::var("STOCKFRONT_CARRY_INVESTMENT_IDS")?
+        .split(',')
+        .map(str::trim)
+        .find(|id| !id.is_empty())
+        .ok_or_else(|| io::Error::other("no reviewed carry investment is configured"))?
+        .to_owned();
+    let opportunity = client
+        .opportunity(&investment_id)
+        .await?
+        .ok_or_else(|| io::Error::other("reviewed carry investment was not found"))?;
+    let wallet = WalletAddress::try_from(env::var("STOCKFRONT_TEST_WALLET")?.parse::<Address>()?)?;
+    let amount = env::var("STOCKFRONT_CARRY_TEST_AMOUNT")
+        .unwrap_or_else(|_| "0.01".to_owned())
+        .parse::<Decimal>()?;
+
+    let plan = client
+        .prepare_deposit(&EarnDepositCommand {
+            wallet,
+            investment_id,
+            asset: opportunity.asset.contract,
+            amount,
+        })
+        .await?;
+
+    let (deposit, approvals) = plan
+        .transactions
+        .split_last()
+        .ok_or_else(|| io::Error::other("Binance returned no deposit transaction"))?;
+    assert_eq!(deposit.kind, CarryTransactionKind::Deposit);
+    assert!(
+        approvals
+            .iter()
+            .all(|transaction| transaction.kind == CarryTransactionKind::Approve)
+    );
+    for transaction in &plan.transactions {
+        assert_ne!(transaction.to, Address::ZERO);
+        assert!(!transaction.data.is_empty());
+        assert_eq!(transaction.value, U256::ZERO);
+        assert!(transaction.gas_limit.is_some_and(|gas| gas > U256::ZERO));
+        assert!(
+            transaction
+                .max_priority_fee_per_gas
+                .is_some_and(|fee| fee > U256::ZERO)
+        );
+        assert!(
+            transaction
+                .max_fee_per_gas
+                .is_some_and(|fee| fee > U256::ZERO)
+        );
+    }
+    assert_eq!(plan.preview.interact_with, Some(deposit.to));
+    let fee = plan
+        .preview
+        .estimated_network_fee
+        .ok_or_else(|| io::Error::other("network fee missing from deposit preview"))?;
+    assert!(fee.amount.is_sign_positive());
+    assert_eq!(fee.token_symbol, "BNB");
+    assert!(fee.value_usd.is_some_and(|value| value.is_sign_positive()));
+    assert!(plan.preview.balance_changes.iter().any(|change| {
+        change.token.contract == opportunity.asset.contract && change.amount == -amount
+    }));
+    assert!(plan.preview.warnings.iter().all(|warning| {
+        !warning.code.is_empty() && !warning.level.is_empty() && !warning.message.is_empty()
     }));
 
     Ok(())

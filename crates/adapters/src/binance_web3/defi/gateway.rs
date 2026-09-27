@@ -15,11 +15,12 @@ use stockfront_core::{
         PreparedBorrowingAction,
     },
     bstock_market::BNB_CHAIN_ID,
+    wallet_portfolio::WalletAddress,
 };
 
 use super::{
     super::client::BinanceWeb3Client,
-    super::provider::{ensure_business_success, map_request_error},
+    super::provider::{BinanceRequestError, ensure_business_success, map_request_error},
     mapping::{ProviderPreparedAction, ProviderTransactionDetails},
 };
 
@@ -31,12 +32,28 @@ impl BinanceWeb3Client {
         request: &PrepareSupplyRequest,
     ) -> Result<PreparedBorrowingAction, BorrowingProviderError> {
         let investment_id = self.venus_investment_id(request.collateral_token).await?;
-        let token = models::DefiTokenAmount::new(
-            request.collateral_token.to_string(),
-            request.amount.to_string(),
-        );
+        let plan = self
+            .build_deposit_plan(
+                request.wallet,
+                investment_id,
+                request.collateral_token,
+                request.amount,
+            )
+            .await
+            .map_err(BorrowingProviderError::from)?;
+        PreparedBorrowingAction::try_from(ProviderPreparedAction(plan))
+    }
+
+    pub(super) async fn build_deposit_plan(
+        &self,
+        wallet: WalletAddress,
+        investment_id: String,
+        token: Address,
+        amount: rust_decimal::Decimal,
+    ) -> Result<models::DefiTransactionPlan, DepositPlanError> {
+        let token = models::DefiTokenAmount::new(token.to_string(), amount.to_string());
         let mut body = models::BuildDefiDepositRequest::new(
-            request.wallet.as_address().to_string(),
+            wallet.as_address().to_string(),
             investment_id,
             token,
         );
@@ -51,8 +68,10 @@ impl BinanceWeb3Client {
         .await
         .map_err(map_request_error)?;
         ensure_business_success(response.code, response.success)?;
-        let plan = response.data.ok_or(BorrowingProviderError::InvalidData)?;
-        PreparedBorrowingAction::try_from(ProviderPreparedAction(*plan))
+        response
+            .data
+            .map(|plan| *plan)
+            .ok_or(DepositPlanError::InvalidData)
     }
 
     pub(crate) async fn borrowing_transaction_status(
@@ -106,6 +125,27 @@ impl BinanceWeb3Client {
             .investment_id
             .filter(|investment_id| !investment_id.is_empty())
             .ok_or(BorrowingProviderError::InvalidData)
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub(super) enum DepositPlanError {
+    Request(BinanceRequestError),
+    InvalidData,
+}
+
+impl From<BinanceRequestError> for DepositPlanError {
+    fn from(error: BinanceRequestError) -> Self {
+        Self::Request(error)
+    }
+}
+
+impl From<DepositPlanError> for BorrowingProviderError {
+    fn from(error: DepositPlanError) -> Self {
+        match error {
+            DepositPlanError::Request(error) => error.into(),
+            DepositPlanError::InvalidData => Self::InvalidData,
+        }
     }
 }
 

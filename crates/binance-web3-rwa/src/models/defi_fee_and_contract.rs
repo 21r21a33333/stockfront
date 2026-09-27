@@ -18,12 +18,15 @@ pub struct DefiFeeAndContract {
         skip_serializing_if = "Option::is_none"
     )]
     pub estimated_network_fee: Option<Box<models::DefiNetworkFee>>,
+    #[serde(rename = "interactWith", skip_serializing_if = "Option::is_none")]
+    pub interact_with: Option<Box<models::DefiContract>>,
 }
 
 impl DefiFeeAndContract {
     pub fn new() -> DefiFeeAndContract {
         DefiFeeAndContract {
             estimated_network_fee: None,
+            interact_with: None,
         }
     }
 }

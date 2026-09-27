@@ -13,7 +13,7 @@ use rust_decimal::Decimal;
 use stockfront_core::{
     bstock_borrowing::BorrowingToken,
     bstock_market::BNB_CHAIN_ID,
-    carry::{EarnOpportunity, EarnOpportunityProviderError, EarnOpportunityReader, EarnRateType},
+    carry::{EarnOpportunity, EarnOpportunityReader, EarnProviderError, EarnRateType},
 };
 
 use super::super::{
@@ -31,7 +31,7 @@ impl EarnOpportunityReader for BinanceWeb3Client {
     async fn opportunities(
         &self,
         asset: Address,
-    ) -> Result<Vec<EarnOpportunity>, EarnOpportunityProviderError> {
+    ) -> Result<Vec<EarnOpportunity>, EarnProviderError> {
         let investment_ids = self.earn_investment_ids(asset).await?;
         if investment_ids.is_empty() {
             return Ok(Vec::new());
@@ -53,18 +53,33 @@ impl EarnOpportunityReader for BinanceWeb3Client {
         }
 
         if opportunities.is_empty() {
-            Err(EarnOpportunityProviderError::InvalidData)
+            Err(EarnProviderError::InvalidData)
         } else {
             Ok(opportunities)
         }
     }
+
+    async fn opportunity(
+        &self,
+        investment_id: &str,
+    ) -> Result<Option<EarnOpportunity>, EarnProviderError> {
+        let Some(detail) = self.earn_investment_detail(investment_id).await? else {
+            return Ok(None);
+        };
+        let asset = single_asset(&detail.investment)?;
+        EarnOpportunity::try_from(ProviderEarnOpportunity {
+            investment_id: investment_id.to_owned(),
+            asset,
+            observed_at_ms: detail.observed_at_ms,
+            detail: detail.investment,
+        })
+        .map(Some)
+        .map_err(Into::into)
+    }
 }
 
 impl BinanceWeb3Client {
-    async fn earn_investment_ids(
-        &self,
-        asset: Address,
-    ) -> Result<Vec<String>, EarnOpportunityProviderError> {
+    async fn earn_investment_ids(&self, asset: Address) -> Result<Vec<String>, EarnProviderError> {
         let mut page_number = 1;
         let mut investment_ids = Vec::new();
         let mut seen = HashSet::new();
@@ -93,7 +108,7 @@ impl BinanceWeb3Client {
         }
 
         if provider_record_count > 0 && investment_ids.is_empty() {
-            Err(EarnOpportunityProviderError::InvalidData)
+            Err(EarnProviderError::InvalidData)
         } else {
             Ok(investment_ids)
         }
@@ -102,7 +117,7 @@ impl BinanceWeb3Client {
     async fn earn_investment_detail(
         &self,
         investment_id: &str,
-    ) -> Result<Option<ProviderInvestmentDetail>, EarnOpportunityProviderError> {
+    ) -> Result<Option<ProviderInvestmentDetail>, EarnProviderError> {
         let body = models::GetDefiInvestmentDetailRequest::new(investment_id.to_owned());
         let response = get_defi_investment_detail(
             &self.configuration,
@@ -194,6 +209,21 @@ impl TryFrom<ProviderEarnOpportunity> for EarnOpportunity {
             observed_at_ms: provider.observed_at_ms,
         })
     }
+}
+
+fn single_asset(detail: &models::DefiInvestmentDetail) -> Result<Address, InvalidProviderData> {
+    let assets = detail
+        .asset_token_list
+        .as_deref()
+        .unwrap_or_default()
+        .iter()
+        .filter_map(|token| token.token_address.as_deref())
+        .map(parse)
+        .collect::<Result<HashSet<Address>, _>>()?;
+    if assets.len() != 1 {
+        return Err(InvalidProviderData);
+    }
+    assets.into_iter().next().ok_or(InvalidProviderData)
 }
 
 fn append_investment_ids(

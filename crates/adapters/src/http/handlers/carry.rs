@@ -1,9 +1,15 @@
 use std::sync::Arc;
 
-use axum::extract::{Query, State, rejection::QueryRejection};
+use axum::{
+    Json,
+    extract::{Query, State, rejection::JsonRejection, rejection::QueryRejection},
+};
 use stockfront_core::{
     bstock_market::Address,
-    carry::{CarryOpportunity, CarryOpportunityQuery, CarryOpportunityService},
+    carry::{
+        CarryOpportunity, CarryOpportunityQuery, CarryService, PrepareCarryDepositRequest,
+        PreparedCarryDeposit,
+    },
 };
 
 use super::super::{
@@ -13,7 +19,7 @@ use super::super::{
 };
 
 pub(in crate::http) async fn opportunities(
-    State(service): State<Arc<CarryOpportunityService>>,
+    State(service): State<Arc<CarryService>>,
     request: Result<Query<CarryOpportunitiesRequest>, QueryRejection>,
 ) -> ApiResult<List<CarryOpportunity>> {
     let Query(request) = request?;
@@ -24,6 +30,15 @@ pub(in crate::http) async fn opportunities(
         })
         .await?;
     Ok(Response::ok(List::all(opportunities)))
+}
+
+pub(in crate::http) async fn prepare_deposit(
+    State(service): State<Arc<CarryService>>,
+    request: Result<Json<PrepareCarryDepositRequest>, JsonRejection>,
+) -> ApiResult<PreparedCarryDeposit> {
+    let Json(request) = request?;
+    let deposit = service.prepare_deposit(&request).await?;
+    Ok(Response::ok(deposit))
 }
 
 fn parse_address(value: &str) -> Result<Address, ApiError> {

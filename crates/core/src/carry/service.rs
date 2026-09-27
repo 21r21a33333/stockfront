@@ -9,7 +9,8 @@ use crate::{
     },
     carry::{
         CarryOpportunity, CarryOpportunityQuery, CarryOpportunityReason, CarryQualification,
-        EarnOpportunity, EarnOpportunityProviderError, EarnOpportunityReader,
+        EarnActionGateway, EarnDepositCommand, EarnOpportunity, EarnOpportunityReader,
+        EarnProviderError, PrepareCarryDepositRequest, PreparedCarryDeposit,
     },
 };
 
@@ -35,28 +36,37 @@ impl CarryPolicy {
 }
 
 #[derive(Debug, Error)]
-pub enum CarryOpportunityServiceError {
+pub enum CarryServiceError {
     #[error(transparent)]
     Borrowing(#[from] BorrowingServiceError),
     #[error(transparent)]
-    EarnProvider(#[from] EarnOpportunityProviderError),
+    EarnProvider(#[from] EarnProviderError),
+    #[error("carry deposit amount must be greater than zero")]
+    InvalidDepositAmount,
+    #[error("the earn opportunity was not found")]
+    OpportunityNotFound,
+    #[error("the earn opportunity is not currently eligible")]
+    OpportunityUnavailable,
 }
 
-pub struct CarryOpportunityService {
+pub struct CarryService {
     borrowing: Arc<BorrowingService>,
     earn_reader: Arc<dyn EarnOpportunityReader>,
+    earn_gateway: Arc<dyn EarnActionGateway>,
     policy: CarryPolicy,
 }
 
-impl CarryOpportunityService {
+impl CarryService {
     pub fn new(
         borrowing: Arc<BorrowingService>,
         earn_reader: Arc<dyn EarnOpportunityReader>,
+        earn_gateway: Arc<dyn EarnActionGateway>,
         policy: CarryPolicy,
     ) -> Self {
         Self {
             borrowing,
             earn_reader,
+            earn_gateway,
             policy,
         }
     }
@@ -65,12 +75,12 @@ impl CarryOpportunityService {
     ///
     /// # Errors
     ///
-    /// Returns [`CarryOpportunityServiceError`] when the requested market is unsupported or a
+    /// Returns [`CarryServiceError`] when the requested market is unsupported or a
     /// provider cannot supply current data.
     pub async fn opportunities(
         &self,
         query: CarryOpportunityQuery,
-    ) -> Result<Vec<CarryOpportunity>, CarryOpportunityServiceError> {
+    ) -> Result<Vec<CarryOpportunity>, CarryServiceError> {
         let markets = self
             .borrowing
             .markets(BorrowingMarketQuery {
@@ -94,6 +104,53 @@ impl CarryOpportunityService {
                 .then_with(|| left.investment_id.cmp(&right.investment_id))
         });
         Ok(opportunities)
+    }
+
+    /// Returns a simulated, unsigned deposit plan for a currently eligible earn opportunity.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CarryServiceError`] when the amount or opportunity is invalid, the route is no
+    /// longer eligible, or a provider cannot prepare the transaction plan.
+    pub async fn prepare_deposit(
+        &self,
+        request: &PrepareCarryDepositRequest,
+    ) -> Result<PreparedCarryDeposit, CarryServiceError> {
+        if request.amount <= Decimal::ZERO {
+            return Err(CarryServiceError::InvalidDepositAmount);
+        }
+        let earn = self
+            .earn_reader
+            .opportunity(&request.investment_id)
+            .await?
+            .ok_or(CarryServiceError::OpportunityNotFound)?;
+        let markets = self
+            .borrowing
+            .markets(BorrowingMarketQuery {
+                collateral_token: Some(request.collateral_token),
+                debt_token: Some(earn.asset.contract),
+            })
+            .await?;
+        let opportunity = markets
+            .iter()
+            .map(|market| assess(market, &earn, &self.policy))
+            .find(|opportunity| opportunity.qualification == CarryQualification::Eligible)
+            .ok_or(CarryServiceError::OpportunityUnavailable)?;
+        let plan = self
+            .earn_gateway
+            .prepare_deposit(&EarnDepositCommand {
+                wallet: request.wallet,
+                investment_id: opportunity.investment_id.clone(),
+                asset: opportunity.asset.contract,
+                amount: request.amount,
+            })
+            .await?;
+
+        Ok(PreparedCarryDeposit {
+            opportunity,
+            transactions: plan.transactions,
+            preview: plan.preview,
+        })
     }
 }
 
@@ -154,13 +211,24 @@ fn assess(
 
 #[cfg(test)]
 mod tests {
-    use alloy_primitives::address;
+    use alloy_primitives::{Address, B256, address};
+    use async_trait::async_trait;
     use rust_decimal::Decimal;
 
     use super::*;
     use crate::{
-        bstock_borrowing::{BorrowingToken, BorrowingVenue},
-        carry::EarnRateType,
+        bstock_borrowing::{
+            BorrowingAccount, BorrowingActionGateway, BorrowingPolicy, BorrowingProviderError,
+            BorrowingReader, BorrowingToken, BorrowingTransactionStatus, BorrowingVenue,
+            PrepareBorrowRequest, PrepareCollateralRequest, PrepareRepaymentRequest,
+            PrepareSupplyRequest, PrepareWithdrawalRequest, PreparedBorrowingAction,
+        },
+        bstock_market::{
+            AssetKind, BNB_CHAIN_ID, BstockCatalog, BstockDetails, BstockId, BstockSummary,
+            CatalogError,
+        },
+        carry::{CarryDepositPlan, CarryDepositPreview, EarnRateType},
+        wallet_portfolio::WalletAddress,
     };
 
     const INVESTMENT_ID: &str = "reviewed-investment";
@@ -215,6 +283,220 @@ mod tests {
                 CarryOpportunityReason::InsufficientBaseSpread,
             ]
         );
+    }
+
+    #[tokio::test]
+    async fn eligible_deposit_uses_the_investment_asset_and_current_opportunity() {
+        let service = service(CarryPolicy::new(vec![INVESTMENT_ID.to_owned()], 100));
+        let wallet = wallet();
+        let deposit = service
+            .prepare_deposit(&PrepareCarryDepositRequest {
+                wallet,
+                collateral_token: Address::with_last_byte(1),
+                investment_id: INVESTMENT_ID.to_owned(),
+                amount: Decimal::new(25, 0),
+            })
+            .await
+            .unwrap_or_else(|error| panic!("eligible deposit rejected: {error}"));
+
+        assert_eq!(deposit.opportunity.investment_id, INVESTMENT_ID);
+        assert_eq!(
+            deposit.opportunity.qualification,
+            CarryQualification::Eligible
+        );
+        assert_eq!(
+            deposit.opportunity.asset.contract,
+            Address::with_last_byte(3)
+        );
+    }
+
+    #[tokio::test]
+    async fn deposit_rejects_invalid_amount_and_unreviewed_opportunity() {
+        let service = service(CarryPolicy::new(Vec::new(), 100));
+        let request = PrepareCarryDepositRequest {
+            wallet: wallet(),
+            collateral_token: Address::with_last_byte(1),
+            investment_id: INVESTMENT_ID.to_owned(),
+            amount: Decimal::ZERO,
+        };
+
+        assert!(matches!(
+            service.prepare_deposit(&request).await,
+            Err(CarryServiceError::InvalidDepositAmount)
+        ));
+        let request = PrepareCarryDepositRequest {
+            amount: Decimal::ONE,
+            ..request
+        };
+        assert!(matches!(
+            service.prepare_deposit(&request).await,
+            Err(CarryServiceError::OpportunityUnavailable)
+        ));
+    }
+
+    struct FixedCatalog;
+
+    #[async_trait]
+    impl BstockCatalog for FixedCatalog {
+        async fn list_bstocks(&self) -> Result<Vec<BstockSummary>, CatalogError> {
+            Ok(vec![BstockSummary {
+                id: BstockId {
+                    chain_id: BNB_CHAIN_ID,
+                    contract: Address::with_last_byte(1),
+                },
+                token_name: "Stock".to_owned(),
+                token_symbol: "STKB".to_owned(),
+                token_logo_url: None,
+                token_decimals: 18,
+                underlying_ticker: "STK".to_owned(),
+                underlying_name: "Stock".to_owned(),
+                asset_kind: AssetKind::Stock,
+                token_to_share_ratio: Decimal::ONE,
+                token_price_usd: None,
+                reference_price_usd: None,
+                volume_24h_usd: None,
+                market_cap_usd: None,
+                market_status: None,
+                tags: Vec::new(),
+            }])
+        }
+
+        async fn find_bstock(&self, _id: BstockId) -> Result<Option<BstockDetails>, CatalogError> {
+            Ok(None)
+        }
+    }
+
+    struct FixedBorrowingReader;
+
+    #[async_trait]
+    impl BorrowingReader for FixedBorrowingReader {
+        async fn read_markets(
+            &self,
+            collateral_assets: &[BstockId],
+            debt_tokens: &[Address],
+        ) -> Result<Vec<BorrowingMarket>, BorrowingProviderError> {
+            assert_eq!(collateral_assets[0].contract, Address::with_last_byte(1));
+            assert_eq!(debt_tokens, &[Address::with_last_byte(3)]);
+            Ok(vec![market(
+                Decimal::new(4, 0),
+                true,
+                Decimal::new(1_000, 0),
+            )])
+        }
+
+        async fn read_account(
+            &self,
+            _wallet: WalletAddress,
+        ) -> Result<BorrowingAccount, BorrowingProviderError> {
+            Err(BorrowingProviderError::Unavailable)
+        }
+    }
+
+    struct UnusedBorrowingGateway;
+
+    #[async_trait]
+    impl BorrowingActionGateway for UnusedBorrowingGateway {
+        async fn prepare_supply(
+            &self,
+            _request: &PrepareSupplyRequest,
+        ) -> Result<PreparedBorrowingAction, BorrowingProviderError> {
+            Err(BorrowingProviderError::Unavailable)
+        }
+
+        async fn prepare_collateral(
+            &self,
+            _request: &PrepareCollateralRequest,
+        ) -> Result<PreparedBorrowingAction, BorrowingProviderError> {
+            Err(BorrowingProviderError::Unavailable)
+        }
+
+        async fn prepare_borrow(
+            &self,
+            _request: &PrepareBorrowRequest,
+        ) -> Result<PreparedBorrowingAction, BorrowingProviderError> {
+            Err(BorrowingProviderError::Unavailable)
+        }
+
+        async fn prepare_repayment_approval(
+            &self,
+            _request: &PrepareRepaymentRequest,
+        ) -> Result<PreparedBorrowingAction, BorrowingProviderError> {
+            Err(BorrowingProviderError::Unavailable)
+        }
+
+        async fn prepare_repayment(
+            &self,
+            _request: &PrepareRepaymentRequest,
+        ) -> Result<PreparedBorrowingAction, BorrowingProviderError> {
+            Err(BorrowingProviderError::Unavailable)
+        }
+
+        async fn prepare_withdrawal(
+            &self,
+            _request: &PrepareWithdrawalRequest,
+        ) -> Result<PreparedBorrowingAction, BorrowingProviderError> {
+            Err(BorrowingProviderError::Unavailable)
+        }
+
+        async fn transaction_status(
+            &self,
+            _transaction_hash: B256,
+        ) -> Result<BorrowingTransactionStatus, BorrowingProviderError> {
+            Err(BorrowingProviderError::Unavailable)
+        }
+    }
+
+    struct FixedEarn;
+
+    #[async_trait]
+    impl EarnOpportunityReader for FixedEarn {
+        async fn opportunities(
+            &self,
+            _asset: Address,
+        ) -> Result<Vec<EarnOpportunity>, EarnProviderError> {
+            Ok(vec![earn(700, true)])
+        }
+
+        async fn opportunity(
+            &self,
+            investment_id: &str,
+        ) -> Result<Option<EarnOpportunity>, EarnProviderError> {
+            Ok((investment_id == INVESTMENT_ID).then(|| earn(700, true)))
+        }
+    }
+
+    #[async_trait]
+    impl EarnActionGateway for FixedEarn {
+        async fn prepare_deposit(
+            &self,
+            command: &EarnDepositCommand,
+        ) -> Result<CarryDepositPlan, EarnProviderError> {
+            assert_eq!(command.wallet, wallet());
+            assert_eq!(command.investment_id, INVESTMENT_ID);
+            assert_eq!(command.asset, Address::with_last_byte(3));
+            assert_eq!(command.amount, Decimal::new(25, 0));
+            Ok(CarryDepositPlan {
+                transactions: Vec::new(),
+                preview: CarryDepositPreview::default(),
+            })
+        }
+    }
+
+    fn service(policy: CarryPolicy) -> CarryService {
+        let earn = Arc::new(FixedEarn);
+        let borrowing = Arc::new(BorrowingService::new(
+            Arc::new(FixedCatalog),
+            Arc::new(FixedBorrowingReader),
+            Arc::new(UnusedBorrowingGateway),
+            BorrowingPolicy::new(vec![Address::with_last_byte(3)])
+                .unwrap_or_else(|error| panic!("valid borrowing policy rejected: {error}")),
+        ));
+        CarryService::new(borrowing, earn.clone(), earn, policy)
+    }
+
+    fn wallet() -> WalletAddress {
+        WalletAddress::try_from(Address::with_last_byte(9))
+            .unwrap_or_else(|error| panic!("valid wallet rejected: {error}"))
     }
 
     fn market(

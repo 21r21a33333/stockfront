@@ -12,7 +12,7 @@ use stockfront_core::{
     bstock_borrowing::{BorrowingPolicy, BorrowingService},
     bstock_market::BstockMarketService,
     bstock_trade::{BstockTradeService, TradePolicy},
-    carry::{CarryOpportunityService, CarryPolicy},
+    carry::{CarryPolicy, CarryService},
     wallet_portfolio::WalletPortfolioService,
 };
 
@@ -74,8 +74,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
         venus,
         BorrowingPolicy::new(borrow_debt_tokens)?,
     ));
-    let carry = Arc::new(CarryOpportunityService::new(
+    let carry = Arc::new(CarryService::new(
         borrowing.clone(),
+        binance.clone(),
         binance,
         CarryPolicy::new(carry_investment_ids, min_carry_spread_bps),
     ));

@@ -662,6 +662,10 @@ components:
     DefiTransactionPreview:
       type: object
       properties:
+        balanceChange:
+          type: array
+          items:
+            $ref: '#/components/schemas/DefiBalanceChange'
         feeAndContract:
           $ref: '#/components/schemas/DefiFeeAndContract'
         healthFactor:
@@ -675,6 +679,25 @@ components:
       properties:
         estimatedNetworkFee:
           $ref: '#/components/schemas/DefiNetworkFee'
+        interactWith:
+          $ref: '#/components/schemas/DefiContract'
+    DefiContract:
+      type: object
+      properties:
+        address:
+          type: string
+    DefiBalanceChange:
+      type: object
+      properties:
+        tokenSymbol:
+          type: string
+        tokenAddress:
+          type: string
+        amount:
+          type: string
+        valueUsd:
+          type: string
+          nullable: true
     DefiNetworkFee:
       type: object
       properties:

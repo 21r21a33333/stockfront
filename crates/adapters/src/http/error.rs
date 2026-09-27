@@ -8,7 +8,7 @@ use axum::{
 use stockfront_core::bstock_borrowing::{BorrowingProviderError, BorrowingServiceError};
 use stockfront_core::bstock_market::{BstockMarketError, CatalogError, QueryError};
 use stockfront_core::bstock_trade::{BstockTradeError, TradeGatewayError};
-use stockfront_core::carry::{CarryOpportunityServiceError, EarnOpportunityProviderError};
+use stockfront_core::carry::{CarryServiceError, EarnProviderError};
 use stockfront_core::wallet_portfolio::{
     BalanceReaderError, WalletAddressError, WalletPortfolioError,
 };
@@ -188,6 +188,26 @@ impl ApiError {
         "carry_opportunities_unavailable",
         "carry opportunities are temporarily unavailable",
     );
+    const INVALID_CARRY_DEPOSIT_AMOUNT: Self = Self::fixed(
+        StatusCode::BAD_REQUEST,
+        "invalid_carry_deposit_amount",
+        "carry deposit amount must be greater than zero",
+    );
+    const CARRY_OPPORTUNITY_NOT_FOUND: Self = Self::fixed(
+        StatusCode::NOT_FOUND,
+        "carry_opportunity_not_found",
+        "the earn opportunity was not found",
+    );
+    const CARRY_OPPORTUNITY_UNAVAILABLE: Self = Self::fixed(
+        StatusCode::CONFLICT,
+        "carry_opportunity_unavailable",
+        "the earn opportunity is not currently eligible",
+    );
+    const CARRY_REQUEST_REJECTED: Self = Self::fixed(
+        StatusCode::UNPROCESSABLE_ENTITY,
+        "carry_request_rejected",
+        "the earn provider rejected the request",
+    );
     const fn fixed(status: StatusCode, code: &'static str, message: &'static str) -> Self {
         Self {
             status,
@@ -304,20 +324,24 @@ impl From<TradeGatewayError> for ApiError {
     }
 }
 
-impl From<CarryOpportunityServiceError> for ApiError {
-    fn from(error: CarryOpportunityServiceError) -> Self {
+impl From<CarryServiceError> for ApiError {
+    fn from(error: CarryServiceError) -> Self {
         match error {
-            CarryOpportunityServiceError::Borrowing(error) => error.into(),
-            CarryOpportunityServiceError::EarnProvider(error) => error.into(),
+            CarryServiceError::Borrowing(error) => error.into(),
+            CarryServiceError::EarnProvider(error) => error.into(),
+            CarryServiceError::InvalidDepositAmount => Self::INVALID_CARRY_DEPOSIT_AMOUNT,
+            CarryServiceError::OpportunityNotFound => Self::CARRY_OPPORTUNITY_NOT_FOUND,
+            CarryServiceError::OpportunityUnavailable => Self::CARRY_OPPORTUNITY_UNAVAILABLE,
         }
     }
 }
 
-impl From<EarnOpportunityProviderError> for ApiError {
-    fn from(error: EarnOpportunityProviderError) -> Self {
+impl From<EarnProviderError> for ApiError {
+    fn from(error: EarnProviderError) -> Self {
         match error {
-            EarnOpportunityProviderError::Unavailable => Self::CARRY_OPPORTUNITIES_UNAVAILABLE,
-            EarnOpportunityProviderError::InvalidData => Self::INVALID_PROVIDER_RESPONSE,
+            EarnProviderError::Unavailable => Self::CARRY_OPPORTUNITIES_UNAVAILABLE,
+            EarnProviderError::Rejected => Self::CARRY_REQUEST_REJECTED,
+            EarnProviderError::InvalidData => Self::INVALID_PROVIDER_RESPONSE,
         }
     }
 }

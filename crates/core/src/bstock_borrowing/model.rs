@@ -1,11 +1,10 @@
-use alloy_primitives::{Address, Bytes, U256};
+use alloy_primitives::Address;
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    serialization::{
-        deserialize_from_string, serialize_as_string, serialize_bytes, serialize_optional_as_string,
-    },
+    prepared_action::{ActionWarning, NetworkFee, PreparedTransaction},
+    serialization::{deserialize_from_string, serialize_as_string},
     wallet_portfolio::WalletAddress,
 };
 
@@ -161,54 +160,9 @@ pub enum BorrowingTransactionKind {
     Withdraw,
 }
 
-#[derive(Debug, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct PreparedBorrowingTransaction {
-    pub kind: BorrowingTransactionKind,
-    #[serde(serialize_with = "serialize_as_string")]
-    pub to: Address,
-    #[serde(serialize_with = "serialize_bytes")]
-    pub data: Bytes,
-    #[serde(serialize_with = "serialize_as_string")]
-    pub value: U256,
-    #[serde(
-        skip_serializing_if = "Option::is_none",
-        serialize_with = "serialize_optional_as_string"
-    )]
-    pub gas_limit: Option<U256>,
-    #[serde(
-        skip_serializing_if = "Option::is_none",
-        serialize_with = "serialize_optional_as_string"
-    )]
-    pub gas_price: Option<U256>,
-    #[serde(
-        skip_serializing_if = "Option::is_none",
-        serialize_with = "serialize_optional_as_string"
-    )]
-    pub max_priority_fee_per_gas: Option<U256>,
-    #[serde(
-        skip_serializing_if = "Option::is_none",
-        serialize_with = "serialize_optional_as_string"
-    )]
-    pub max_fee_per_gas: Option<U256>,
-}
-
-#[derive(Debug, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct BorrowingWarning {
-    pub code: String,
-    pub level: String,
-    pub message: String,
-}
-
-#[derive(Debug, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct BorrowingNetworkFee {
-    pub amount: Decimal,
-    pub token_symbol: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub value_usd: Option<Decimal>,
-}
+pub type PreparedBorrowingTransaction = PreparedTransaction<BorrowingTransactionKind>;
+pub type BorrowingWarning = ActionWarning;
+pub type BorrowingNetworkFee = NetworkFee;
 
 #[derive(Debug, Default, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
