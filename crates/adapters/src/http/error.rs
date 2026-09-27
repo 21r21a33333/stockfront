@@ -188,6 +188,11 @@ impl ApiError {
         "carry_opportunities_unavailable",
         "carry opportunities are temporarily unavailable",
     );
+    const CARRY_POSITIONS_UNAVAILABLE: Self = Self::fixed(
+        StatusCode::SERVICE_UNAVAILABLE,
+        "carry_positions_unavailable",
+        "carry positions are temporarily unavailable",
+    );
     const INVALID_CARRY_DEPOSIT_AMOUNT: Self = Self::fixed(
         StatusCode::BAD_REQUEST,
         "invalid_carry_deposit_amount",
@@ -329,6 +334,11 @@ impl From<CarryServiceError> for ApiError {
         match error {
             CarryServiceError::Borrowing(error) => error.into(),
             CarryServiceError::EarnProvider(error) => error.into(),
+            CarryServiceError::Positions(error) => match error {
+                EarnProviderError::Unavailable => Self::CARRY_POSITIONS_UNAVAILABLE,
+                EarnProviderError::Rejected => Self::CARRY_REQUEST_REJECTED,
+                EarnProviderError::InvalidData => Self::INVALID_PROVIDER_RESPONSE,
+            },
             CarryServiceError::InvalidDepositAmount => Self::INVALID_CARRY_DEPOSIT_AMOUNT,
             CarryServiceError::OpportunityNotFound => Self::CARRY_OPPORTUNITY_NOT_FOUND,
             CarryServiceError::OpportunityUnavailable => Self::CARRY_OPPORTUNITY_UNAVAILABLE,

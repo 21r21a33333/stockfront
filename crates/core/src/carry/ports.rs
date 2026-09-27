@@ -2,7 +2,10 @@ use alloy_primitives::Address;
 use async_trait::async_trait;
 use thiserror::Error;
 
-use crate::carry::{CarryDepositPlan, EarnDepositCommand, EarnOpportunity};
+use crate::{
+    carry::{CarryAccount, CarryDepositPlan, EarnDepositCommand, EarnOpportunity},
+    wallet_portfolio::WalletAddress,
+};
 
 #[derive(Clone, Copy, Debug, Error, Eq, PartialEq)]
 pub enum EarnProviderError {
@@ -15,7 +18,7 @@ pub enum EarnProviderError {
 }
 
 #[async_trait]
-pub trait EarnOpportunityReader: Send + Sync {
+pub trait EarnReader: Send + Sync {
     async fn opportunities(
         &self,
         asset: Address,
@@ -25,6 +28,12 @@ pub trait EarnOpportunityReader: Send + Sync {
         &self,
         investment_id: &str,
     ) -> Result<Option<EarnOpportunity>, EarnProviderError>;
+
+    async fn positions(
+        &self,
+        wallet: WalletAddress,
+        investment_ids: &[String],
+    ) -> Result<CarryAccount, EarnProviderError>;
 }
 
 #[async_trait]

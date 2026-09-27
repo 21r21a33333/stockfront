@@ -3,7 +3,7 @@ use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    bstock_borrowing::BorrowingToken,
+    bstock_borrowing::{BorrowingAsset, BorrowingToken},
     prepared_action::{ActionWarning, NetworkFee, PreparedTransaction},
     serialization::deserialize_from_string,
     wallet_portfolio::WalletAddress,
@@ -35,6 +35,26 @@ pub struct EarnOpportunity {
     pub base_rate_display: String,
     pub reported_tvl_usd: Option<Decimal>,
     pub investable: bool,
+    pub observed_at_ms: i64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CarryPosition {
+    pub position_id: String,
+    pub investment_id: String,
+    pub protocol_id: String,
+    pub protocol_name: String,
+    pub value_usd: Decimal,
+    pub assets: Vec<BorrowingAsset>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CarryAccount {
+    pub chain_id: u64,
+    pub positions: Vec<CarryPosition>,
+    pub total_value_usd: Decimal,
     pub observed_at_ms: i64,
 }
 

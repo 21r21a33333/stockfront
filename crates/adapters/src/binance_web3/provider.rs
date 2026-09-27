@@ -7,7 +7,7 @@ use stockfront_core::{
 };
 
 #[derive(Clone, Copy, Debug)]
-pub(super) struct InvalidProviderData;
+pub(crate) struct InvalidProviderData;
 
 impl From<InvalidProviderData> for BorrowingProviderError {
     fn from(_error: InvalidProviderData) -> Self {
@@ -72,7 +72,7 @@ pub(super) fn parse_optional_u256(
 }
 
 #[derive(Clone, Copy, Debug)]
-pub(super) enum BinanceRequestError {
+pub(crate) enum BinanceRequestError {
     Rejected,
     Unavailable,
 }

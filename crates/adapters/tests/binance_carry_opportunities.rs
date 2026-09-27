@@ -5,7 +5,7 @@ use std::{collections::HashSet, env, error::Error, io};
 use alloy_primitives::{Address, U256, address};
 use rust_decimal::Decimal;
 use stockfront_core::{
-    carry::{CarryTransactionKind, EarnActionGateway, EarnDepositCommand, EarnOpportunityReader},
+    carry::{CarryTransactionKind, EarnActionGateway, EarnDepositCommand, EarnReader},
     wallet_portfolio::WalletAddress,
 };
 
@@ -115,6 +115,53 @@ async fn prepares_live_carry_deposit() -> Result<(), Box<dyn Error>> {
     }));
     assert!(plan.preview.warnings.iter().all(|warning| {
         !warning.code.is_empty() && !warning.level.is_empty() && !warning.message.is_empty()
+    }));
+
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires live Binance Web3 credentials, STOCKFRONT_TEST_WALLET, and reviewed carry investments"]
+async fn reads_live_carry_positions() -> Result<(), Box<dyn Error>> {
+    let wallet = WalletAddress::try_from(env::var("STOCKFRONT_TEST_WALLET")?.parse::<Address>()?)?;
+    let investment_ids = env::var("STOCKFRONT_CARRY_INVESTMENT_IDS")?
+        .split(',')
+        .map(str::trim)
+        .filter(|id| !id.is_empty())
+        .map(str::to_owned)
+        .collect::<Vec<_>>();
+    if investment_ids.is_empty() {
+        return Err(io::Error::other("no reviewed carry investment is configured").into());
+    }
+    let account = live_client()?.positions(wallet, &investment_ids).await?;
+
+    assert_eq!(account.chain_id, 56);
+    assert!(account.observed_at_ms > 0);
+    assert!(
+        !account.positions.is_empty(),
+        "the test wallet has no reviewed carry position"
+    );
+    assert_eq!(
+        account.total_value_usd,
+        account
+            .positions
+            .iter()
+            .map(|position| position.value_usd)
+            .sum()
+    );
+    assert!(account.positions.iter().all(|position| {
+        !position.position_id.is_empty()
+            && investment_ids.contains(&position.investment_id)
+            && !position.protocol_id.is_empty()
+            && !position.protocol_name.is_empty()
+            && position.value_usd >= Decimal::ZERO
+            && !position.assets.is_empty()
+            && position.assets.iter().all(|asset| {
+                asset.token.contract != Address::ZERO
+                    && !asset.token.symbol.is_empty()
+                    && asset.amount >= Decimal::ZERO
+                    && asset.value_usd >= Decimal::ZERO
+            })
     }));
 
     Ok(())

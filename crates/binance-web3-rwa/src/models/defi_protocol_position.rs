@@ -17,6 +17,8 @@ pub struct DefiProtocolPosition {
     pub binance_chain_id: Option<String>,
     #[serde(rename = "defiProtocolId", skip_serializing_if = "Option::is_none")]
     pub defi_protocol_id: Option<String>,
+    #[serde(rename = "protocolName", skip_serializing_if = "Option::is_none")]
+    pub protocol_name: Option<String>,
     #[serde(rename = "protocolTotalValue", skip_serializing_if = "Option::is_none")]
     pub protocol_total_value: Option<String>,
     #[serde(rename = "poolList", skip_serializing_if = "Option::is_none")]
@@ -28,6 +30,7 @@ impl DefiProtocolPosition {
         DefiProtocolPosition {
             binance_chain_id: None,
             defi_protocol_id: None,
+            protocol_name: None,
             protocol_total_value: None,
             pool_list: None,
         }

@@ -1,4 +1,4 @@
-use std::{collections::HashSet, sync::Arc};
+use std::sync::Arc;
 
 use rust_decimal::Decimal;
 use thiserror::Error;
@@ -8,26 +8,29 @@ use crate::{
         BorrowingMarket, BorrowingMarketQuery, BorrowingService, BorrowingServiceError,
     },
     carry::{
-        CarryOpportunity, CarryOpportunityQuery, CarryOpportunityReason, CarryQualification,
-        EarnActionGateway, EarnDepositCommand, EarnOpportunity, EarnOpportunityReader,
-        EarnProviderError, PrepareCarryDepositRequest, PreparedCarryDeposit,
+        CarryAccount, CarryOpportunity, CarryOpportunityQuery, CarryOpportunityReason,
+        CarryQualification, EarnActionGateway, EarnDepositCommand, EarnOpportunity,
+        EarnProviderError, EarnReader, PrepareCarryDepositRequest, PreparedCarryDeposit,
     },
+    wallet_portfolio::WalletAddress,
 };
 
 #[derive(Clone, Debug)]
 pub struct CarryPolicy {
-    reviewed_investment_ids: HashSet<String>,
+    reviewed_investment_ids: Vec<String>,
     minimum_base_spread_bps: u32,
 }
 
 impl CarryPolicy {
     #[must_use]
     pub fn new(reviewed_investment_ids: Vec<String>, minimum_base_spread_bps: u32) -> Self {
-        let reviewed_investment_ids = reviewed_investment_ids
+        let mut reviewed_investment_ids = reviewed_investment_ids
             .into_iter()
             .map(|id| id.trim().to_owned())
             .filter(|id| !id.is_empty())
-            .collect();
+            .collect::<Vec<_>>();
+        reviewed_investment_ids.sort_unstable();
+        reviewed_investment_ids.dedup();
         Self {
             reviewed_investment_ids,
             minimum_base_spread_bps,
@@ -41,6 +44,8 @@ pub enum CarryServiceError {
     Borrowing(#[from] BorrowingServiceError),
     #[error(transparent)]
     EarnProvider(#[from] EarnProviderError),
+    #[error("carry positions could not be read: {0}")]
+    Positions(EarnProviderError),
     #[error("carry deposit amount must be greater than zero")]
     InvalidDepositAmount,
     #[error("the earn opportunity was not found")]
@@ -51,7 +56,7 @@ pub enum CarryServiceError {
 
 pub struct CarryService {
     borrowing: Arc<BorrowingService>,
-    earn_reader: Arc<dyn EarnOpportunityReader>,
+    earn_reader: Arc<dyn EarnReader>,
     earn_gateway: Arc<dyn EarnActionGateway>,
     policy: CarryPolicy,
 }
@@ -59,7 +64,7 @@ pub struct CarryService {
 impl CarryService {
     pub fn new(
         borrowing: Arc<BorrowingService>,
-        earn_reader: Arc<dyn EarnOpportunityReader>,
+        earn_reader: Arc<dyn EarnReader>,
         earn_gateway: Arc<dyn EarnActionGateway>,
         policy: CarryPolicy,
     ) -> Self {
@@ -104,6 +109,21 @@ impl CarryService {
                 .then_with(|| left.investment_id.cmp(&right.investment_id))
         });
         Ok(opportunities)
+    }
+
+    /// Returns positions associated with reviewed carry investments for a wallet.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CarryServiceError`] when the earn provider cannot supply current position data.
+    pub async fn positions(
+        &self,
+        wallet: WalletAddress,
+    ) -> Result<CarryAccount, CarryServiceError> {
+        self.earn_reader
+            .positions(wallet, &self.policy.reviewed_investment_ids)
+            .await
+            .map_err(CarryServiceError::Positions)
     }
 
     /// Returns a simulated, unsigned deposit plan for a currently eligible earn opportunity.
@@ -334,6 +354,19 @@ mod tests {
         ));
     }
 
+    #[tokio::test]
+    async fn positions_use_the_reviewed_investment_scope() {
+        let service = service(CarryPolicy::new(vec![INVESTMENT_ID.to_owned()], 100));
+
+        let account = service
+            .positions(wallet())
+            .await
+            .unwrap_or_else(|error| panic!("carry positions failed: {error}"));
+
+        assert_eq!(account.chain_id, BNB_CHAIN_ID);
+        assert_eq!(account.observed_at_ms, 2_000);
+    }
+
     struct FixedCatalog;
 
     #[async_trait]
@@ -449,7 +482,7 @@ mod tests {
     struct FixedEarn;
 
     #[async_trait]
-    impl EarnOpportunityReader for FixedEarn {
+    impl EarnReader for FixedEarn {
         async fn opportunities(
             &self,
             _asset: Address,
@@ -462,6 +495,20 @@ mod tests {
             investment_id: &str,
         ) -> Result<Option<EarnOpportunity>, EarnProviderError> {
             Ok((investment_id == INVESTMENT_ID).then(|| earn(700, true)))
+        }
+
+        async fn positions(
+            &self,
+            _wallet: WalletAddress,
+            investment_ids: &[String],
+        ) -> Result<CarryAccount, EarnProviderError> {
+            assert_eq!(investment_ids, &[INVESTMENT_ID.to_owned()]);
+            Ok(CarryAccount {
+                chain_id: BNB_CHAIN_ID,
+                positions: Vec::new(),
+                total_value_usd: Decimal::ZERO,
+                observed_at_ms: 2_000,
+            })
         }
     }
 

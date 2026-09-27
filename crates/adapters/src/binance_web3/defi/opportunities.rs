@@ -13,7 +13,8 @@ use rust_decimal::Decimal;
 use stockfront_core::{
     bstock_borrowing::BorrowingToken,
     bstock_market::BNB_CHAIN_ID,
-    carry::{EarnOpportunity, EarnOpportunityReader, EarnProviderError, EarnRateType},
+    carry::{CarryAccount, EarnOpportunity, EarnProviderError, EarnRateType, EarnReader},
+    wallet_portfolio::WalletAddress,
 };
 
 use super::super::{
@@ -27,7 +28,7 @@ use super::super::{
 const PAGE_SIZE: i32 = 100;
 
 #[async_trait]
-impl EarnOpportunityReader for BinanceWeb3Client {
+impl EarnReader for BinanceWeb3Client {
     async fn opportunities(
         &self,
         asset: Address,
@@ -75,6 +76,14 @@ impl EarnOpportunityReader for BinanceWeb3Client {
         })
         .map(Some)
         .map_err(Into::into)
+    }
+
+    async fn positions(
+        &self,
+        wallet: WalletAddress,
+        investment_ids: &[String],
+    ) -> Result<CarryAccount, EarnProviderError> {
+        self.earn_positions(wallet, investment_ids).await
     }
 }
 

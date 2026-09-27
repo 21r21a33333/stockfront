@@ -2,13 +2,13 @@ use std::sync::Arc;
 
 use axum::{
     Json,
-    extract::{Query, State, rejection::JsonRejection, rejection::QueryRejection},
+    extract::{Path, Query, State, rejection::JsonRejection, rejection::QueryRejection},
 };
 use stockfront_core::{
     bstock_market::Address,
     carry::{
-        CarryOpportunity, CarryOpportunityQuery, CarryService, PrepareCarryDepositRequest,
-        PreparedCarryDeposit,
+        CarryAccount, CarryOpportunity, CarryOpportunityQuery, CarryService,
+        PrepareCarryDepositRequest, PreparedCarryDeposit,
     },
 };
 
@@ -17,6 +17,7 @@ use super::super::{
     primitives::{ApiResult, List, Response},
     request::CarryOpportunitiesRequest,
 };
+use super::parse_wallet;
 
 pub(in crate::http) async fn opportunities(
     State(service): State<Arc<CarryService>>,
@@ -39,6 +40,14 @@ pub(in crate::http) async fn prepare_deposit(
     let Json(request) = request?;
     let deposit = service.prepare_deposit(&request).await?;
     Ok(Response::ok(deposit))
+}
+
+pub(in crate::http) async fn positions(
+    State(service): State<Arc<CarryService>>,
+    Path(address): Path<String>,
+) -> ApiResult<CarryAccount> {
+    let positions = service.positions(parse_wallet(&address)?).await?;
+    Ok(Response::ok(positions))
 }
 
 fn parse_address(value: &str) -> Result<Address, ApiError> {

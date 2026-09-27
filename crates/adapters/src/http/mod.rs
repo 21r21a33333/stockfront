@@ -110,5 +110,9 @@ pub fn carry_router(service: Arc<CarryService>) -> Router {
             "/v1/carry/deposits/prepare",
             post(handlers::carry::prepare_deposit),
         )
+        .route(
+            "/v1/wallets/{address}/carry-positions",
+            get(handlers::carry::positions),
+        )
         .with_state(service)
 }

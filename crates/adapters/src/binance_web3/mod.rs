@@ -13,5 +13,6 @@ mod transactions;
 
 pub use auth::BinanceConfigurationError;
 pub use client::BinanceWeb3Client;
+pub(crate) use positions::ProviderPositionToken;
 
 const BSTOCK_PLATFORM_ID: &str = "bstock";

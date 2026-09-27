@@ -790,6 +790,8 @@ components:
           type: string
         defiProtocolId:
           type: string
+        protocolName:
+          type: string
         protocolTotalValue:
           type: string
         poolList:
@@ -824,6 +826,14 @@ components:
     DefiPosition:
       type: object
       properties:
+        positionId:
+          type: string
+        investmentIds:
+          type: array
+          items:
+            type: string
+        positionValue:
+          type: string
         tokenList:
           $ref: '#/components/schemas/DefiPositionTokens'
     DefiPositionTokens:
