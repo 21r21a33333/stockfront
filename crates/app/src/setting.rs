@@ -19,6 +19,8 @@ const DEFAULT_VENUS_API_BASE_URL: &str = "https://api.venus.io";
 const DEFAULT_BSC_RPC_URL: &str = "https://bsc-dataseed.bnbchain.org";
 const DEFAULT_VENUS_COMPTROLLER: &str = "0xfD36E2c2a6789Db23113685031d7F16329158384";
 const DEFAULT_BORROW_DEBT_TOKENS: &str = "0x55d398326f99059fF775485246999027B3197955";
+const DEFAULT_CARRY_INVESTMENT_IDS: &str = "";
+const DEFAULT_MIN_CARRY_SPREAD_BPS: &str = "100";
 
 #[derive(Deserialize)]
 pub(super) struct Settings {
@@ -40,6 +42,10 @@ pub(super) struct Settings {
     pub(super) venus_comptroller: Address,
     #[serde(deserialize_with = "deserialize_addresses")]
     pub(super) borrow_debt_tokens: Vec<Address>,
+    #[serde(deserialize_with = "deserialize_strings")]
+    pub(super) carry_investment_ids: Vec<String>,
+    #[serde(deserialize_with = "deserialize_from_str")]
+    pub(super) min_carry_spread_bps: u32,
 }
 
 impl Settings {
@@ -62,6 +68,10 @@ impl Settings {
             .unwrap_or_else(|_| DEFAULT_VENUS_COMPTROLLER.to_owned());
         let borrow_debt_tokens = env::var("STOCKFRONT_BORROW_DEBT_TOKENS")
             .unwrap_or_else(|_| DEFAULT_BORROW_DEBT_TOKENS.to_owned());
+        let carry_investment_ids = env::var("STOCKFRONT_CARRY_INVESTMENT_IDS")
+            .unwrap_or_else(|_| DEFAULT_CARRY_INVESTMENT_IDS.to_owned());
+        let min_carry_spread_bps = env::var("STOCKFRONT_MIN_CARRY_SPREAD_BPS")
+            .unwrap_or_else(|_| DEFAULT_MIN_CARRY_SPREAD_BPS.to_owned());
         let fields = [
             ("binance_web3_api_key", BINANCE_WEB3_API_KEY),
             ("binance_web3_api_secret", BINANCE_WEB3_API_SECRET),
@@ -77,6 +87,8 @@ impl Settings {
             ("bsc_rpc_url", bsc_rpc_url.as_str()),
             ("venus_comptroller", venus_comptroller.as_str()),
             ("borrow_debt_tokens", borrow_debt_tokens.as_str()),
+            ("carry_investment_ids", carry_investment_ids.as_str()),
+            ("min_carry_spread_bps", min_carry_spread_bps.as_str()),
         ];
         let values = fields
             .into_iter()
@@ -85,6 +97,18 @@ impl Settings {
         Self::deserialize(MapDeserializer::<_, de::value::Error>::new(values))
             .map_err(|error| SettingsError::Deserialize(error.to_string()))
     }
+}
+
+fn deserialize_strings<'de, D>(deserializer: D) -> Result<Vec<String>, D::Error>
+where
+    D: de::Deserializer<'de>,
+{
+    Ok(String::deserialize(deserializer)?
+        .split(',')
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_owned)
+        .collect())
 }
 
 fn deserialize_address<'de, D>(deserializer: D) -> Result<Address, D::Error>

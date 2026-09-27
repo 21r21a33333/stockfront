@@ -1,13 +1,14 @@
 use std::borrow::Cow;
 
 use axum::{
-    extract::rejection::JsonRejection,
+    extract::rejection::{JsonRejection, QueryRejection},
     http::StatusCode,
     response::{IntoResponse, Response as AxumResponse},
 };
 use stockfront_core::bstock_borrowing::{BorrowingProviderError, BorrowingServiceError};
 use stockfront_core::bstock_market::{BstockMarketError, CatalogError, QueryError};
 use stockfront_core::bstock_trade::{BstockTradeError, TradeGatewayError};
+use stockfront_core::carry::{CarryOpportunityServiceError, EarnOpportunityProviderError};
 use stockfront_core::wallet_portfolio::{
     BalanceReaderError, WalletAddressError, WalletPortfolioError,
 };
@@ -82,10 +83,10 @@ impl ApiError {
         "invalid_trade_amount",
         "trade amount must be greater than zero",
     );
-    const INVALID_TRADE_DATA: Self = Self::fixed(
+    const INVALID_PROVIDER_RESPONSE: Self = Self::fixed(
         StatusCode::BAD_GATEWAY,
         "invalid_provider_response",
-        "the trade provider returned invalid data",
+        "a provider returned invalid data",
     );
     const QUOTE_EXPIRED: Self = Self::fixed(
         StatusCode::CONFLICT,
@@ -182,6 +183,11 @@ impl ApiError {
         "insufficient_supplied_balance",
         "the wallet has insufficient supplied balance",
     );
+    const CARRY_OPPORTUNITIES_UNAVAILABLE: Self = Self::fixed(
+        StatusCode::SERVICE_UNAVAILABLE,
+        "carry_opportunities_unavailable",
+        "carry opportunities are temporarily unavailable",
+    );
     const fn fixed(status: StatusCode, code: &'static str, message: &'static str) -> Self {
         Self {
             status,
@@ -211,6 +217,16 @@ impl From<QueryError> for ApiError {
 
 impl From<JsonRejection> for ApiError {
     fn from(error: JsonRejection) -> Self {
+        Self::dynamic(
+            StatusCode::BAD_REQUEST,
+            "invalid_request",
+            error.body_text(),
+        )
+    }
+}
+
+impl From<QueryRejection> for ApiError {
+    fn from(error: QueryRejection) -> Self {
         Self::dynamic(
             StatusCode::BAD_REQUEST,
             "invalid_request",
@@ -279,11 +295,29 @@ impl From<TradeGatewayError> for ApiError {
         match error {
             TradeGatewayError::Unavailable => Self::TRADE_UNAVAILABLE,
             TradeGatewayError::Rejected => Self::TRADE_REJECTED,
-            TradeGatewayError::InvalidData => Self::INVALID_TRADE_DATA,
+            TradeGatewayError::InvalidData => Self::INVALID_PROVIDER_RESPONSE,
             TradeGatewayError::QuoteExpired => Self::QUOTE_EXPIRED,
             TradeGatewayError::QuoteMismatch => Self::QUOTE_MISMATCH,
             TradeGatewayError::OrderNotFound => Self::TRADE_ORDER_NOT_FOUND,
             TradeGatewayError::TransactionNotFound => Self::TRADE_TRANSACTION_NOT_FOUND,
+        }
+    }
+}
+
+impl From<CarryOpportunityServiceError> for ApiError {
+    fn from(error: CarryOpportunityServiceError) -> Self {
+        match error {
+            CarryOpportunityServiceError::Borrowing(error) => error.into(),
+            CarryOpportunityServiceError::EarnProvider(error) => error.into(),
+        }
+    }
+}
+
+impl From<EarnOpportunityProviderError> for ApiError {
+    fn from(error: EarnOpportunityProviderError) -> Self {
+        match error {
+            EarnOpportunityProviderError::Unavailable => Self::CARRY_OPPORTUNITIES_UNAVAILABLE,
+            EarnOpportunityProviderError::InvalidData => Self::INVALID_PROVIDER_RESPONSE,
         }
     }
 }

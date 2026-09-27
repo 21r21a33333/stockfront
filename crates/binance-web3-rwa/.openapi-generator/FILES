@@ -24,7 +24,9 @@ src/models/defi_address_position.rs
 src/models/defi_fee_and_contract.rs
 src/models/defi_health_factor.rs
 src/models/defi_investment.rs
+src/models/defi_investment_detail.rs
 src/models/defi_investment_page.rs
+src/models/defi_investment_token.rs
 src/models/defi_network_fee.rs
 src/models/defi_pool_position.rs
 src/models/defi_position.rs
@@ -45,6 +47,8 @@ src/models/evm_transaction.rs
 src/models/gas_limit.rs
 src/models/gas_price.rs
 src/models/get_aggregated_quote_response.rs
+src/models/get_defi_investment_detail_request.rs
+src/models/get_defi_investment_detail_response.rs
 src/models/get_defi_positions_request.rs
 src/models/get_defi_positions_response.rs
 src/models/get_erc20_approve_transaction_response.rs

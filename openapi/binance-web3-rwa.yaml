@@ -37,6 +37,23 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ListDefiInvestmentsResponse'
+  /api/v1/defi/data/investment/detail:
+    post:
+      operationId: getDefiInvestmentDetail
+      tags: [DeFi data]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GetDefiInvestmentDetailRequest'
+      responses:
+        '200':
+          description: DeFi investment detail or a Binance business error.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetDefiInvestmentDetailResponse'
   /api/v1/defi/data/position/list:
     post:
       operationId: getDefiPositions
@@ -488,6 +505,14 @@ components:
             type: string
         binanceChainId:
           type: string
+        sortField:
+          type: string
+          description: Supported investment sort field.
+          enum: [tvl, apy]
+        sortDirection:
+          type: string
+          description: Investment sort direction.
+          enum: [ASC, DESC]
         page:
           type: integer
           minimum: 1
@@ -520,6 +545,54 @@ components:
       type: object
       properties:
         investmentId:
+          type: string
+    GetDefiInvestmentDetailRequest:
+      type: object
+      required: [investmentId]
+      properties:
+        investmentId:
+          type: string
+    GetDefiInvestmentDetailResponse:
+      allOf:
+        - $ref: '#/components/schemas/BusinessResponse'
+        - type: object
+          properties:
+            data:
+              $ref: '#/components/schemas/DefiInvestmentDetail'
+    DefiInvestmentDetail:
+      type: object
+      properties:
+        defiProtocolId:
+          type: string
+        protocolName:
+          type: string
+        protocolLogo:
+          type: string
+        investmentId:
+          type: string
+        investmentName:
+          type: string
+        investable:
+          type: boolean
+        apyBps:
+          type: integer
+          format: int64
+        apyDisplay:
+          type: string
+        apyType:
+          type: string
+        tvl:
+          type: string
+        assetTokenList:
+          type: array
+          items:
+            $ref: '#/components/schemas/DefiInvestmentToken'
+    DefiInvestmentToken:
+      type: object
+      properties:
+        tokenAddress:
+          type: string
+        tokenSymbol:
           type: string
     BuildDefiDepositRequest:
       type: object

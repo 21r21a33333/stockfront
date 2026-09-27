@@ -13,6 +13,12 @@ use crate::{apis::ResponseContent, models};
 use reqwest;
 use serde::{de::Error as _, Deserialize, Serialize};
 
+/// struct for passing parameters to the method [`get_defi_investment_detail`]
+#[derive(Clone, Debug)]
+pub struct GetDefiInvestmentDetailParams {
+    pub get_defi_investment_detail_request: models::GetDefiInvestmentDetailRequest,
+}
+
 /// struct for passing parameters to the method [`get_defi_positions`]
 #[derive(Clone, Debug)]
 pub struct GetDefiPositionsParams {
@@ -23,6 +29,13 @@ pub struct GetDefiPositionsParams {
 #[derive(Clone, Debug)]
 pub struct ListDefiInvestmentsParams {
     pub list_defi_investments_request: models::ListDefiInvestmentsRequest,
+}
+
+/// struct for typed errors of method [`get_defi_investment_detail`]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum GetDefiInvestmentDetailError {
+    UnknownValue(serde_json::Value),
 }
 
 /// struct for typed errors of method [`get_defi_positions`]
@@ -37,6 +50,52 @@ pub enum GetDefiPositionsError {
 #[serde(untagged)]
 pub enum ListDefiInvestmentsError {
     UnknownValue(serde_json::Value),
+}
+
+pub async fn get_defi_investment_detail(
+    configuration: &configuration::Configuration,
+    params: GetDefiInvestmentDetailParams,
+) -> Result<models::GetDefiInvestmentDetailResponse, Error<GetDefiInvestmentDetailError>> {
+    let uri_str = format!(
+        "{}/api/v1/defi/data/investment/detail",
+        configuration.base_path
+    );
+    let mut req_builder = configuration
+        .client
+        .request(reqwest::Method::POST, &uri_str);
+
+    if let Some(ref user_agent) = configuration.user_agent {
+        req_builder = req_builder.header(reqwest::header::USER_AGENT, user_agent.clone());
+    }
+    req_builder = req_builder.json(&params.get_defi_investment_detail_request);
+
+    let req = req_builder.build()?;
+    let resp = configuration.client.execute(req).await?;
+
+    let status = resp.status();
+    let content_type = resp
+        .headers()
+        .get("content-type")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("application/octet-stream");
+    let content_type = super::ContentType::from(content_type);
+
+    if !status.is_client_error() && !status.is_server_error() {
+        let content = resp.text().await?;
+        match content_type {
+            ContentType::Json => serde_path_to_error::deserialize(&mut serde_json::Deserializer::from_str(&content)).map_err(Error::from),
+            ContentType::Text => Err(Error::from(serde_json::Error::custom("Received `text/plain` content type response that cannot be converted to `models::GetDefiInvestmentDetailResponse`"))),
+            ContentType::Unsupported(unknown_type) => Err(Error::from(serde_json::Error::custom(format!("Received `{unknown_type}` content type response that cannot be converted to `models::GetDefiInvestmentDetailResponse`")))),
+        }
+    } else {
+        let content = resp.text().await?;
+        let entity: Option<GetDefiInvestmentDetailError> = serde_json::from_str(&content).ok();
+        Err(Error::ResponseError(ResponseContent {
+            status,
+            content,
+            entity,
+        }))
+    }
 }
 
 pub async fn get_defi_positions(

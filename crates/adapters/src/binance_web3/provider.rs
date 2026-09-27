@@ -3,7 +3,7 @@ use std::str::FromStr;
 use alloy_primitives::U256;
 use stockfront_core::{
     bstock_borrowing::BorrowingProviderError, bstock_trade::TradeGatewayError,
-    wallet_portfolio::BalanceReaderError,
+    carry::EarnOpportunityProviderError, wallet_portfolio::BalanceReaderError,
 };
 
 #[derive(Clone, Copy, Debug)]
@@ -22,6 +22,12 @@ impl From<InvalidProviderData> for TradeGatewayError {
 }
 
 impl From<InvalidProviderData> for BalanceReaderError {
+    fn from(_error: InvalidProviderData) -> Self {
+        Self::InvalidData
+    }
+}
+
+impl From<InvalidProviderData> for EarnOpportunityProviderError {
     fn from(_error: InvalidProviderData) -> Self {
         Self::InvalidData
     }
@@ -86,6 +92,12 @@ impl From<BinanceRequestError> for TradeGatewayError {
             BinanceRequestError::Rejected => Self::Rejected,
             BinanceRequestError::Unavailable => Self::Unavailable,
         }
+    }
+}
+
+impl From<BinanceRequestError> for EarnOpportunityProviderError {
+    fn from(_error: BinanceRequestError) -> Self {
+        Self::Unavailable
     }
 }
 
