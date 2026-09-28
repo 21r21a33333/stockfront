@@ -119,11 +119,39 @@ pub struct EarnDepositCommand {
     pub amount: Decimal,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize)]
+#[serde(tag = "mode", rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum CarryWithdrawalAmount {
+    Exact {
+        #[serde(deserialize_with = "deserialize_from_string")]
+        token: Address,
+        #[serde(deserialize_with = "deserialize_from_string")]
+        value: Decimal,
+    },
+    Full,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PrepareCarryWithdrawalRequest {
+    pub wallet: WalletAddress,
+    pub investment_id: String,
+    pub amount: CarryWithdrawalAmount,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct EarnWithdrawalCommand {
+    pub wallet: WalletAddress,
+    pub investment_id: String,
+    pub amount: CarryWithdrawalAmount,
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum CarryTransactionKind {
     Approve,
     Deposit,
+    Redeem,
 }
 
 pub type PreparedCarryTransaction = PreparedTransaction<CarryTransactionKind>;
@@ -139,7 +167,7 @@ pub struct CarryBalanceChange {
 
 #[derive(Debug, Default, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct CarryDepositPreview {
+pub struct CarryActionPreview {
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub balance_changes: Vec<CarryBalanceChange>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -151,12 +179,22 @@ pub struct CarryDepositPreview {
     pub interact_with: Option<Address>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub warnings: Vec<ActionWarning>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub redemption_delay: Option<RedemptionDelay>,
 }
 
-#[derive(Debug, Eq, PartialEq)]
-pub struct CarryDepositPlan {
+#[derive(Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CarryActionPlan {
     pub transactions: Vec<PreparedCarryTransaction>,
-    pub preview: CarryDepositPreview,
+    pub preview: CarryActionPreview,
+}
+
+#[derive(Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RedemptionDelay {
+    pub min_days: Decimal,
+    pub max_days: Decimal,
 }
 
 #[derive(Debug, Eq, PartialEq, Serialize)]
@@ -164,5 +202,5 @@ pub struct CarryDepositPlan {
 pub struct PreparedCarryDeposit {
     pub opportunity: CarryOpportunity,
     pub transactions: Vec<PreparedCarryTransaction>,
-    pub preview: CarryDepositPreview,
+    pub preview: CarryActionPreview,
 }

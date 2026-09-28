@@ -88,6 +88,23 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/BuildDefiDepositResponse'
+  /api/v1/defi/transaction/redeem:
+    post:
+      operationId: buildDefiRedeemTransaction
+      tags: [DeFi transaction]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BuildDefiRedeemRequest'
+      responses:
+        '200':
+          description: Ordered unsigned redemption transactions or a Binance business error.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BuildDefiRedeemResponse'
   /api/v1/dex/balance/token-balances-by-address:
     post:
       operationId: getTokenBalancesByAddress
@@ -625,6 +642,27 @@ components:
           properties:
             data:
               $ref: '#/components/schemas/DefiTransactionPlan'
+    BuildDefiRedeemRequest:
+      type: object
+      required: [address, investmentId]
+      properties:
+        address:
+          type: string
+        investmentId:
+          type: string
+        token:
+          $ref: '#/components/schemas/DefiTokenAmount'
+        ratio:
+          type: string
+        simulate:
+          type: boolean
+    BuildDefiRedeemResponse:
+      allOf:
+        - $ref: '#/components/schemas/BusinessResponse'
+        - type: object
+          properties:
+            data:
+              $ref: '#/components/schemas/DefiTransactionPlan'
     DefiTransactionPlan:
       type: object
       properties:
@@ -634,6 +672,10 @@ components:
             $ref: '#/components/schemas/DefiTransaction'
         preview:
           $ref: '#/components/schemas/DefiTransactionPreview'
+        redeemDelayDays:
+          type: array
+          items:
+            type: string
     DefiTransaction:
       type: object
       properties:

@@ -6,8 +6,8 @@ use stockfront_core::{
         BorrowingTransactionState, BorrowingTransactionStatus, PreparedBorrowingAction,
     },
     carry::{
-        CarryBalanceChange, CarryDepositPlan, CarryDepositPreview, CarryTransactionKind,
-        EarnProviderError,
+        CarryActionPlan, CarryActionPreview, CarryBalanceChange, CarryTransactionKind,
+        EarnProviderError, RedemptionDelay,
     },
     prepared_action::{ActionWarning, NetworkFee, PreparedTransaction},
 };
@@ -151,57 +151,94 @@ fn action_warnings(preview: &models::DefiTransactionPreview) -> Vec<ActionWarnin
 
 pub(super) struct ProviderCarryDepositPlan(pub(super) models::DefiTransactionPlan);
 
-impl TryFrom<ProviderCarryDepositPlan> for CarryDepositPlan {
+impl TryFrom<ProviderCarryDepositPlan> for CarryActionPlan {
     type Error = EarnProviderError;
 
     fn try_from(value: ProviderCarryDepositPlan) -> Result<Self, Self::Error> {
-        let plan = value.0;
-        let transactions = prepared_transactions(plan.data_list, |kind| match kind {
-            models::defi_transaction::CallDataType::Approve => Some(CarryTransactionKind::Approve),
-            models::defi_transaction::CallDataType::Deposit => Some(CarryTransactionKind::Deposit),
-            _ => None,
-        })?;
-        if !matches!(
-            transactions.last().map(|transaction| transaction.kind),
-            Some(CarryTransactionKind::Deposit)
-        ) {
-            return Err(EarnProviderError::InvalidData);
-        }
-        let preview = required(plan.preview)?;
-        let balance_changes = preview
-            .balance_change
-            .as_deref()
-            .unwrap_or_default()
-            .iter()
-            .map(|change| {
-                Ok(CarryBalanceChange {
-                    token: stockfront_core::bstock_borrowing::BorrowingToken {
-                        contract: parse(&required(change.token_address.clone())?)?,
-                        symbol: required(change.token_symbol.clone())?,
-                    },
-                    amount: parse(&required(change.amount.clone())?)?,
-                    value_usd: parse_optional(change.value_usd.clone().flatten().as_deref())?,
-                })
-            })
-            .collect::<Result<Vec<_>, InvalidProviderData>>()?;
-        let interact_with = preview
-            .fee_and_contract
-            .as_deref()
-            .and_then(|fee| fee.interact_with.as_deref())
-            .and_then(|contract| contract.address.as_deref())
-            .map(parse)
-            .transpose()?;
-        let preview = CarryDepositPreview {
-            balance_changes,
-            estimated_network_fee: network_fee(&preview)?,
-            interact_with,
-            warnings: action_warnings(&preview),
-        };
+        carry_action_plan(value.0, CarryTransactionKind::Deposit)
+    }
+}
 
-        Ok(Self {
-            transactions,
-            preview,
+pub(super) struct ProviderCarryWithdrawalPlan(pub(super) models::DefiTransactionPlan);
+
+impl TryFrom<ProviderCarryWithdrawalPlan> for CarryActionPlan {
+    type Error = EarnProviderError;
+
+    fn try_from(value: ProviderCarryWithdrawalPlan) -> Result<Self, Self::Error> {
+        carry_action_plan(value.0, CarryTransactionKind::Redeem)
+    }
+}
+
+fn carry_action_plan(
+    plan: models::DefiTransactionPlan,
+    final_kind: CarryTransactionKind,
+) -> Result<CarryActionPlan, EarnProviderError> {
+    let transactions = prepared_transactions(plan.data_list, |kind| match kind {
+        models::defi_transaction::CallDataType::Approve => Some(CarryTransactionKind::Approve),
+        models::defi_transaction::CallDataType::Deposit => Some(CarryTransactionKind::Deposit),
+        models::defi_transaction::CallDataType::Redeem => Some(CarryTransactionKind::Redeem),
+        _ => None,
+    })?;
+    if transactions.last().map(|transaction| transaction.kind) != Some(final_kind) {
+        return Err(EarnProviderError::InvalidData);
+    }
+    let redemption_delay = redemption_delay(plan.redeem_delay_days)?;
+    let preview = required(plan.preview)?;
+    let balance_changes = preview
+        .balance_change
+        .as_deref()
+        .unwrap_or_default()
+        .iter()
+        .map(|change| {
+            Ok(CarryBalanceChange {
+                token: stockfront_core::bstock_borrowing::BorrowingToken {
+                    contract: parse(&required(change.token_address.clone())?)?,
+                    symbol: required(change.token_symbol.clone())?,
+                },
+                amount: parse(&required(change.amount.clone())?)?,
+                value_usd: parse_optional(change.value_usd.clone().flatten().as_deref())?,
+            })
         })
+        .collect::<Result<Vec<_>, InvalidProviderData>>()?;
+    let interact_with = preview
+        .fee_and_contract
+        .as_deref()
+        .and_then(|fee| fee.interact_with.as_deref())
+        .and_then(|contract| contract.address.as_deref())
+        .map(parse)
+        .transpose()?;
+    let preview = CarryActionPreview {
+        balance_changes,
+        estimated_network_fee: network_fee(&preview)?,
+        interact_with,
+        warnings: action_warnings(&preview),
+        redemption_delay,
+    };
+
+    Ok(CarryActionPlan {
+        transactions,
+        preview,
+    })
+}
+
+fn redemption_delay(
+    days: Option<Vec<String>>,
+) -> Result<Option<RedemptionDelay>, InvalidProviderData> {
+    let days = days.unwrap_or_default();
+    match days.as_slice() {
+        [] => Ok(None),
+        [days] => {
+            let days = parse(days)?;
+            Ok(Some(RedemptionDelay {
+                min_days: days,
+                max_days: days,
+            }))
+        }
+        [min_days, max_days] => Ok(Some(RedemptionDelay {
+            min_days: parse(min_days)?,
+            max_days: parse(max_days)?,
+        })),
+        _ => Err(InvalidProviderData),
     }
 }
 
@@ -450,7 +487,7 @@ mod tests {
         plan.data_list = Some(vec![approval, deposit]);
         plan.preview = Some(Box::new(preview));
 
-        let plan = CarryDepositPlan::try_from(ProviderCarryDepositPlan(plan))
+        let plan = CarryActionPlan::try_from(ProviderCarryDepositPlan(plan))
             .unwrap_or_else(|error| panic!("valid carry deposit plan rejected: {error}"));
 
         assert_eq!(plan.transactions.len(), 2);
@@ -494,7 +531,7 @@ mod tests {
         approval_only.preview = Some(Box::new(models::DefiTransactionPreview::new()));
 
         assert_eq!(
-            CarryDepositPlan::try_from(ProviderCarryDepositPlan(approval_only)),
+            CarryActionPlan::try_from(ProviderCarryDepositPlan(approval_only)),
             Err(EarnProviderError::InvalidData)
         );
 
@@ -506,8 +543,69 @@ mod tests {
         missing_preview.data_list = Some(vec![deposit]);
 
         assert_eq!(
-            CarryDepositPlan::try_from(ProviderCarryDepositPlan(missing_preview)),
+            CarryActionPlan::try_from(ProviderCarryDepositPlan(missing_preview)),
             Err(EarnProviderError::InvalidData)
         );
+    }
+
+    #[test]
+    fn carry_withdrawal_plan_maps_ordered_actions_and_redemption_delay() {
+        let mut approval = models::DefiTransaction::new();
+        approval.call_data_type = Some(models::defi_transaction::CallDataType::Approve);
+        approval.to = Some(Some(Address::with_last_byte(1).to_string()));
+        approval.data = Some("0x0102".to_owned());
+        let mut redeem = models::DefiTransaction::new();
+        redeem.call_data_type = Some(models::defi_transaction::CallDataType::Redeem);
+        redeem.to = Some(Some(Address::with_last_byte(2).to_string()));
+        redeem.data = Some("0x0304".to_owned());
+        let mut plan = models::DefiTransactionPlan::new();
+        plan.data_list = Some(vec![approval, redeem]);
+        plan.preview = Some(Box::new(models::DefiTransactionPreview::new()));
+        plan.redeem_delay_days = Some(vec!["7".to_owned(), "10".to_owned()]);
+
+        let plan = CarryActionPlan::try_from(ProviderCarryWithdrawalPlan(plan))
+            .unwrap_or_else(|error| panic!("valid withdrawal plan rejected: {error}"));
+
+        assert_eq!(plan.transactions.len(), 2);
+        assert_eq!(plan.transactions[0].kind, CarryTransactionKind::Approve);
+        assert_eq!(plan.transactions[1].kind, CarryTransactionKind::Redeem);
+        assert_eq!(
+            plan.preview.redemption_delay,
+            Some(RedemptionDelay {
+                min_days: Decimal::new(7, 0),
+                max_days: Decimal::new(10, 0),
+            })
+        );
+    }
+
+    #[test]
+    fn carry_withdrawal_plan_maps_instant_and_fixed_redemption() {
+        let plan = withdrawal_plan(None);
+        let instant = CarryActionPlan::try_from(ProviderCarryWithdrawalPlan(plan))
+            .unwrap_or_else(|error| panic!("instant withdrawal rejected: {error}"));
+        let plan = withdrawal_plan(Some(vec!["3".to_owned()]));
+        let fixed = CarryActionPlan::try_from(ProviderCarryWithdrawalPlan(plan))
+            .unwrap_or_else(|error| panic!("fixed withdrawal rejected: {error}"));
+
+        assert_eq!(instant.preview.redemption_delay, None);
+        assert_eq!(
+            fixed.preview.redemption_delay,
+            Some(RedemptionDelay {
+                min_days: Decimal::new(3, 0),
+                max_days: Decimal::new(3, 0),
+            })
+        );
+    }
+
+    fn withdrawal_plan(delay: Option<Vec<String>>) -> models::DefiTransactionPlan {
+        let mut redeem = models::DefiTransaction::new();
+        redeem.call_data_type = Some(models::defi_transaction::CallDataType::Redeem);
+        redeem.to = Some(Some(Address::with_last_byte(2).to_string()));
+        redeem.data = Some("0x0304".to_owned());
+        let mut plan = models::DefiTransactionPlan::new();
+        plan.data_list = Some(vec![redeem]);
+        plan.preview = Some(Box::new(models::DefiTransactionPreview::new()));
+        plan.redeem_delay_days = delay;
+        plan
     }
 }

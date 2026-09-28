@@ -3,7 +3,8 @@ use binance_web3_rwa::{
     apis::{
         de_fi_data_api::{ListDefiInvestmentsParams, list_defi_investments},
         de_fi_transaction_api::{
-            BuildDefiDepositTransactionParams, build_defi_deposit_transaction,
+            BuildDefiDepositTransactionParams, BuildDefiRedeemTransactionParams,
+            build_defi_deposit_transaction, build_defi_redeem_transaction,
         },
         wallet_api::{GetTransactionDetailByHashParams, get_transaction_detail_by_hash},
     },
@@ -15,6 +16,7 @@ use stockfront_core::{
         PreparedBorrowingAction,
     },
     bstock_market::BNB_CHAIN_ID,
+    carry::CarryWithdrawalAmount,
     wallet_portfolio::WalletAddress,
 };
 
@@ -50,7 +52,7 @@ impl BinanceWeb3Client {
         investment_id: String,
         token: Address,
         amount: rust_decimal::Decimal,
-    ) -> Result<models::DefiTransactionPlan, DepositPlanError> {
+    ) -> Result<models::DefiTransactionPlan, DefiPlanError> {
         let token = models::DefiTokenAmount::new(token.to_string(), amount.to_string());
         let mut body = models::BuildDefiDepositRequest::new(
             wallet.as_address().to_string(),
@@ -71,7 +73,30 @@ impl BinanceWeb3Client {
         response
             .data
             .map(|plan| *plan)
-            .ok_or(DepositPlanError::InvalidData)
+            .ok_or(DefiPlanError::InvalidData)
+    }
+
+    pub(super) async fn build_redeem_plan(
+        &self,
+        wallet: WalletAddress,
+        investment_id: String,
+        amount: &CarryWithdrawalAmount,
+    ) -> Result<models::DefiTransactionPlan, DefiPlanError> {
+        let body = redeem_request(wallet, investment_id, amount);
+
+        let response = build_defi_redeem_transaction(
+            &self.configuration,
+            BuildDefiRedeemTransactionParams {
+                build_defi_redeem_request: body,
+            },
+        )
+        .await
+        .map_err(map_request_error)?;
+        ensure_business_success(response.code, response.success)?;
+        response
+            .data
+            .map(|plan| *plan)
+            .ok_or(DefiPlanError::InvalidData)
     }
 
     pub(crate) async fn borrowing_transaction_status(
@@ -128,23 +153,45 @@ impl BinanceWeb3Client {
     }
 }
 
+fn redeem_request(
+    wallet: WalletAddress,
+    investment_id: String,
+    amount: &CarryWithdrawalAmount,
+) -> models::BuildDefiRedeemRequest {
+    let mut body =
+        models::BuildDefiRedeemRequest::new(wallet.as_address().to_string(), investment_id);
+    match amount {
+        CarryWithdrawalAmount::Exact { token, value } => {
+            body.token = Some(Box::new(models::DefiTokenAmount::new(
+                token.to_string(),
+                value.to_string(),
+            )));
+        }
+        CarryWithdrawalAmount::Full => {
+            body.ratio = Some("1".to_owned());
+        }
+    }
+    body.simulate = Some(true);
+    body
+}
+
 #[derive(Clone, Copy, Debug)]
-pub(super) enum DepositPlanError {
+pub(super) enum DefiPlanError {
     Request(BinanceRequestError),
     InvalidData,
 }
 
-impl From<BinanceRequestError> for DepositPlanError {
+impl From<BinanceRequestError> for DefiPlanError {
     fn from(error: BinanceRequestError) -> Self {
         Self::Request(error)
     }
 }
 
-impl From<DepositPlanError> for BorrowingProviderError {
-    fn from(error: DepositPlanError) -> Self {
+impl From<DefiPlanError> for BorrowingProviderError {
+    fn from(error: DefiPlanError) -> Self {
         match error {
-            DepositPlanError::Request(error) => error.into(),
-            DepositPlanError::InvalidData => Self::InvalidData,
+            DefiPlanError::Request(error) => error.into(),
+            DefiPlanError::InvalidData => Self::InvalidData,
         }
     }
 }
@@ -159,5 +206,53 @@ fn map_transaction_provider_error<T>(
             BorrowingProviderError::TransactionNotFound
         }
         error => map_request_error(error).into(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use alloy_primitives::Address;
+    use rust_decimal::Decimal;
+    use stockfront_core::carry::CarryWithdrawalAmount;
+
+    use super::*;
+
+    #[test]
+    fn exact_redeem_request_uses_token_amount_without_ratio() {
+        let token = Address::with_last_byte(3);
+        let request = redeem_request(
+            wallet(),
+            "investment".to_owned(),
+            &CarryWithdrawalAmount::Exact {
+                token,
+                value: Decimal::new(25, 1),
+            },
+        );
+
+        assert_eq!(request.ratio, None);
+        let amount = request
+            .token
+            .unwrap_or_else(|| panic!("exact request omitted token amount"));
+        assert_eq!(amount.token_address, token.to_string());
+        assert_eq!(amount.amount, "2.5");
+        assert_eq!(request.simulate, Some(true));
+    }
+
+    #[test]
+    fn full_redeem_request_uses_full_ratio_without_token_amount() {
+        let request = redeem_request(
+            wallet(),
+            "investment".to_owned(),
+            &CarryWithdrawalAmount::Full,
+        );
+
+        assert_eq!(request.token, None);
+        assert_eq!(request.ratio.as_deref(), Some("1"));
+        assert_eq!(request.simulate, Some(true));
+    }
+
+    fn wallet() -> WalletAddress {
+        WalletAddress::try_from(Address::with_last_byte(9))
+            .unwrap_or_else(|error| panic!("valid wallet rejected: {error}"))
     }
 }

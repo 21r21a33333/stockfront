@@ -3,10 +3,11 @@ mod ports;
 mod service;
 
 pub use model::{
-    CarryAccount, CarryBalanceChange, CarryDepositPlan, CarryDepositPreview, CarryOpportunity,
+    CarryAccount, CarryActionPlan, CarryActionPreview, CarryBalanceChange, CarryOpportunity,
     CarryOpportunityQuery, CarryOpportunityReason, CarryPosition, CarryQualification,
-    CarryTransactionKind, EarnDepositCommand, EarnOpportunity, EarnRateType,
-    PrepareCarryDepositRequest, PreparedCarryDeposit, PreparedCarryTransaction,
+    CarryTransactionKind, CarryWithdrawalAmount, EarnDepositCommand, EarnOpportunity, EarnRateType,
+    EarnWithdrawalCommand, PrepareCarryDepositRequest, PrepareCarryWithdrawalRequest,
+    PreparedCarryDeposit, PreparedCarryTransaction, RedemptionDelay,
 };
 pub use ports::{EarnActionGateway, EarnProviderError, EarnReader};
 pub use service::{CarryPolicy, CarryService, CarryServiceError};

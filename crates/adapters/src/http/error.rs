@@ -198,6 +198,11 @@ impl ApiError {
         "invalid_carry_deposit_amount",
         "carry deposit amount must be greater than zero",
     );
+    const INVALID_CARRY_WITHDRAWAL_AMOUNT: Self = Self::fixed(
+        StatusCode::BAD_REQUEST,
+        "invalid_carry_withdrawal_amount",
+        "carry withdrawal amount must be greater than zero",
+    );
     const CARRY_OPPORTUNITY_NOT_FOUND: Self = Self::fixed(
         StatusCode::NOT_FOUND,
         "carry_opportunity_not_found",
@@ -340,6 +345,7 @@ impl From<CarryServiceError> for ApiError {
                 EarnProviderError::InvalidData => Self::INVALID_PROVIDER_RESPONSE,
             },
             CarryServiceError::InvalidDepositAmount => Self::INVALID_CARRY_DEPOSIT_AMOUNT,
+            CarryServiceError::InvalidWithdrawalAmount => Self::INVALID_CARRY_WITHDRAWAL_AMOUNT,
             CarryServiceError::OpportunityNotFound => Self::CARRY_OPPORTUNITY_NOT_FOUND,
             CarryServiceError::OpportunityUnavailable => Self::CARRY_OPPORTUNITY_UNAVAILABLE,
         }

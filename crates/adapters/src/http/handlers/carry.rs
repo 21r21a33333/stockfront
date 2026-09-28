@@ -7,8 +7,8 @@ use axum::{
 use stockfront_core::{
     bstock_market::Address,
     carry::{
-        CarryAccount, CarryOpportunity, CarryOpportunityQuery, CarryService,
-        PrepareCarryDepositRequest, PreparedCarryDeposit,
+        CarryAccount, CarryActionPlan, CarryOpportunity, CarryOpportunityQuery, CarryService,
+        PrepareCarryDepositRequest, PrepareCarryWithdrawalRequest, PreparedCarryDeposit,
     },
 };
 
@@ -40,6 +40,15 @@ pub(in crate::http) async fn prepare_deposit(
     let Json(request) = request?;
     let deposit = service.prepare_deposit(&request).await?;
     Ok(Response::ok(deposit))
+}
+
+pub(in crate::http) async fn prepare_withdrawal(
+    State(service): State<Arc<CarryService>>,
+    request: Result<Json<PrepareCarryWithdrawalRequest>, JsonRejection>,
+) -> ApiResult<CarryActionPlan> {
+    let Json(request) = request?;
+    let withdrawal = service.prepare_withdrawal(&request).await?;
+    Ok(Response::ok(withdrawal))
 }
 
 pub(in crate::http) async fn positions(

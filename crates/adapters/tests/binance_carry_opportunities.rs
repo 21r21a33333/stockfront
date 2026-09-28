@@ -5,7 +5,10 @@ use std::{collections::HashSet, env, error::Error, io};
 use alloy_primitives::{Address, U256, address};
 use rust_decimal::Decimal;
 use stockfront_core::{
-    carry::{CarryTransactionKind, EarnActionGateway, EarnDepositCommand, EarnReader},
+    carry::{
+        CarryTransactionKind, CarryWithdrawalAmount, EarnActionGateway, EarnDepositCommand,
+        EarnReader, EarnWithdrawalCommand,
+    },
     wallet_portfolio::WalletAddress,
 };
 
@@ -116,6 +119,45 @@ async fn prepares_live_carry_deposit() -> Result<(), Box<dyn Error>> {
     assert!(plan.preview.warnings.iter().all(|warning| {
         !warning.code.is_empty() && !warning.level.is_empty() && !warning.message.is_empty()
     }));
+
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires live Binance Web3 credentials, STOCKFRONT_TEST_WALLET, and a carry position"]
+async fn prepares_live_full_carry_withdrawal() -> Result<(), Box<dyn Error>> {
+    let client = live_client()?;
+    let investment_id = env::var("STOCKFRONT_CARRY_INVESTMENT_ID")?;
+    let wallet = WalletAddress::try_from(env::var("STOCKFRONT_TEST_WALLET")?.parse::<Address>()?)?;
+
+    let plan = client
+        .prepare_withdrawal(&EarnWithdrawalCommand {
+            wallet,
+            investment_id,
+            amount: CarryWithdrawalAmount::Full,
+        })
+        .await?;
+
+    let (redeem, preceding) = plan
+        .transactions
+        .split_last()
+        .ok_or_else(|| io::Error::other("Binance returned no redemption transaction"))?;
+    assert_eq!(redeem.kind, CarryTransactionKind::Redeem);
+    assert!(
+        preceding
+            .iter()
+            .all(|transaction| transaction.kind == CarryTransactionKind::Approve)
+    );
+    assert!(plan.transactions.iter().all(|transaction| {
+        transaction.to != Address::ZERO
+            && !transaction.data.is_empty()
+            && transaction.gas_limit.is_some_and(|gas| gas > U256::ZERO)
+    }));
+    assert!(
+        plan.preview
+            .estimated_network_fee
+            .is_some_and(|fee| fee.amount.is_sign_positive())
+    );
 
     Ok(())
 }

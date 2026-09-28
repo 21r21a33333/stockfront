@@ -8,9 +8,10 @@ use crate::{
         BorrowingMarket, BorrowingMarketQuery, BorrowingService, BorrowingServiceError,
     },
     carry::{
-        CarryAccount, CarryOpportunity, CarryOpportunityQuery, CarryOpportunityReason,
-        CarryQualification, EarnActionGateway, EarnDepositCommand, EarnOpportunity,
-        EarnProviderError, EarnRateType, EarnReader, PrepareCarryDepositRequest,
+        CarryAccount, CarryActionPlan, CarryOpportunity, CarryOpportunityQuery,
+        CarryOpportunityReason, CarryQualification, CarryWithdrawalAmount, EarnActionGateway,
+        EarnDepositCommand, EarnOpportunity, EarnProviderError, EarnRateType, EarnReader,
+        EarnWithdrawalCommand, PrepareCarryDepositRequest, PrepareCarryWithdrawalRequest,
         PreparedCarryDeposit,
     },
     wallet_portfolio::WalletAddress,
@@ -49,6 +50,8 @@ pub enum CarryServiceError {
     Positions(EarnProviderError),
     #[error("carry deposit amount must be greater than zero")]
     InvalidDepositAmount,
+    #[error("carry withdrawal amount must be greater than zero")]
+    InvalidWithdrawalAmount,
     #[error("the earn opportunity was not found")]
     OpportunityNotFound,
     #[error("the earn opportunity is not currently eligible")]
@@ -173,6 +176,36 @@ impl CarryService {
             preview: plan.preview,
         })
     }
+
+    /// Returns a simulated, unsigned withdrawal plan for a BNB Chain earn opportunity.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CarryServiceError`] when the amount or investment is invalid, or when the earn
+    /// provider cannot prepare the transaction plan.
+    pub async fn prepare_withdrawal(
+        &self,
+        request: &PrepareCarryWithdrawalRequest,
+    ) -> Result<CarryActionPlan, CarryServiceError> {
+        if matches!(
+            request.amount,
+            CarryWithdrawalAmount::Exact { value, .. } if value <= Decimal::ZERO
+        ) {
+            return Err(CarryServiceError::InvalidWithdrawalAmount);
+        }
+        self.earn_reader
+            .opportunity(&request.investment_id)
+            .await?
+            .ok_or(CarryServiceError::OpportunityNotFound)?;
+        self.earn_gateway
+            .prepare_withdrawal(&EarnWithdrawalCommand {
+                wallet: request.wallet,
+                investment_id: request.investment_id.clone(),
+                amount: request.amount.clone(),
+            })
+            .await
+            .map_err(Into::into)
+    }
 }
 
 fn assess(
@@ -252,7 +285,7 @@ mod tests {
             AssetKind, BNB_CHAIN_ID, BstockCatalog, BstockDetails, BstockId, BstockSummary,
             CatalogError,
         },
-        carry::{CarryDepositPlan, CarryDepositPreview},
+        carry::{CarryActionPlan, CarryActionPreview, RedemptionDelay},
         wallet_portfolio::WalletAddress,
     };
 
@@ -390,6 +423,67 @@ mod tests {
 
         assert_eq!(account.chain_id, BNB_CHAIN_ID);
         assert_eq!(account.observed_at_ms, 2_000);
+    }
+
+    #[tokio::test]
+    async fn withdrawal_supports_exact_and_full_amounts_without_the_deposit_allowlist() {
+        let service = service(CarryPolicy::new(Vec::new(), 100));
+        let exact = service
+            .prepare_withdrawal(&PrepareCarryWithdrawalRequest {
+                wallet: wallet(),
+                investment_id: INVESTMENT_ID.to_owned(),
+                amount: CarryWithdrawalAmount::Exact {
+                    token: Address::with_last_byte(3),
+                    value: Decimal::new(25, 0),
+                },
+            })
+            .await
+            .unwrap_or_else(|error| panic!("exact withdrawal rejected: {error}"));
+        let full = service
+            .prepare_withdrawal(&PrepareCarryWithdrawalRequest {
+                wallet: wallet(),
+                investment_id: INVESTMENT_ID.to_owned(),
+                amount: CarryWithdrawalAmount::Full,
+            })
+            .await
+            .unwrap_or_else(|error| panic!("full withdrawal rejected: {error}"));
+
+        assert_eq!(exact.preview.redemption_delay, None);
+        assert_eq!(
+            full.preview.redemption_delay,
+            Some(RedemptionDelay {
+                min_days: Decimal::new(7, 0),
+                max_days: Decimal::new(10, 0),
+            })
+        );
+    }
+
+    #[tokio::test]
+    async fn withdrawal_rejects_non_positive_exact_amount_and_unknown_investment() {
+        let service = service(CarryPolicy::new(Vec::new(), 100));
+        for value in [Decimal::ZERO, Decimal::NEGATIVE_ONE] {
+            let request = PrepareCarryWithdrawalRequest {
+                wallet: wallet(),
+                investment_id: INVESTMENT_ID.to_owned(),
+                amount: CarryWithdrawalAmount::Exact {
+                    token: Address::with_last_byte(3),
+                    value,
+                },
+            };
+            assert!(matches!(
+                service.prepare_withdrawal(&request).await,
+                Err(CarryServiceError::InvalidWithdrawalAmount)
+            ));
+        }
+        let request = PrepareCarryWithdrawalRequest {
+            wallet: wallet(),
+            investment_id: "unknown".to_owned(),
+            amount: CarryWithdrawalAmount::Full,
+        };
+        assert!(matches!(
+            service.prepare_withdrawal(&request).await,
+            Err(CarryServiceError::OpportunityNotFound)
+        ));
     }
 
     struct FixedCatalog;
@@ -540,14 +634,40 @@ mod tests {
         async fn prepare_deposit(
             &self,
             command: &EarnDepositCommand,
-        ) -> Result<CarryDepositPlan, EarnProviderError> {
+        ) -> Result<CarryActionPlan, EarnProviderError> {
             assert_eq!(command.wallet, wallet());
             assert_eq!(command.investment_id, INVESTMENT_ID);
             assert_eq!(command.asset, Address::with_last_byte(3));
             assert_eq!(command.amount, Decimal::new(25, 0));
-            Ok(CarryDepositPlan {
+            Ok(CarryActionPlan {
                 transactions: Vec::new(),
-                preview: CarryDepositPreview::default(),
+                preview: CarryActionPreview::default(),
+            })
+        }
+
+        async fn prepare_withdrawal(
+            &self,
+            command: &EarnWithdrawalCommand,
+        ) -> Result<CarryActionPlan, EarnProviderError> {
+            assert_eq!(command.wallet, wallet());
+            assert_eq!(command.investment_id, INVESTMENT_ID);
+            let redemption_delay = match command.amount {
+                CarryWithdrawalAmount::Exact { token, value } => {
+                    assert_eq!(token, Address::with_last_byte(3));
+                    assert_eq!(value, Decimal::new(25, 0));
+                    None
+                }
+                CarryWithdrawalAmount::Full => Some(RedemptionDelay {
+                    min_days: Decimal::new(7, 0),
+                    max_days: Decimal::new(10, 0),
+                }),
+            };
+            Ok(CarryActionPlan {
+                transactions: Vec::new(),
+                preview: CarryActionPreview {
+                    redemption_delay,
+                    ..CarryActionPreview::default()
+                },
             })
         }
     }

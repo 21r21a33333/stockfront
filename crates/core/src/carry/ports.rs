@@ -3,7 +3,9 @@ use async_trait::async_trait;
 use thiserror::Error;
 
 use crate::{
-    carry::{CarryAccount, CarryDepositPlan, EarnDepositCommand, EarnOpportunity},
+    carry::{
+        CarryAccount, CarryActionPlan, EarnDepositCommand, EarnOpportunity, EarnWithdrawalCommand,
+    },
     wallet_portfolio::WalletAddress,
 };
 
@@ -37,5 +39,10 @@ pub trait EarnActionGateway: Send + Sync {
     async fn prepare_deposit(
         &self,
         command: &EarnDepositCommand,
-    ) -> Result<CarryDepositPlan, EarnProviderError>;
+    ) -> Result<CarryActionPlan, EarnProviderError>;
+
+    async fn prepare_withdrawal(
+        &self,
+        command: &EarnWithdrawalCommand,
+    ) -> Result<CarryActionPlan, EarnProviderError>;
 }
