@@ -5,7 +5,7 @@ use rust_decimal::Decimal;
 use stockfront_core::{
     bstock_borrowing::BorrowingAsset,
     bstock_market::BNB_CHAIN_ID,
-    carry::{CarryAccount, CarryPosition, EarnProviderError},
+    carry::{CarryAccount, CarryPosition, CarryRedemption, EarnProviderError},
     wallet_portfolio::WalletAddress,
 };
 
@@ -120,6 +120,11 @@ impl TryFrom<ProviderCarryPosition> for CarryPosition {
         if provider.investment_ids.is_empty() {
             return Err(InvalidProviderData);
         }
+        let redemption = provider
+            .position
+            .position_detail
+            .flatten()
+            .and_then(|detail| CarryRedemption::try_from(ProviderCarryRedemption(*detail)).ok());
         let tokens = required(provider.position.token_list)?;
         let assets = tokens
             .supply
@@ -139,7 +144,25 @@ impl TryFrom<ProviderCarryPosition> for CarryPosition {
             protocol_name: required_non_empty(provider.protocol_name)?,
             value_usd: parse(&required(provider.position.position_value)?)?,
             assets,
+            redemption,
         })
+    }
+}
+
+struct ProviderCarryRedemption(models::DefiPositionDetail);
+
+impl TryFrom<ProviderCarryRedemption> for CarryRedemption {
+    type Error = InvalidProviderData;
+
+    fn try_from(provider: ProviderCarryRedemption) -> Result<Self, Self::Error> {
+        let detail = provider.0;
+        let id = required_non_empty(detail.redemption_id.flatten())?;
+        let claimable = detail
+            .claim_types
+            .unwrap_or_default()
+            .iter()
+            .any(|claim_type| claim_type == "REDEMPTION");
+        Ok(Self { id, claimable })
     }
 }
 
@@ -151,7 +174,56 @@ mod tests {
 
     #[test]
     fn keeps_all_ids_for_each_resolved_earn_position() {
-        let snapshot = DefiPositionSnapshot {
+        let snapshot = snapshot(vec![
+            position(&["base", "reward"], "25"),
+            position(&["unrelated"], "50"),
+        ]);
+
+        let account = carry_account(snapshot, &HashSet::from(["base".to_owned()]))
+            .unwrap_or_else(|_| panic!("valid position fixture was rejected"));
+
+        assert_eq!(account.positions.len(), 1);
+        assert_eq!(account.positions[0].investment_ids, ["base", "reward"]);
+        assert_eq!(account.positions[0].redemption, None);
+        assert_eq!(account.total_value_usd, Decimal::new(25, 0));
+        assert_eq!(account.observed_at_ms, 1_000);
+    }
+
+    #[test]
+    fn maps_pending_and_claimable_redemptions_from_position_metadata() {
+        let mut pending = position(&["pending"], "25");
+        pending.position_detail = Some(Some(Box::new(position_detail("pending-redemption", &[]))));
+        let mut claimable = position(&["claimable"], "50");
+        claimable.position_detail = Some(Some(Box::new(position_detail(
+            "claimable-redemption",
+            &["REWARD_PROTOCOL", "REDEMPTION"],
+        ))));
+        let snapshot = snapshot(vec![pending, claimable]);
+
+        let account = carry_account(
+            snapshot,
+            &HashSet::from(["pending".to_owned(), "claimable".to_owned()]),
+        )
+        .unwrap_or_else(|_| panic!("valid redemption metadata was rejected"));
+
+        assert_eq!(
+            account.positions[0].redemption,
+            Some(CarryRedemption {
+                id: "pending-redemption".to_owned(),
+                claimable: false,
+            })
+        );
+        assert_eq!(
+            account.positions[1].redemption,
+            Some(CarryRedemption {
+                id: "claimable-redemption".to_owned(),
+                claimable: true,
+            })
+        );
+    }
+
+    fn snapshot(positions: Vec<models::DefiPosition>) -> DefiPositionSnapshot {
+        DefiPositionSnapshot {
             positions: models::DefiPositions {
                 total_value: Some("75".to_owned()),
                 address_list: Some(vec![models::DefiAddressPosition {
@@ -164,25 +236,26 @@ mod tests {
                             pool_ca: None,
                             position_collection_list: Some(vec![models::DefiPositionCollection {
                                 position_collection_detail: None,
-                                position_list: Some(vec![
-                                    position(&["base", "reward"], "25"),
-                                    position(&["unrelated"], "50"),
-                                ]),
+                                position_list: Some(positions),
                             }]),
                         }]),
                     }]),
                 }]),
             },
             observed_at_ms: 1_000,
-        };
+        }
+    }
 
-        let account = carry_account(snapshot, &HashSet::from(["base".to_owned()]))
-            .unwrap_or_else(|_| panic!("valid position fixture was rejected"));
-
-        assert_eq!(account.positions.len(), 1);
-        assert_eq!(account.positions[0].investment_ids, ["base", "reward"]);
-        assert_eq!(account.total_value_usd, Decimal::new(25, 0));
-        assert_eq!(account.observed_at_ms, 1_000);
+    fn position_detail(redemption_id: &str, claim_types: &[&str]) -> models::DefiPositionDetail {
+        models::DefiPositionDetail {
+            claim_types: Some(
+                claim_types
+                    .iter()
+                    .map(|claim_type| (*claim_type).to_owned())
+                    .collect(),
+            ),
+            redemption_id: Some(Some(redemption_id.to_owned())),
+        }
     }
 
     fn position(investment_ids: &[&str], value: &str) -> models::DefiPosition {
@@ -206,6 +279,7 @@ mod tests {
                 }]),
                 borrow: None,
             })),
+            position_detail: None,
         }
     }
 }

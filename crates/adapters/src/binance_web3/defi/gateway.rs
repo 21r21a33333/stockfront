@@ -3,7 +3,8 @@ use binance_web3_rwa::{
     apis::{
         de_fi_data_api::{ListDefiInvestmentsParams, list_defi_investments},
         de_fi_transaction_api::{
-            BuildDefiDepositTransactionParams, BuildDefiRedeemTransactionParams,
+            BuildDefiClaimTransactionParams, BuildDefiDepositTransactionParams,
+            BuildDefiRedeemTransactionParams, build_defi_claim_transaction,
             build_defi_deposit_transaction, build_defi_redeem_transaction,
         },
         wallet_api::{GetTransactionDetailByHashParams, get_transaction_detail_by_hash},
@@ -99,6 +100,29 @@ impl BinanceWeb3Client {
             .ok_or(DefiPlanError::InvalidData)
     }
 
+    pub(super) async fn build_redemption_claim_plan(
+        &self,
+        wallet: WalletAddress,
+        investment_id: String,
+        redemption_id: String,
+    ) -> Result<models::DefiTransactionPlan, DefiPlanError> {
+        let body = redemption_claim_request(wallet, investment_id, redemption_id);
+
+        let response = build_defi_claim_transaction(
+            &self.configuration,
+            BuildDefiClaimTransactionParams {
+                build_defi_claim_request: body,
+            },
+        )
+        .await
+        .map_err(map_request_error)?;
+        ensure_business_success(response.code, response.success)?;
+        response
+            .data
+            .map(|plan| *plan)
+            .ok_or(DefiPlanError::InvalidData)
+    }
+
     pub(crate) async fn borrowing_transaction_status(
         &self,
         transaction_hash: B256,
@@ -151,6 +175,21 @@ impl BinanceWeb3Client {
             .filter(|investment_id| !investment_id.is_empty())
             .ok_or(BorrowingProviderError::InvalidData)
     }
+}
+
+fn redemption_claim_request(
+    wallet: WalletAddress,
+    investment_id: String,
+    redemption_id: String,
+) -> models::BuildDefiClaimRequest {
+    let mut body = models::BuildDefiClaimRequest::new(
+        wallet.as_address().to_string(),
+        models::build_defi_claim_request::ClaimType::Redemption,
+        investment_id,
+        redemption_id,
+    );
+    body.simulate = Some(true);
+    body
 }
 
 fn redeem_request(
@@ -248,6 +287,22 @@ mod tests {
 
         assert_eq!(request.token, None);
         assert_eq!(request.ratio.as_deref(), Some("1"));
+        assert_eq!(request.simulate, Some(true));
+    }
+
+    #[test]
+    fn redemption_claim_request_uses_provider_ids_and_simulation() {
+        let wallet = wallet();
+        let request =
+            redemption_claim_request(wallet, "investment".to_owned(), "redemption".to_owned());
+
+        assert_eq!(request.address, wallet.as_address().to_string());
+        assert_eq!(
+            request.claim_type,
+            models::build_defi_claim_request::ClaimType::Redemption
+        );
+        assert_eq!(request.investment_id, "investment");
+        assert_eq!(request.redemption_id, "redemption");
         assert_eq!(request.simulate, Some(true));
     }
 

@@ -47,6 +47,15 @@ pub struct CarryPosition {
     pub protocol_name: String,
     pub value_usd: Decimal,
     pub assets: Vec<BorrowingAsset>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub redemption: Option<CarryRedemption>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CarryRedemption {
+    pub id: String,
+    pub claimable: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
@@ -146,12 +155,28 @@ pub struct EarnWithdrawalCommand {
     pub amount: CarryWithdrawalAmount,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PrepareCarryRedemptionClaimRequest {
+    pub wallet: WalletAddress,
+    pub investment_id: String,
+    pub redemption_id: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct EarnRedemptionClaimCommand {
+    pub wallet: WalletAddress,
+    pub investment_id: String,
+    pub redemption_id: String,
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum CarryTransactionKind {
     Approve,
     Deposit,
     Redeem,
+    Claim,
 }
 
 pub type PreparedCarryTransaction = PreparedTransaction<CarryTransactionKind>;

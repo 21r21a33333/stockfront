@@ -105,6 +105,23 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/BuildDefiRedeemResponse'
+  /api/v1/defi/transaction/claim:
+    post:
+      operationId: buildDefiClaimTransaction
+      tags: [DeFi transaction]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BuildDefiClaimRequest'
+      responses:
+        '200':
+          description: Ordered unsigned claim transactions or a Binance business error.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BuildDefiClaimResponse'
   /api/v1/dex/balance/token-balances-by-address:
     post:
       operationId: getTokenBalancesByAddress
@@ -663,6 +680,29 @@ components:
           properties:
             data:
               $ref: '#/components/schemas/DefiTransactionPlan'
+    BuildDefiClaimRequest:
+      type: object
+      required: [address, claimType, investmentId, redemptionId]
+      properties:
+        address:
+          type: string
+        claimType:
+          type: string
+          description: Type of claim to prepare.
+          enum: [REDEMPTION]
+        investmentId:
+          type: string
+        redemptionId:
+          type: string
+        simulate:
+          type: boolean
+    BuildDefiClaimResponse:
+      allOf:
+        - $ref: '#/components/schemas/BusinessResponse'
+        - type: object
+          properties:
+            data:
+              $ref: '#/components/schemas/DefiTransactionPlan'
     DefiTransactionPlan:
       type: object
       properties:
@@ -882,6 +922,19 @@ components:
           type: string
         tokenList:
           $ref: '#/components/schemas/DefiPositionTokens'
+        positionDetail:
+          $ref: '#/components/schemas/DefiPositionDetail'
+    DefiPositionDetail:
+      type: object
+      nullable: true
+      properties:
+        claimTypes:
+          type: array
+          items:
+            type: string
+        redemptionId:
+          type: string
+          nullable: true
     DefiPositionTokens:
       type: object
       properties:

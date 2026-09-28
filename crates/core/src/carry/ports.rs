@@ -4,7 +4,8 @@ use thiserror::Error;
 
 use crate::{
     carry::{
-        CarryAccount, CarryActionPlan, EarnDepositCommand, EarnOpportunity, EarnWithdrawalCommand,
+        CarryAccount, CarryActionPlan, EarnDepositCommand, EarnOpportunity,
+        EarnRedemptionClaimCommand, EarnWithdrawalCommand,
     },
     wallet_portfolio::WalletAddress,
 };
@@ -44,5 +45,10 @@ pub trait EarnActionGateway: Send + Sync {
     async fn prepare_withdrawal(
         &self,
         command: &EarnWithdrawalCommand,
+    ) -> Result<CarryActionPlan, EarnProviderError>;
+
+    async fn prepare_redemption_claim(
+        &self,
+        command: &EarnRedemptionClaimCommand,
     ) -> Result<CarryActionPlan, EarnProviderError>;
 }

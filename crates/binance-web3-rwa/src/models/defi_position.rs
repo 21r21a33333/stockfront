@@ -21,6 +21,13 @@ pub struct DefiPosition {
     pub position_value: Option<String>,
     #[serde(rename = "tokenList", skip_serializing_if = "Option::is_none")]
     pub token_list: Option<Box<models::DefiPositionTokens>>,
+    #[serde(
+        rename = "positionDetail",
+        default,
+        with = "::serde_with::rust::double_option",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub position_detail: Option<Option<Box<models::DefiPositionDetail>>>,
 }
 
 impl DefiPosition {
@@ -30,6 +37,7 @@ impl DefiPosition {
             investment_ids: None,
             position_value: None,
             token_list: None,
+            position_detail: None,
         }
     }
 }

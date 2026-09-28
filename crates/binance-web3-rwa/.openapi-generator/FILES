@@ -14,6 +14,8 @@ src/apis/wallet_api.rs
 src/lib.rs
 src/models/aggregated_quote.rs
 src/models/approve_transaction.rs
+src/models/build_defi_claim_request.rs
+src/models/build_defi_claim_response.rs
 src/models/build_defi_deposit_request.rs
 src/models/build_defi_deposit_response.rs
 src/models/build_defi_redeem_request.rs
@@ -36,6 +38,7 @@ src/models/defi_pool_position.rs
 src/models/defi_position.rs
 src/models/defi_position_collection.rs
 src/models/defi_position_collection_detail.rs
+src/models/defi_position_detail.rs
 src/models/defi_position_token.rs
 src/models/defi_position_tokens.rs
 src/models/defi_positions.rs

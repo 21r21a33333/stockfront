@@ -169,6 +169,16 @@ impl TryFrom<ProviderCarryWithdrawalPlan> for CarryActionPlan {
     }
 }
 
+pub(super) struct ProviderCarryClaimPlan(pub(super) models::DefiTransactionPlan);
+
+impl TryFrom<ProviderCarryClaimPlan> for CarryActionPlan {
+    type Error = EarnProviderError;
+
+    fn try_from(value: ProviderCarryClaimPlan) -> Result<Self, Self::Error> {
+        carry_action_plan(value.0, CarryTransactionKind::Claim)
+    }
+}
+
 fn carry_action_plan(
     plan: models::DefiTransactionPlan,
     final_kind: CarryTransactionKind,
@@ -177,6 +187,7 @@ fn carry_action_plan(
         models::defi_transaction::CallDataType::Approve => Some(CarryTransactionKind::Approve),
         models::defi_transaction::CallDataType::Deposit => Some(CarryTransactionKind::Deposit),
         models::defi_transaction::CallDataType::Redeem => Some(CarryTransactionKind::Redeem),
+        models::defi_transaction::CallDataType::Claim => Some(CarryTransactionKind::Claim),
         _ => None,
     })?;
     if transactions.last().map(|transaction| transaction.kind) != Some(final_kind) {
@@ -595,6 +606,24 @@ mod tests {
                 max_days: Decimal::new(3, 0),
             })
         );
+    }
+
+    #[test]
+    fn carry_claim_plan_requires_a_final_claim_action() {
+        let mut claim = models::DefiTransaction::new();
+        claim.call_data_type = Some(models::defi_transaction::CallDataType::Claim);
+        claim.to = Some(Some(Address::with_last_byte(2).to_string()));
+        claim.data = Some("0x0304".to_owned());
+        let mut plan = models::DefiTransactionPlan::new();
+        plan.data_list = Some(vec![claim]);
+        plan.preview = Some(Box::new(models::DefiTransactionPreview::new()));
+
+        let plan = CarryActionPlan::try_from(ProviderCarryClaimPlan(plan))
+            .unwrap_or_else(|error| panic!("valid claim plan rejected: {error}"));
+
+        assert_eq!(plan.transactions.len(), 1);
+        assert_eq!(plan.transactions[0].kind, CarryTransactionKind::Claim);
+        assert_eq!(plan.preview, CarryActionPreview::default());
     }
 
     fn withdrawal_plan(delay: Option<Vec<String>>) -> models::DefiTransactionPlan {

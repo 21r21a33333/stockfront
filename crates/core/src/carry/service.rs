@@ -11,8 +11,8 @@ use crate::{
         CarryAccount, CarryActionPlan, CarryOpportunity, CarryOpportunityQuery,
         CarryOpportunityReason, CarryQualification, CarryWithdrawalAmount, EarnActionGateway,
         EarnDepositCommand, EarnOpportunity, EarnProviderError, EarnRateType, EarnReader,
-        EarnWithdrawalCommand, PrepareCarryDepositRequest, PrepareCarryWithdrawalRequest,
-        PreparedCarryDeposit,
+        EarnRedemptionClaimCommand, EarnWithdrawalCommand, PrepareCarryDepositRequest,
+        PrepareCarryRedemptionClaimRequest, PrepareCarryWithdrawalRequest, PreparedCarryDeposit,
     },
     wallet_portfolio::WalletAddress,
 };
@@ -202,6 +202,25 @@ impl CarryService {
                 wallet: request.wallet,
                 investment_id: request.investment_id.clone(),
                 amount: request.amount.clone(),
+            })
+            .await
+            .map_err(Into::into)
+    }
+
+    /// Returns a simulated, unsigned claim plan for a delayed redemption.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CarryServiceError`] when the earn provider cannot prepare the claim.
+    pub async fn prepare_redemption_claim(
+        &self,
+        request: &PrepareCarryRedemptionClaimRequest,
+    ) -> Result<CarryActionPlan, CarryServiceError> {
+        self.earn_gateway
+            .prepare_redemption_claim(&EarnRedemptionClaimCommand {
+                wallet: request.wallet,
+                investment_id: request.investment_id.clone(),
+                redemption_id: request.redemption_id.clone(),
             })
             .await
             .map_err(Into::into)
@@ -486,6 +505,22 @@ mod tests {
         ));
     }
 
+    #[tokio::test]
+    async fn redemption_claim_passes_only_provider_owned_identifiers() {
+        let service = service(CarryPolicy::new(Vec::new(), 100));
+
+        let plan = service
+            .prepare_redemption_claim(&PrepareCarryRedemptionClaimRequest {
+                wallet: wallet(),
+                investment_id: INVESTMENT_ID.to_owned(),
+                redemption_id: "redemption".to_owned(),
+            })
+            .await
+            .unwrap_or_else(|error| panic!("redemption claim rejected: {error}"));
+
+        assert!(plan.transactions.is_empty());
+    }
+
     struct FixedCatalog;
 
     #[async_trait]
@@ -668,6 +703,19 @@ mod tests {
                     redemption_delay,
                     ..CarryActionPreview::default()
                 },
+            })
+        }
+
+        async fn prepare_redemption_claim(
+            &self,
+            command: &EarnRedemptionClaimCommand,
+        ) -> Result<CarryActionPlan, EarnProviderError> {
+            assert_eq!(command.wallet, wallet());
+            assert_eq!(command.investment_id, INVESTMENT_ID);
+            assert_eq!(command.redemption_id, "redemption");
+            Ok(CarryActionPlan {
+                transactions: Vec::new(),
+                preview: CarryActionPreview::default(),
             })
         }
     }

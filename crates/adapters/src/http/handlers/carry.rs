@@ -8,7 +8,8 @@ use stockfront_core::{
     bstock_market::Address,
     carry::{
         CarryAccount, CarryActionPlan, CarryOpportunity, CarryOpportunityQuery, CarryService,
-        PrepareCarryDepositRequest, PrepareCarryWithdrawalRequest, PreparedCarryDeposit,
+        PrepareCarryDepositRequest, PrepareCarryRedemptionClaimRequest,
+        PrepareCarryWithdrawalRequest, PreparedCarryDeposit,
     },
 };
 
@@ -49,6 +50,15 @@ pub(in crate::http) async fn prepare_withdrawal(
     let Json(request) = request?;
     let withdrawal = service.prepare_withdrawal(&request).await?;
     Ok(Response::ok(withdrawal))
+}
+
+pub(in crate::http) async fn prepare_redemption_claim(
+    State(service): State<Arc<CarryService>>,
+    request: Result<Json<PrepareCarryRedemptionClaimRequest>, JsonRejection>,
+) -> ApiResult<CarryActionPlan> {
+    let Json(request) = request?;
+    let claim = service.prepare_redemption_claim(&request).await?;
+    Ok(Response::ok(claim))
 }
 
 pub(in crate::http) async fn positions(

@@ -1,13 +1,13 @@
 use async_trait::async_trait;
 use stockfront_core::carry::{
     CarryActionPlan, EarnActionGateway, EarnDepositCommand, EarnProviderError,
-    EarnWithdrawalCommand,
+    EarnRedemptionClaimCommand, EarnWithdrawalCommand,
 };
 
 use super::{
     super::client::BinanceWeb3Client,
     gateway::DefiPlanError,
-    mapping::{ProviderCarryDepositPlan, ProviderCarryWithdrawalPlan},
+    mapping::{ProviderCarryClaimPlan, ProviderCarryDepositPlan, ProviderCarryWithdrawalPlan},
 };
 
 #[async_trait]
@@ -41,6 +41,21 @@ impl EarnActionGateway for BinanceWeb3Client {
             .await
             .map_err(EarnProviderError::from)?;
         CarryActionPlan::try_from(ProviderCarryWithdrawalPlan(plan))
+    }
+
+    async fn prepare_redemption_claim(
+        &self,
+        command: &EarnRedemptionClaimCommand,
+    ) -> Result<CarryActionPlan, EarnProviderError> {
+        let plan = self
+            .build_redemption_claim_plan(
+                command.wallet,
+                command.investment_id.clone(),
+                command.redemption_id.clone(),
+            )
+            .await
+            .map_err(EarnProviderError::from)?;
+        CarryActionPlan::try_from(ProviderCarryClaimPlan(plan))
     }
 }
 

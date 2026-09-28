@@ -13,6 +13,12 @@ use crate::{apis::ResponseContent, models};
 use reqwest;
 use serde::{de::Error as _, Deserialize, Serialize};
 
+/// struct for passing parameters to the method [`build_defi_claim_transaction`]
+#[derive(Clone, Debug)]
+pub struct BuildDefiClaimTransactionParams {
+    pub build_defi_claim_request: models::BuildDefiClaimRequest,
+}
+
 /// struct for passing parameters to the method [`build_defi_deposit_transaction`]
 #[derive(Clone, Debug)]
 pub struct BuildDefiDepositTransactionParams {
@@ -23,6 +29,13 @@ pub struct BuildDefiDepositTransactionParams {
 #[derive(Clone, Debug)]
 pub struct BuildDefiRedeemTransactionParams {
     pub build_defi_redeem_request: models::BuildDefiRedeemRequest,
+}
+
+/// struct for typed errors of method [`build_defi_claim_transaction`]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum BuildDefiClaimTransactionError {
+    UnknownValue(serde_json::Value),
 }
 
 /// struct for typed errors of method [`build_defi_deposit_transaction`]
@@ -37,6 +50,49 @@ pub enum BuildDefiDepositTransactionError {
 #[serde(untagged)]
 pub enum BuildDefiRedeemTransactionError {
     UnknownValue(serde_json::Value),
+}
+
+pub async fn build_defi_claim_transaction(
+    configuration: &configuration::Configuration,
+    params: BuildDefiClaimTransactionParams,
+) -> Result<models::BuildDefiClaimResponse, Error<BuildDefiClaimTransactionError>> {
+    let uri_str = format!("{}/api/v1/defi/transaction/claim", configuration.base_path);
+    let mut req_builder = configuration
+        .client
+        .request(reqwest::Method::POST, &uri_str);
+
+    if let Some(ref user_agent) = configuration.user_agent {
+        req_builder = req_builder.header(reqwest::header::USER_AGENT, user_agent.clone());
+    }
+    req_builder = req_builder.json(&params.build_defi_claim_request);
+
+    let req = req_builder.build()?;
+    let resp = configuration.client.execute(req).await?;
+
+    let status = resp.status();
+    let content_type = resp
+        .headers()
+        .get("content-type")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("application/octet-stream");
+    let content_type = super::ContentType::from(content_type);
+
+    if !status.is_client_error() && !status.is_server_error() {
+        let content = resp.text().await?;
+        match content_type {
+            ContentType::Json => serde_path_to_error::deserialize(&mut serde_json::Deserializer::from_str(&content)).map_err(Error::from),
+            ContentType::Text => Err(Error::from(serde_json::Error::custom("Received `text/plain` content type response that cannot be converted to `models::BuildDefiClaimResponse`"))),
+            ContentType::Unsupported(unknown_type) => Err(Error::from(serde_json::Error::custom(format!("Received `{unknown_type}` content type response that cannot be converted to `models::BuildDefiClaimResponse`")))),
+        }
+    } else {
+        let content = resp.text().await?;
+        let entity: Option<BuildDefiClaimTransactionError> = serde_json::from_str(&content).ok();
+        Err(Error::ResponseError(ResponseContent {
+            status,
+            content,
+            entity,
+        }))
+    }
 }
 
 pub async fn build_defi_deposit_transaction(

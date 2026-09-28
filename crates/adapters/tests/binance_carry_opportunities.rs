@@ -7,7 +7,7 @@ use rust_decimal::Decimal;
 use stockfront_core::{
     carry::{
         CarryTransactionKind, CarryWithdrawalAmount, EarnActionGateway, EarnDepositCommand,
-        EarnReader, EarnWithdrawalCommand,
+        EarnReader, EarnRedemptionClaimCommand, EarnWithdrawalCommand,
     },
     wallet_portfolio::WalletAddress,
 };
@@ -143,6 +143,46 @@ async fn prepares_live_full_carry_withdrawal() -> Result<(), Box<dyn Error>> {
         .split_last()
         .ok_or_else(|| io::Error::other("Binance returned no redemption transaction"))?;
     assert_eq!(redeem.kind, CarryTransactionKind::Redeem);
+    assert!(
+        preceding
+            .iter()
+            .all(|transaction| transaction.kind == CarryTransactionKind::Approve)
+    );
+    assert!(plan.transactions.iter().all(|transaction| {
+        transaction.to != Address::ZERO
+            && !transaction.data.is_empty()
+            && transaction.gas_limit.is_some_and(|gas| gas > U256::ZERO)
+    }));
+    assert!(
+        plan.preview
+            .estimated_network_fee
+            .is_some_and(|fee| fee.amount.is_sign_positive())
+    );
+
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires live Binance Web3 credentials, STOCKFRONT_TEST_WALLET, and a claimable redemption"]
+async fn prepares_live_carry_redemption_claim() -> Result<(), Box<dyn Error>> {
+    let client = live_client()?;
+    let wallet = WalletAddress::try_from(env::var("STOCKFRONT_TEST_WALLET")?.parse::<Address>()?)?;
+    let investment_id = env::var("STOCKFRONT_CARRY_INVESTMENT_ID")?;
+    let redemption_id = env::var("STOCKFRONT_CARRY_REDEMPTION_ID")?;
+
+    let plan = client
+        .prepare_redemption_claim(&EarnRedemptionClaimCommand {
+            wallet,
+            investment_id,
+            redemption_id,
+        })
+        .await?;
+
+    let (claim, preceding) = plan
+        .transactions
+        .split_last()
+        .ok_or_else(|| io::Error::other("Binance returned no claim transaction"))?;
+    assert_eq!(claim.kind, CarryTransactionKind::Claim);
     assert!(
         preceding
             .iter()

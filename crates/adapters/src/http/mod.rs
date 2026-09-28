@@ -115,6 +115,10 @@ pub fn carry_router(service: Arc<CarryService>) -> Router {
             post(handlers::carry::prepare_withdrawal),
         )
         .route(
+            "/v1/carry/redemption-claims/prepare",
+            post(handlers::carry::prepare_redemption_claim),
+        )
+        .route(
             "/v1/wallets/{address}/carry-positions",
             get(handlers::carry::positions),
         )
