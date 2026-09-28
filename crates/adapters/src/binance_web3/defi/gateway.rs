@@ -3,7 +3,9 @@ use binance_web3_rwa::{
     apis::{
         de_fi_data_api::{ListDefiInvestmentsParams, list_defi_investments},
         de_fi_transaction_api::{
-            BuildDefiDepositTransactionParams, build_defi_deposit_transaction,
+            BuildDefiClaimTransactionParams, BuildDefiDepositTransactionParams,
+            BuildDefiRedeemTransactionParams, build_defi_claim_transaction,
+            build_defi_deposit_transaction, build_defi_redeem_transaction,
         },
         wallet_api::{GetTransactionDetailByHashParams, get_transaction_detail_by_hash},
     },
@@ -15,11 +17,12 @@ use stockfront_core::{
         PreparedBorrowingAction,
     },
     bstock_market::BNB_CHAIN_ID,
+    wallet_portfolio::WalletAddress,
 };
 
 use super::{
     super::client::BinanceWeb3Client,
-    super::provider::{ensure_business_success, map_request_error},
+    super::provider::{BinanceRequestError, ensure_business_success, map_request_error},
     mapping::{ProviderPreparedAction, ProviderTransactionDetails},
 };
 
@@ -31,12 +34,28 @@ impl BinanceWeb3Client {
         request: &PrepareSupplyRequest,
     ) -> Result<PreparedBorrowingAction, BorrowingProviderError> {
         let investment_id = self.venus_investment_id(request.collateral_token).await?;
-        let token = models::DefiTokenAmount::new(
-            request.collateral_token.to_string(),
-            request.amount.to_string(),
-        );
+        let plan = self
+            .build_deposit_plan(
+                request.wallet,
+                investment_id,
+                request.collateral_token,
+                request.amount,
+            )
+            .await
+            .map_err(BorrowingProviderError::from)?;
+        PreparedBorrowingAction::try_from(ProviderPreparedAction(plan))
+    }
+
+    pub(super) async fn build_deposit_plan(
+        &self,
+        wallet: WalletAddress,
+        investment_id: String,
+        token: Address,
+        amount: rust_decimal::Decimal,
+    ) -> Result<models::DefiTransactionPlan, DefiPlanError> {
+        let token = models::DefiTokenAmount::new(token.to_string(), amount.to_string());
         let mut body = models::BuildDefiDepositRequest::new(
-            request.wallet.as_address().to_string(),
+            wallet.as_address().to_string(),
             investment_id,
             token,
         );
@@ -51,8 +70,57 @@ impl BinanceWeb3Client {
         .await
         .map_err(map_request_error)?;
         ensure_business_success(response.code, response.success)?;
-        let plan = response.data.ok_or(BorrowingProviderError::InvalidData)?;
-        PreparedBorrowingAction::try_from(ProviderPreparedAction(*plan))
+        response
+            .data
+            .map(|plan| *plan)
+            .ok_or(DefiPlanError::InvalidData)
+    }
+
+    pub(super) async fn build_redeem_plan(
+        &self,
+        wallet: WalletAddress,
+        investment_id: String,
+        token: Address,
+        amount: rust_decimal::Decimal,
+    ) -> Result<models::DefiTransactionPlan, DefiPlanError> {
+        let body = redeem_request(wallet, investment_id, token, amount);
+
+        let response = build_defi_redeem_transaction(
+            &self.configuration,
+            BuildDefiRedeemTransactionParams {
+                build_defi_redeem_request: body,
+            },
+        )
+        .await
+        .map_err(map_request_error)?;
+        ensure_business_success(response.code, response.success)?;
+        response
+            .data
+            .map(|plan| *plan)
+            .ok_or(DefiPlanError::InvalidData)
+    }
+
+    pub(super) async fn build_redemption_claim_plan(
+        &self,
+        wallet: WalletAddress,
+        investment_id: String,
+        redemption_id: String,
+    ) -> Result<models::DefiTransactionPlan, DefiPlanError> {
+        let body = redemption_claim_request(wallet, investment_id, redemption_id);
+
+        let response = build_defi_claim_transaction(
+            &self.configuration,
+            BuildDefiClaimTransactionParams {
+                build_defi_claim_request: body,
+            },
+        )
+        .await
+        .map_err(map_request_error)?;
+        ensure_business_success(response.code, response.success)?;
+        response
+            .data
+            .map(|plan| *plan)
+            .ok_or(DefiPlanError::InvalidData)
     }
 
     pub(crate) async fn borrowing_transaction_status(
@@ -109,6 +177,58 @@ impl BinanceWeb3Client {
     }
 }
 
+fn redemption_claim_request(
+    wallet: WalletAddress,
+    investment_id: String,
+    redemption_id: String,
+) -> models::BuildDefiClaimRequest {
+    let mut body = models::BuildDefiClaimRequest::new(
+        wallet.as_address().to_string(),
+        models::build_defi_claim_request::ClaimType::Redemption,
+        investment_id,
+        redemption_id,
+    );
+    body.simulate = Some(true);
+    body
+}
+
+fn redeem_request(
+    wallet: WalletAddress,
+    investment_id: String,
+    token: Address,
+    amount: rust_decimal::Decimal,
+) -> models::BuildDefiRedeemRequest {
+    let mut body =
+        models::BuildDefiRedeemRequest::new(wallet.as_address().to_string(), investment_id);
+    body.token = Some(Box::new(models::DefiTokenAmount::new(
+        token.to_string(),
+        amount.to_string(),
+    )));
+    body.simulate = Some(true);
+    body
+}
+
+#[derive(Clone, Copy, Debug)]
+pub(super) enum DefiPlanError {
+    Request(BinanceRequestError),
+    InvalidData,
+}
+
+impl From<BinanceRequestError> for DefiPlanError {
+    fn from(error: BinanceRequestError) -> Self {
+        Self::Request(error)
+    }
+}
+
+impl From<DefiPlanError> for BorrowingProviderError {
+    fn from(error: DefiPlanError) -> Self {
+        match error {
+            DefiPlanError::Request(error) => error.into(),
+            DefiPlanError::InvalidData => Self::InvalidData,
+        }
+    }
+}
+
 fn map_transaction_provider_error<T>(
     error: binance_web3_rwa::apis::Error<T>,
 ) -> BorrowingProviderError {
@@ -119,5 +239,52 @@ fn map_transaction_provider_error<T>(
             BorrowingProviderError::TransactionNotFound
         }
         error => map_request_error(error).into(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use alloy_primitives::Address;
+    use rust_decimal::Decimal;
+
+    use super::*;
+
+    #[test]
+    fn redeem_request_uses_exact_token_amount() {
+        let token = Address::with_last_byte(3);
+        let request = redeem_request(
+            wallet(),
+            "investment".to_owned(),
+            token,
+            Decimal::new(25, 1),
+        );
+
+        let amount = request
+            .token
+            .unwrap_or_else(|| panic!("exact request omitted token amount"));
+        assert_eq!(amount.token_address, token.to_string());
+        assert_eq!(amount.amount, "2.5");
+        assert_eq!(request.simulate, Some(true));
+    }
+
+    #[test]
+    fn redemption_claim_request_uses_provider_ids_and_simulation() {
+        let wallet = wallet();
+        let request =
+            redemption_claim_request(wallet, "investment".to_owned(), "redemption".to_owned());
+
+        assert_eq!(request.address, wallet.as_address().to_string());
+        assert_eq!(
+            request.claim_type,
+            models::build_defi_claim_request::ClaimType::Redemption
+        );
+        assert_eq!(request.investment_id, "investment");
+        assert_eq!(request.redemption_id, "redemption");
+        assert_eq!(request.simulate, Some(true));
+    }
+
+    fn wallet() -> WalletAddress {
+        WalletAddress::try_from(Address::with_last_byte(9))
+            .unwrap_or_else(|error| panic!("valid wallet rejected: {error}"))
     }
 }

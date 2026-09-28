@@ -13,12 +13,31 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Default, Debug, PartialEq, Serialize, Deserialize)]
 pub struct DefiPosition {
+    #[serde(rename = "positionId", skip_serializing_if = "Option::is_none")]
+    pub position_id: Option<String>,
+    #[serde(rename = "investmentIds", skip_serializing_if = "Option::is_none")]
+    pub investment_ids: Option<Vec<String>>,
+    #[serde(rename = "positionValue", skip_serializing_if = "Option::is_none")]
+    pub position_value: Option<String>,
     #[serde(rename = "tokenList", skip_serializing_if = "Option::is_none")]
     pub token_list: Option<Box<models::DefiPositionTokens>>,
+    #[serde(
+        rename = "positionDetail",
+        default,
+        with = "::serde_with::rust::double_option",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub position_detail: Option<Option<Box<models::DefiPositionDetail>>>,
 }
 
 impl DefiPosition {
     pub fn new() -> DefiPosition {
-        DefiPosition { token_list: None }
+        DefiPosition {
+            position_id: None,
+            investment_ids: None,
+            position_value: None,
+            token_list: None,
+            position_detail: None,
+        }
     }
 }

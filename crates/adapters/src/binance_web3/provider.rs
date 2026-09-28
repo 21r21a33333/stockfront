@@ -3,11 +3,11 @@ use std::str::FromStr;
 use alloy_primitives::U256;
 use stockfront_core::{
     bstock_borrowing::BorrowingProviderError, bstock_trade::TradeGatewayError,
-    wallet_portfolio::BalanceReaderError,
+    carry::EarnProviderError, wallet_portfolio::BalanceReaderError,
 };
 
 #[derive(Clone, Copy, Debug)]
-pub(super) struct InvalidProviderData;
+pub(crate) struct InvalidProviderData;
 
 impl From<InvalidProviderData> for BorrowingProviderError {
     fn from(_error: InvalidProviderData) -> Self {
@@ -22,6 +22,12 @@ impl From<InvalidProviderData> for TradeGatewayError {
 }
 
 impl From<InvalidProviderData> for BalanceReaderError {
+    fn from(_error: InvalidProviderData) -> Self {
+        Self::InvalidData
+    }
+}
+
+impl From<InvalidProviderData> for EarnProviderError {
     fn from(_error: InvalidProviderData) -> Self {
         Self::InvalidData
     }
@@ -66,7 +72,7 @@ pub(super) fn parse_optional_u256(
 }
 
 #[derive(Clone, Copy, Debug)]
-pub(super) enum BinanceRequestError {
+pub(crate) enum BinanceRequestError {
     Rejected,
     Unavailable,
 }
@@ -81,6 +87,15 @@ impl From<BinanceRequestError> for BorrowingProviderError {
 }
 
 impl From<BinanceRequestError> for TradeGatewayError {
+    fn from(error: BinanceRequestError) -> Self {
+        match error {
+            BinanceRequestError::Rejected => Self::Rejected,
+            BinanceRequestError::Unavailable => Self::Unavailable,
+        }
+    }
+}
+
+impl From<BinanceRequestError> for EarnProviderError {
     fn from(error: BinanceRequestError) -> Self {
         match error {
             BinanceRequestError::Rejected => Self::Rejected,

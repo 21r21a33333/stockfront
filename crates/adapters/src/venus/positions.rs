@@ -1,19 +1,16 @@
 use alloy_primitives::Address;
-use binance_web3_rwa::models::{DefiPoolPosition, DefiPositionCollection, DefiPositionToken};
+use binance_web3_rwa::models::{DefiPoolPosition, DefiPositionCollection};
 use rust_decimal::Decimal;
 use stockfront_core::{
     bstock_borrowing::{
-        BorrowingAccount, BorrowingAsset, BorrowingPosition, BorrowingProviderError,
-        BorrowingToken, BorrowingVenue,
+        BorrowingAccount, BorrowingAsset, BorrowingPosition, BorrowingProviderError, BorrowingVenue,
     },
     bstock_market::BNB_CHAIN_ID,
     wallet_portfolio::WalletAddress,
 };
 
-use super::{
-    client::VenusBorrowingAdapter,
-    conversion::{parse, required},
-};
+use super::{client::VenusBorrowingAdapter, conversion::parse};
+use crate::binance_web3::ProviderPositionToken;
 
 const VENUS_PROTOCOL_ID: &str = "venus";
 
@@ -22,7 +19,10 @@ impl VenusBorrowingAdapter {
         &self,
         wallet: WalletAddress,
     ) -> Result<BorrowingAccount, BorrowingProviderError> {
-        let snapshot = self.binance.defi_positions(wallet).await?;
+        let snapshot = self
+            .binance
+            .defi_positions::<BorrowingProviderError>(wallet)
+            .await?;
         let mut positions = Vec::new();
         let mut total_supplied_usd = Decimal::ZERO;
         let mut total_borrowed_usd = Decimal::ZERO;
@@ -114,30 +114,6 @@ fn pool_position(pool: DefiPoolPosition) -> Result<Option<PositionRead>, Borrowi
 struct PositionRead {
     position: BorrowingPosition,
     health_factor: Option<Decimal>,
-}
-
-struct ProviderPositionToken(DefiPositionToken);
-
-impl From<DefiPositionToken> for ProviderPositionToken {
-    fn from(value: DefiPositionToken) -> Self {
-        Self(value)
-    }
-}
-
-impl TryFrom<ProviderPositionToken> for BorrowingAsset {
-    type Error = BorrowingProviderError;
-
-    fn try_from(value: ProviderPositionToken) -> Result<Self, Self::Error> {
-        let value = value.0;
-        Ok(Self {
-            token: BorrowingToken {
-                contract: parse(&required(value.token_address)?)?,
-                symbol: required(value.token_symbol)?,
-            },
-            amount: parse(&required(value.token_amount)?)?,
-            value_usd: parse(&required(value.token_value)?)?,
-        })
-    }
 }
 
 fn collection_health_factor(

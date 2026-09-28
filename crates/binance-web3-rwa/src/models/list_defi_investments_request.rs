@@ -22,6 +22,12 @@ pub struct ListDefiInvestmentsRequest {
     pub token_address_list: Option<Vec<String>>,
     #[serde(rename = "binanceChainId", skip_serializing_if = "Option::is_none")]
     pub binance_chain_id: Option<String>,
+    /// Supported investment sort field.
+    #[serde(rename = "sortField", skip_serializing_if = "Option::is_none")]
+    pub sort_field: Option<SortField>,
+    /// Investment sort direction.
+    #[serde(rename = "sortDirection", skip_serializing_if = "Option::is_none")]
+    pub sort_direction: Option<SortDirection>,
     #[serde(rename = "page", skip_serializing_if = "Option::is_none")]
     pub page: Option<i32>,
     #[serde(rename = "size", skip_serializing_if = "Option::is_none")]
@@ -35,6 +41,8 @@ impl ListDefiInvestmentsRequest {
             defi_protocol_id: None,
             token_address_list: None,
             binance_chain_id: None,
+            sort_field: None,
+            sort_direction: None,
             page: None,
             size: None,
         }
@@ -50,4 +58,28 @@ pub enum InvestType {
     Earn,
     #[serde(rename = "LiquidityPool")]
     LiquidityPool,
+}
+
+/// Supported investment sort field.
+#[derive(
+    Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize, Default,
+)]
+pub enum SortField {
+    #[serde(rename = "tvl")]
+    #[default]
+    Tvl,
+    #[serde(rename = "apy")]
+    Apy,
+}
+
+/// Investment sort direction.
+#[derive(
+    Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize, Default,
+)]
+pub enum SortDirection {
+    #[serde(rename = "ASC")]
+    #[default]
+    Asc,
+    #[serde(rename = "DESC")]
+    Desc,
 }

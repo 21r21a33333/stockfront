@@ -37,6 +37,23 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ListDefiInvestmentsResponse'
+  /api/v1/defi/data/investment/detail:
+    post:
+      operationId: getDefiInvestmentDetail
+      tags: [DeFi data]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GetDefiInvestmentDetailRequest'
+      responses:
+        '200':
+          description: DeFi investment detail or a Binance business error.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetDefiInvestmentDetailResponse'
   /api/v1/defi/data/position/list:
     post:
       operationId: getDefiPositions
@@ -71,6 +88,40 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/BuildDefiDepositResponse'
+  /api/v1/defi/transaction/redeem:
+    post:
+      operationId: buildDefiRedeemTransaction
+      tags: [DeFi transaction]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BuildDefiRedeemRequest'
+      responses:
+        '200':
+          description: Ordered unsigned redemption transactions or a Binance business error.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BuildDefiRedeemResponse'
+  /api/v1/defi/transaction/claim:
+    post:
+      operationId: buildDefiClaimTransaction
+      tags: [DeFi transaction]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BuildDefiClaimRequest'
+      responses:
+        '200':
+          description: Ordered unsigned claim transactions or a Binance business error.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BuildDefiClaimResponse'
   /api/v1/dex/balance/token-balances-by-address:
     post:
       operationId: getTokenBalancesByAddress
@@ -488,6 +539,14 @@ components:
             type: string
         binanceChainId:
           type: string
+        sortField:
+          type: string
+          description: Supported investment sort field.
+          enum: [tvl, apy]
+        sortDirection:
+          type: string
+          description: Investment sort direction.
+          enum: [ASC, DESC]
         page:
           type: integer
           minimum: 1
@@ -521,6 +580,58 @@ components:
       properties:
         investmentId:
           type: string
+    GetDefiInvestmentDetailRequest:
+      type: object
+      required: [investmentId]
+      properties:
+        investmentId:
+          type: string
+    GetDefiInvestmentDetailResponse:
+      allOf:
+        - $ref: '#/components/schemas/BusinessResponse'
+        - type: object
+          properties:
+            data:
+              $ref: '#/components/schemas/DefiInvestmentDetail'
+    DefiInvestmentDetail:
+      type: object
+      properties:
+        binanceChainId:
+          type: string
+        defiProtocolId:
+          type: string
+        protocolName:
+          type: string
+        protocolLogo:
+          type: string
+        investmentId:
+          type: string
+        investmentName:
+          type: string
+        investType:
+          type: string
+        investable:
+          type: boolean
+        apyBps:
+          type: integer
+          format: int64
+        apyDisplay:
+          type: string
+        apyType:
+          type: string
+        tvl:
+          type: string
+        assetTokenList:
+          type: array
+          items:
+            $ref: '#/components/schemas/DefiInvestmentToken'
+    DefiInvestmentToken:
+      type: object
+      properties:
+        tokenAddress:
+          type: string
+        tokenSymbol:
+          type: string
     BuildDefiDepositRequest:
       type: object
       required: [address, investmentId, token]
@@ -548,6 +659,48 @@ components:
           properties:
             data:
               $ref: '#/components/schemas/DefiTransactionPlan'
+    BuildDefiRedeemRequest:
+      type: object
+      required: [address, investmentId]
+      properties:
+        address:
+          type: string
+        investmentId:
+          type: string
+        token:
+          $ref: '#/components/schemas/DefiTokenAmount'
+        simulate:
+          type: boolean
+    BuildDefiRedeemResponse:
+      allOf:
+        - $ref: '#/components/schemas/BusinessResponse'
+        - type: object
+          properties:
+            data:
+              $ref: '#/components/schemas/DefiTransactionPlan'
+    BuildDefiClaimRequest:
+      type: object
+      required: [address, claimType, investmentId, redemptionId]
+      properties:
+        address:
+          type: string
+        claimType:
+          type: string
+          description: Type of claim to prepare.
+          enum: [REDEMPTION]
+        investmentId:
+          type: string
+        redemptionId:
+          type: string
+        simulate:
+          type: boolean
+    BuildDefiClaimResponse:
+      allOf:
+        - $ref: '#/components/schemas/BusinessResponse'
+        - type: object
+          properties:
+            data:
+              $ref: '#/components/schemas/DefiTransactionPlan'
     DefiTransactionPlan:
       type: object
       properties:
@@ -557,6 +710,10 @@ components:
             $ref: '#/components/schemas/DefiTransaction'
         preview:
           $ref: '#/components/schemas/DefiTransactionPreview'
+        redeemDelayDays:
+          type: array
+          items:
+            type: string
     DefiTransaction:
       type: object
       properties:
@@ -589,6 +746,10 @@ components:
     DefiTransactionPreview:
       type: object
       properties:
+        balanceChange:
+          type: array
+          items:
+            $ref: '#/components/schemas/DefiBalanceChange'
         feeAndContract:
           $ref: '#/components/schemas/DefiFeeAndContract'
         healthFactor:
@@ -602,6 +763,25 @@ components:
       properties:
         estimatedNetworkFee:
           $ref: '#/components/schemas/DefiNetworkFee'
+        interactWith:
+          $ref: '#/components/schemas/DefiContract'
+    DefiContract:
+      type: object
+      properties:
+        address:
+          type: string
+    DefiBalanceChange:
+      type: object
+      properties:
+        tokenSymbol:
+          type: string
+        tokenAddress:
+          type: string
+        amount:
+          type: string
+        valueUsd:
+          type: string
+          nullable: true
     DefiNetworkFee:
       type: object
       properties:
@@ -694,6 +874,8 @@ components:
           type: string
         defiProtocolId:
           type: string
+        protocolName:
+          type: string
         protocolTotalValue:
           type: string
         poolList:
@@ -728,8 +910,29 @@ components:
     DefiPosition:
       type: object
       properties:
+        positionId:
+          type: string
+        investmentIds:
+          type: array
+          items:
+            type: string
+        positionValue:
+          type: string
         tokenList:
           $ref: '#/components/schemas/DefiPositionTokens'
+        positionDetail:
+          $ref: '#/components/schemas/DefiPositionDetail'
+    DefiPositionDetail:
+      type: object
+      nullable: true
+      properties:
+        claimTypes:
+          type: array
+          items:
+            type: string
+        redemptionId:
+          type: string
+          nullable: true
     DefiPositionTokens:
       type: object
       properties:

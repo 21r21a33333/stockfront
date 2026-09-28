@@ -13,6 +13,8 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Default, Debug, PartialEq, Serialize, Deserialize)]
 pub struct DefiTransactionPreview {
+    #[serde(rename = "balanceChange", skip_serializing_if = "Option::is_none")]
+    pub balance_change: Option<Vec<models::DefiBalanceChange>>,
     #[serde(rename = "feeAndContract", skip_serializing_if = "Option::is_none")]
     pub fee_and_contract: Option<Box<models::DefiFeeAndContract>>,
     #[serde(rename = "healthFactor", skip_serializing_if = "Option::is_none")]
@@ -24,6 +26,7 @@ pub struct DefiTransactionPreview {
 impl DefiTransactionPreview {
     pub fn new() -> DefiTransactionPreview {
         DefiTransactionPreview {
+            balance_change: None,
             fee_and_contract: None,
             health_factor: None,
             warnings: None,

@@ -13,7 +13,6 @@ use stockfront_core::{
         PreparedBorrowingAction,
     },
     bstock_market::Address,
-    wallet_portfolio::WalletAddress,
 };
 
 use super::super::{
@@ -21,6 +20,7 @@ use super::super::{
     primitives::{ApiResult, List, Response},
     request::BorrowingMarketsRequest,
 };
+use super::parse_wallet;
 
 pub(in crate::http) async fn markets(
     State(service): State<Arc<BorrowingService>>,
@@ -38,10 +38,7 @@ pub(in crate::http) async fn account(
     State(service): State<Arc<BorrowingService>>,
     Path(address): Path<String>,
 ) -> ApiResult<BorrowingAccount> {
-    let address = address
-        .parse::<Address>()
-        .map_err(|_| ApiError::INVALID_WALLET_ADDRESS)?;
-    let account = service.account(WalletAddress::try_from(address)?).await?;
+    let account = service.account(parse_wallet(&address)?).await?;
     Ok(Response::ok(account))
 }
 

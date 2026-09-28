@@ -17,6 +17,8 @@ pub struct DefiTransactionPlan {
     pub data_list: Option<Vec<models::DefiTransaction>>,
     #[serde(rename = "preview", skip_serializing_if = "Option::is_none")]
     pub preview: Option<Box<models::DefiTransactionPreview>>,
+    #[serde(rename = "redeemDelayDays", skip_serializing_if = "Option::is_none")]
+    pub redeem_delay_days: Option<Vec<String>>,
 }
 
 impl DefiTransactionPlan {
@@ -24,6 +26,7 @@ impl DefiTransactionPlan {
         DefiTransactionPlan {
             data_list: None,
             preview: None,
+            redeem_delay_days: None,
         }
     }
 }

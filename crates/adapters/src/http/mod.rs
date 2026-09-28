@@ -13,7 +13,8 @@ use axum::{
 };
 use stockfront_core::{
     bstock_borrowing::BorrowingService, bstock_market::BstockMarketService,
-    bstock_trade::BstockTradeService, wallet_portfolio::WalletPortfolioService,
+    bstock_trade::BstockTradeService, carry::CarryService,
+    wallet_portfolio::WalletPortfolioService,
 };
 
 pub fn bstock_router(service: Arc<BstockMarketService>) -> Router {
@@ -95,6 +96,31 @@ pub fn trade_router(service: Arc<BstockTradeService>) -> Router {
         .route(
             "/v1/bstock-trades/transactions/{transaction_hash}",
             get(handlers::trades::transaction_status),
+        )
+        .with_state(service)
+}
+
+pub fn carry_router(service: Arc<CarryService>) -> Router {
+    Router::new()
+        .route(
+            "/v1/carry/opportunities",
+            get(handlers::carry::opportunities),
+        )
+        .route(
+            "/v1/carry/deposits/prepare",
+            post(handlers::carry::prepare_deposit),
+        )
+        .route(
+            "/v1/carry/withdrawals/prepare",
+            post(handlers::carry::prepare_withdrawal),
+        )
+        .route(
+            "/v1/carry/redemption-claims/prepare",
+            post(handlers::carry::prepare_redemption_claim),
+        )
+        .route(
+            "/v1/wallets/{address}/carry-positions",
+            get(handlers::carry::positions),
         )
         .with_state(service)
 }
