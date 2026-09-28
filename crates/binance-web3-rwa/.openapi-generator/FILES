@@ -22,6 +22,8 @@ src/models/build_defi_redeem_request.rs
 src/models/build_defi_redeem_response.rs
 src/models/build_lp_add_request.rs
 src/models/build_lp_add_response.rs
+src/models/build_lp_remove_request.rs
+src/models/build_lp_remove_response.rs
 src/models/build_swap_transaction_data.rs
 src/models/build_swap_transaction_response.rs
 src/models/business_response.rs

@@ -13,7 +13,7 @@ use stockfront_core::{
     liquidity::{
         LiquidityAccount, LiquidityClaimAction, LiquidityClaimType, LiquidityPolicy,
         LiquidityService, LiquidityTransactionKind, PrepareLiquidityClaimRequest,
-        PrepareLiquidityEntryRequest, PreparedLiquidityEntry,
+        PrepareLiquidityEntryRequest, PrepareLiquidityWithdrawalRequest, PreparedLiquidityEntry,
     },
     wallet_portfolio::WalletAddress,
 };
@@ -459,6 +459,169 @@ async fn claims_live_bstock_liquidity_fees() -> Result<(), Box<dyn Error>> {
         &starting_claimable,
     )
     .await
+}
+
+#[tokio::test]
+#[ignore = "requires Binance credentials and a live bStock LP position"]
+async fn prepares_live_bstock_liquidity_withdrawal() -> Result<(), Box<dyn Error>> {
+    let client = Arc::new(live_client()?);
+    let service = LiquidityService::new(
+        client.clone(),
+        client.clone(),
+        client,
+        LiquidityPolicy::new(Vec::new(), 100)?,
+    );
+    let wallet = configured_position_wallet()?;
+    let (request, _) = liquidity_withdrawal_request(&service, wallet).await?;
+
+    let action = service.prepare_withdrawal(&request).await?;
+
+    let (remove, preceding) = action
+        .transactions
+        .split_last()
+        .ok_or_else(|| io::Error::other("Binance returned no LP-remove transaction"))?;
+    assert_eq!(remove.kind, LiquidityTransactionKind::LpRemove);
+    assert!(
+        preceding
+            .iter()
+            .all(|transaction| transaction.kind == LiquidityTransactionKind::Approve)
+    );
+    assert!(action.transactions.iter().all(|transaction| {
+        transaction.to != Address::ZERO
+            && !transaction.data.is_empty()
+            && transaction.gas_limit.is_some_and(|gas| gas > U256::ZERO)
+            && (transaction.gas_price.is_some_and(|gas| gas > U256::ZERO)
+                || transaction
+                    .max_fee_per_gas
+                    .is_some_and(|gas| gas > U256::ZERO))
+    }));
+    assert!(
+        action
+            .preview
+            .balance_changes
+            .iter()
+            .any(|change| change.amount.is_sign_positive())
+    );
+    assert!(
+        action
+            .preview
+            .estimated_network_fee
+            .is_some_and(|fee| fee.amount.is_sign_positive())
+    );
+
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "fully removes a live bStock LP position on BSC mainnet and spends BNB"]
+async fn fully_withdraws_live_bstock_liquidity_position() -> Result<(), Box<dyn Error>> {
+    let context = live_evm_context().await?;
+    let client = Arc::new(live_client()?);
+    let service = LiquidityService::new(
+        client.clone(),
+        client.clone(),
+        client,
+        LiquidityPolicy::new(Vec::new(), 100)?,
+    );
+    let (request, assets) = liquidity_withdrawal_request(&service, context.wallet).await?;
+    let wallet = context.wallet.as_address();
+    let mut starting_balances = Vec::with_capacity(assets.len());
+    for token in assets {
+        starting_balances.push((
+            token,
+            token_balance(&context.provider, token, wallet).await?,
+        ));
+    }
+    let action = service.prepare_withdrawal(&request).await?;
+    if action
+        .transactions
+        .last()
+        .map(|transaction| transaction.kind)
+        != Some(LiquidityTransactionKind::LpRemove)
+    {
+        return Err(io::Error::other("unexpected LP-remove transaction sequence").into());
+    }
+
+    for transaction in action.transactions {
+        send_transaction(
+            &context.provider,
+            transaction.to,
+            transaction.data,
+            transaction.value,
+        )
+        .await?;
+    }
+
+    let mut received_assets = false;
+    for (token, starting_balance) in starting_balances {
+        received_assets |=
+            token_balance(&context.provider, token, wallet).await? > starting_balance;
+    }
+    if !received_assets {
+        return Err(io::Error::other("LP removal did not increase any wallet balance").into());
+    }
+
+    wait_for_position_to_disappear(&service, context.wallet, &request.nft_id).await
+}
+
+async fn liquidity_withdrawal_request(
+    service: &LiquidityService,
+    wallet: WalletAddress,
+) -> Result<(PrepareLiquidityWithdrawalRequest, Vec<Address>), Box<dyn Error>> {
+    let reviewed = configured_investments()?;
+    let position = service
+        .positions(wallet)
+        .await?
+        .positions
+        .into_iter()
+        .find(|position| {
+            position
+                .investment_ids
+                .iter()
+                .any(|id| reviewed.contains(id))
+        })
+        .ok_or_else(|| io::Error::other("wallet has no configured bStock liquidity position"))?;
+    let investment_id = position
+        .investment_ids
+        .iter()
+        .find(|id| reviewed.contains(id))
+        .cloned()
+        .ok_or_else(|| io::Error::other("position omitted its configured investment ID"))?;
+    let assets = position
+        .assets
+        .iter()
+        .filter(|asset| asset.amount.is_sign_positive())
+        .map(|asset| asset.token.contract)
+        .collect();
+    Ok((
+        PrepareLiquidityWithdrawalRequest {
+            wallet,
+            investment_id,
+            nft_id: position.nft_id,
+            ratio: Decimal::ONE,
+        },
+        assets,
+    ))
+}
+
+async fn wait_for_position_to_disappear(
+    service: &LiquidityService,
+    wallet: WalletAddress,
+    nft_id: &str,
+) -> Result<(), Box<dyn Error>> {
+    for _ in 0..POSITION_ATTEMPTS {
+        if service
+            .positions(wallet)
+            .await?
+            .positions
+            .iter()
+            .all(|position| position.nft_id != nft_id)
+        {
+            return Ok(());
+        }
+        tokio::time::sleep(POSITION_POLL_INTERVAL).await;
+    }
+    Err(io::Error::other("Binance did not remove the exited LP position in time").into())
 }
 
 async fn claimable_fee_request(

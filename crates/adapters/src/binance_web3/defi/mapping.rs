@@ -296,26 +296,40 @@ impl TryFrom<ProviderLiquidityClaimPlan> for PreparedLiquidityAction {
     type Error = LiquidityProviderError;
 
     fn try_from(value: ProviderLiquidityClaimPlan) -> Result<Self, Self::Error> {
-        let plan = value.0;
-        let transactions = prepared_transactions(plan.data_list, |kind| match kind {
-            models::defi_transaction::CallDataType::Approve => {
-                Some(LiquidityTransactionKind::Approve)
-            }
-            models::defi_transaction::CallDataType::Claim => Some(LiquidityTransactionKind::Claim),
-            _ => None,
-        })?;
-        if transactions.last().map(|transaction| transaction.kind)
-            != Some(LiquidityTransactionKind::Claim)
-        {
-            return Err(LiquidityProviderError::InvalidData);
-        }
-        let preview = required(plan.preview)?;
-        let preview = action_preview(&preview)?;
-        Ok(Self {
-            transactions,
-            preview,
-        })
+        prepared_liquidity_action(value.0, LiquidityTransactionKind::Claim)
     }
+}
+
+pub(super) struct ProviderLiquidityWithdrawalPlan(pub(super) models::DefiTransactionPlan);
+
+impl TryFrom<ProviderLiquidityWithdrawalPlan> for PreparedLiquidityAction {
+    type Error = LiquidityProviderError;
+
+    fn try_from(value: ProviderLiquidityWithdrawalPlan) -> Result<Self, Self::Error> {
+        prepared_liquidity_action(value.0, LiquidityTransactionKind::LpRemove)
+    }
+}
+
+fn prepared_liquidity_action(
+    plan: models::DefiTransactionPlan,
+    expected: LiquidityTransactionKind,
+) -> Result<PreparedLiquidityAction, LiquidityProviderError> {
+    let transactions = prepared_transactions(plan.data_list, |kind| match kind {
+        models::defi_transaction::CallDataType::Approve => Some(LiquidityTransactionKind::Approve),
+        models::defi_transaction::CallDataType::LpRemove => {
+            Some(LiquidityTransactionKind::LpRemove)
+        }
+        models::defi_transaction::CallDataType::Claim => Some(LiquidityTransactionKind::Claim),
+        _ => None,
+    })?;
+    if transactions.last().map(|transaction| transaction.kind) != Some(expected) {
+        return Err(LiquidityProviderError::InvalidData);
+    }
+    let preview = required(plan.preview)?;
+    Ok(PreparedLiquidityAction {
+        transactions,
+        preview: action_preview(&preview)?,
+    })
 }
 
 fn redemption_delay(
@@ -741,6 +755,41 @@ mod tests {
         assert_eq!(
             action.preview.balance_changes[0].amount,
             Decimal::new(25, 2)
+        );
+    }
+
+    #[test]
+    fn liquidity_withdrawal_maps_the_remove_action_and_returned_assets() {
+        let token = Address::with_last_byte(1);
+        let contract = Address::with_last_byte(2);
+        let mut remove = models::DefiTransaction::new();
+        remove.call_data_type = Some(models::defi_transaction::CallDataType::LpRemove);
+        remove.to = Some(Some(contract.to_string()));
+        remove.data = Some("0x0102".to_owned());
+
+        let mut balance_change = models::DefiBalanceChange::new();
+        balance_change.token_address = Some(token.to_string());
+        balance_change.token_symbol = Some("USDT".to_owned());
+        balance_change.amount = Some("2.5".to_owned());
+        let mut preview = models::DefiTransactionPreview::new();
+        preview.balance_change = Some(vec![balance_change]);
+        let mut plan = models::DefiTransactionPlan::new();
+        plan.data_list = Some(vec![remove]);
+        plan.preview = Some(Box::new(preview));
+
+        let action = PreparedLiquidityAction::try_from(ProviderLiquidityWithdrawalPlan(plan))
+            .unwrap_or_else(|error| panic!("valid liquidity withdrawal rejected: {error}"));
+
+        assert_eq!(action.transactions.len(), 1);
+        assert_eq!(
+            action.transactions[0].kind,
+            LiquidityTransactionKind::LpRemove
+        );
+        assert_eq!(action.preview.balance_changes.len(), 1);
+        assert_eq!(action.preview.balance_changes[0].token.contract, token);
+        assert_eq!(
+            action.preview.balance_changes[0].amount,
+            Decimal::new(25, 1)
         );
     }
 

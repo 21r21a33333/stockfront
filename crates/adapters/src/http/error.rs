@@ -244,6 +244,11 @@ impl ApiError {
         "invalid_liquidity_range",
         "liquidity price range must be greater than zero",
     );
+    const INVALID_LIQUIDITY_WITHDRAWAL_RATIO: Self = Self::fixed(
+        StatusCode::BAD_REQUEST,
+        "invalid_liquidity_withdrawal_ratio",
+        "liquidity withdrawal ratio must be greater than zero and at most one",
+    );
     const LIQUIDITY_OPPORTUNITY_UNAVAILABLE: Self = Self::fixed(
         StatusCode::CONFLICT,
         "liquidity_opportunity_unavailable",
@@ -407,6 +412,9 @@ impl From<LiquidityServiceError> for ApiError {
             LiquidityServiceError::UnsupportedBstock => Self::UNSUPPORTED_BSTOCK,
             LiquidityServiceError::InvalidAmount => Self::INVALID_LIQUIDITY_AMOUNT,
             LiquidityServiceError::InvalidPriceRange => Self::INVALID_LIQUIDITY_RANGE,
+            LiquidityServiceError::InvalidWithdrawalRatio => {
+                Self::INVALID_LIQUIDITY_WITHDRAWAL_RATIO
+            }
             LiquidityServiceError::OpportunityUnavailable => {
                 Self::LIQUIDITY_OPPORTUNITY_UNAVAILABLE
             }

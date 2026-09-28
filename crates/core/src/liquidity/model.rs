@@ -112,6 +112,16 @@ pub struct PrepareLiquidityClaimRequest {
     pub nft_id: String,
 }
 
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct PrepareLiquidityWithdrawalRequest {
+    pub wallet: WalletAddress,
+    pub investment_id: String,
+    pub nft_id: String,
+    #[serde(deserialize_with = "deserialize_from_string")]
+    pub ratio: Decimal,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct LiquidityEntryCommand {
     pub wallet: WalletAddress,
@@ -121,11 +131,21 @@ pub struct LiquidityEntryCommand {
     pub slippage_bps: u32,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct LiquidityWithdrawalCommand {
+    pub wallet: WalletAddress,
+    pub investment_id: String,
+    pub nft_id: String,
+    pub ratio: Decimal,
+    pub slippage_bps: u32,
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum LiquidityTransactionKind {
     Approve,
     LpAdd,
+    LpRemove,
     Claim,
 }
 

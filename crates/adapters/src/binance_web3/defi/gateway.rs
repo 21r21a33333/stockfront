@@ -5,9 +5,10 @@ use binance_web3_rwa::{
         de_fi_transaction_api::{
             BuildDefiClaimTransactionParams, BuildDefiDepositTransactionParams,
             BuildDefiRedeemTransactionParams, BuildLpAddTransactionParams,
-            CalculateLpAddPairedAmountsParams, build_defi_claim_transaction,
-            build_defi_deposit_transaction, build_defi_redeem_transaction,
-            build_lp_add_transaction, calculate_lp_add_paired_amounts,
+            BuildLpRemoveTransactionParams, CalculateLpAddPairedAmountsParams,
+            build_defi_claim_transaction, build_defi_deposit_transaction,
+            build_defi_redeem_transaction, build_lp_add_transaction, build_lp_remove_transaction,
+            calculate_lp_add_paired_amounts,
         },
         wallet_api::{GetTransactionDetailByHashParams, get_transaction_detail_by_hash},
     },
@@ -19,7 +20,7 @@ use stockfront_core::{
         PreparedBorrowingAction,
     },
     bstock_market::BNB_CHAIN_ID,
-    liquidity::PrepareLiquidityClaimRequest,
+    liquidity::{LiquidityWithdrawalCommand, PrepareLiquidityClaimRequest},
     wallet_portfolio::WalletAddress,
 };
 
@@ -206,6 +207,26 @@ impl BinanceWeb3Client {
         })
     }
 
+    pub(super) async fn build_lp_withdrawal_plan(
+        &self,
+        command: &LiquidityWithdrawalCommand,
+    ) -> Result<models::DefiTransactionPlan, DefiPlanError> {
+        let body = lp_remove_request(command);
+        let response = build_lp_remove_transaction(
+            &self.configuration,
+            BuildLpRemoveTransactionParams {
+                build_lp_remove_request: body,
+            },
+        )
+        .await
+        .map_err(map_request_error)?;
+        ensure_business_success(response.code, response.success)?;
+        response
+            .data
+            .map(|plan| *plan)
+            .ok_or(DefiPlanError::InvalidData)
+    }
+
     pub(crate) async fn borrowing_transaction_status(
         &self,
         transaction_hash: B256,
@@ -258,6 +279,18 @@ impl BinanceWeb3Client {
             .filter(|investment_id| !investment_id.is_empty())
             .ok_or(BorrowingProviderError::InvalidData)
     }
+}
+
+fn lp_remove_request(command: &LiquidityWithdrawalCommand) -> models::BuildLpRemoveRequest {
+    let mut body = models::BuildLpRemoveRequest::new(
+        command.wallet.as_address().to_string(),
+        command.investment_id.clone(),
+        command.nft_id.clone(),
+        command.ratio.to_string(),
+    );
+    body.slippage_bps = Some(command.slippage_bps.to_string());
+    body.simulate = Some(true);
+    body
 }
 
 fn redemption_claim_request(
@@ -395,6 +428,23 @@ mod tests {
         );
         assert_eq!(request.investment_id.as_deref(), Some("investment"));
         assert_eq!(request.nft_id.as_deref(), Some("#7582092"));
+        assert_eq!(request.simulate, Some(true));
+    }
+
+    #[test]
+    fn lp_remove_uses_position_ratio_policy_and_simulation() {
+        let request = lp_remove_request(&LiquidityWithdrawalCommand {
+            wallet: wallet(),
+            investment_id: "investment".to_owned(),
+            nft_id: "#7582092".to_owned(),
+            ratio: Decimal::new(25, 2),
+            slippage_bps: 100,
+        });
+
+        assert_eq!(request.investment_id, "investment");
+        assert_eq!(request.nft_id, "#7582092");
+        assert_eq!(request.ratio, "0.25");
+        assert_eq!(request.slippage_bps.as_deref(), Some("100"));
         assert_eq!(request.simulate, Some(true));
     }
 

@@ -1,13 +1,16 @@
 use async_trait::async_trait;
 use stockfront_core::liquidity::{
     LiquidityActionGateway, LiquidityEntryCommand, LiquidityProviderError,
-    PrepareLiquidityClaimRequest, PreparedLiquidityAction, PreparedLiquidityEntry,
+    LiquidityWithdrawalCommand, PrepareLiquidityClaimRequest, PreparedLiquidityAction,
+    PreparedLiquidityEntry,
 };
 
 use super::{
     super::client::BinanceWeb3Client,
     gateway::DefiPlanError,
-    mapping::{ProviderLiquidityClaimPlan, ProviderLiquidityEntryPlan},
+    mapping::{
+        ProviderLiquidityClaimPlan, ProviderLiquidityEntryPlan, ProviderLiquidityWithdrawalPlan,
+    },
 };
 
 #[async_trait]
@@ -39,6 +42,17 @@ impl LiquidityActionGateway for BinanceWeb3Client {
             .await
             .map_err(LiquidityProviderError::from)?;
         PreparedLiquidityAction::try_from(ProviderLiquidityClaimPlan(plan))
+    }
+
+    async fn prepare_withdrawal(
+        &self,
+        command: &LiquidityWithdrawalCommand,
+    ) -> Result<PreparedLiquidityAction, LiquidityProviderError> {
+        let plan = self
+            .build_lp_withdrawal_plan(command)
+            .await
+            .map_err(LiquidityProviderError::from)?;
+        PreparedLiquidityAction::try_from(ProviderLiquidityWithdrawalPlan(plan))
     }
 }
 

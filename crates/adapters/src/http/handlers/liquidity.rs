@@ -6,7 +6,8 @@ use axum::{
 };
 use stockfront_core::liquidity::{
     LiquidityAccount, LiquidityOpportunity, LiquidityService, PrepareLiquidityClaimRequest,
-    PrepareLiquidityEntryRequest, PreparedLiquidityAction, PreparedLiquidityEntry,
+    PrepareLiquidityEntryRequest, PrepareLiquidityWithdrawalRequest, PreparedLiquidityAction,
+    PreparedLiquidityEntry,
 };
 
 use super::{
@@ -52,4 +53,13 @@ pub(in crate::http) async fn prepare_claim(
     let Json(request) = request?;
     let claim = service.prepare_claim(&request).await?;
     Ok(Response::ok(claim))
+}
+
+pub(in crate::http) async fn prepare_withdrawal(
+    State(service): State<Arc<LiquidityService>>,
+    request: Result<Json<PrepareLiquidityWithdrawalRequest>, JsonRejection>,
+) -> ApiResult<PreparedLiquidityAction> {
+    let Json(request) = request?;
+    let withdrawal = service.prepare_withdrawal(&request).await?;
+    Ok(Response::ok(withdrawal))
 }

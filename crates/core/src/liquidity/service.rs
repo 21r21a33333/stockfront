@@ -8,8 +8,9 @@ use crate::{
     bstock_market::{BNB_CHAIN_ID, BstockCatalog, CatalogError},
     liquidity::{
         LiquidityAccount, LiquidityActionGateway, LiquidityEntryCommand, LiquidityOpportunity,
-        LiquidityProviderError, LiquidityReader, PrepareLiquidityClaimRequest,
-        PrepareLiquidityEntryRequest, PreparedLiquidityAction, PreparedLiquidityEntry,
+        LiquidityProviderError, LiquidityReader, LiquidityWithdrawalCommand,
+        PrepareLiquidityClaimRequest, PrepareLiquidityEntryRequest,
+        PrepareLiquidityWithdrawalRequest, PreparedLiquidityAction, PreparedLiquidityEntry,
     },
     wallet_portfolio::WalletAddress,
 };
@@ -65,6 +66,8 @@ pub enum LiquidityServiceError {
     InvalidAmount,
     #[error("liquidity price range must be greater than zero")]
     InvalidPriceRange,
+    #[error("liquidity withdrawal ratio must be greater than zero and at most one")]
+    InvalidWithdrawalRatio,
     #[error("the liquidity opportunity is not approved")]
     OpportunityUnavailable,
 }
@@ -203,6 +206,33 @@ impl LiquidityService {
             .await
             .map_err(Into::into)
     }
+
+    /// Returns a simulated, unsigned removal plan for an existing liquidity position.
+    ///
+    /// Withdrawals remain available when an investment is no longer approved for new entries.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`LiquidityServiceError::InvalidWithdrawalRatio`] when the requested ratio is
+    /// outside `(0, 1]`, or a provider error when the action cannot be prepared.
+    pub async fn prepare_withdrawal(
+        &self,
+        request: &PrepareLiquidityWithdrawalRequest,
+    ) -> Result<PreparedLiquidityAction, LiquidityServiceError> {
+        if request.ratio <= Decimal::ZERO || request.ratio > Decimal::ONE {
+            return Err(LiquidityServiceError::InvalidWithdrawalRatio);
+        }
+        self.actions
+            .prepare_withdrawal(&LiquidityWithdrawalCommand {
+                wallet: request.wallet,
+                investment_id: request.investment_id.clone(),
+                nft_id: request.nft_id.clone(),
+                ratio: request.ratio,
+                slippage_bps: self.policy.slippage_bps,
+            })
+            .await
+            .map_err(Into::into)
+    }
 }
 
 #[cfg(test)]
@@ -267,11 +297,19 @@ mod tests {
         ) -> Result<PreparedLiquidityAction, LiquidityProviderError> {
             panic!("the provider must not be called")
         }
+
+        async fn prepare_withdrawal(
+            &self,
+            _command: &LiquidityWithdrawalCommand,
+        ) -> Result<PreparedLiquidityAction, LiquidityProviderError> {
+            panic!("the provider must not be called for an invalid withdrawal")
+        }
     }
 
     struct RecordingGateway {
         slippage_bps: AtomicU32,
         claim_called: AtomicBool,
+        withdrawal_called: AtomicBool,
     }
 
     #[async_trait]
@@ -294,6 +332,19 @@ mod tests {
             _request: &PrepareLiquidityClaimRequest,
         ) -> Result<PreparedLiquidityAction, LiquidityProviderError> {
             self.claim_called.store(true, Ordering::Relaxed);
+            Ok(PreparedLiquidityAction {
+                transactions: Vec::new(),
+                preview: crate::prepared_action::ActionPreview::default(),
+            })
+        }
+
+        async fn prepare_withdrawal(
+            &self,
+            command: &LiquidityWithdrawalCommand,
+        ) -> Result<PreparedLiquidityAction, LiquidityProviderError> {
+            self.slippage_bps
+                .store(command.slippage_bps, Ordering::Relaxed);
+            self.withdrawal_called.store(true, Ordering::Relaxed);
             Ok(PreparedLiquidityAction {
                 transactions: Vec::new(),
                 preview: crate::prepared_action::ActionPreview::default(),
@@ -409,6 +460,7 @@ mod tests {
         let gateway = Arc::new(RecordingGateway {
             slippage_bps: AtomicU32::new(0),
             claim_called: AtomicBool::new(false),
+            withdrawal_called: AtomicBool::new(false),
         });
         let service = LiquidityService::new(
             Arc::new(FixedCatalog(Vec::new())),
@@ -440,6 +492,7 @@ mod tests {
         let gateway = Arc::new(RecordingGateway {
             slippage_bps: AtomicU32::new(0),
             claim_called: AtomicBool::new(false),
+            withdrawal_called: AtomicBool::new(false),
         });
         let service = LiquidityService::new(
             Arc::new(FixedCatalog(Vec::new())),
@@ -460,6 +513,45 @@ mod tests {
 
         assert!(result.is_ok());
         assert!(gateway.claim_called.load(Ordering::Relaxed));
+    }
+
+    #[tokio::test]
+    async fn withdrawals_validate_ratio_and_remain_available_without_entry_allowlisting() {
+        let reader = Arc::new(UnreachableProvider);
+        let gateway = Arc::new(RecordingGateway {
+            slippage_bps: AtomicU32::new(0),
+            claim_called: AtomicBool::new(false),
+            withdrawal_called: AtomicBool::new(false),
+        });
+        let service = LiquidityService::new(
+            Arc::new(FixedCatalog(Vec::new())),
+            reader,
+            gateway.clone(),
+            LiquidityPolicy::new(Vec::new(), 250)
+                .unwrap_or_else(|error| panic!("test policy must be valid: {error}")),
+        );
+        let mut request = PrepareLiquidityWithdrawalRequest {
+            wallet: WalletAddress::try_from(Address::with_last_byte(1))
+                .unwrap_or_else(|error| panic!("test wallet must be valid: {error}")),
+            investment_id: "no-longer-reviewed".to_owned(),
+            nft_id: "#1".to_owned(),
+            ratio: Decimal::ZERO,
+        };
+
+        assert_eq!(
+            service.prepare_withdrawal(&request).await,
+            Err(LiquidityServiceError::InvalidWithdrawalRatio)
+        );
+        request.ratio = Decimal::new(101, 2);
+        assert_eq!(
+            service.prepare_withdrawal(&request).await,
+            Err(LiquidityServiceError::InvalidWithdrawalRatio)
+        );
+        request.ratio = Decimal::ONE;
+
+        assert!(service.prepare_withdrawal(&request).await.is_ok());
+        assert!(gateway.withdrawal_called.load(Ordering::Relaxed));
+        assert_eq!(gateway.slippage_bps.load(Ordering::Relaxed), 250);
     }
 
     #[tokio::test]
