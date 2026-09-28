@@ -1,0 +1,141 @@
+use std::collections::HashSet;
+
+use binance_web3_rwa::{
+    apis::de_fi_data_api::{
+        GetDefiInvestmentDetailParams, ListDefiInvestmentsParams, get_defi_investment_detail,
+        list_defi_investments,
+    },
+    models,
+};
+
+use super::super::{
+    client::BinanceWeb3Client,
+    provider::{
+        BinanceRequestError, InvalidProviderData, ensure_business_success, map_request_error,
+        required,
+    },
+};
+
+pub(super) const INVESTMENT_PAGE_SIZE: i32 = 100;
+
+pub(super) struct ProviderInvestmentDetail {
+    pub(super) investment: models::DefiInvestmentDetail,
+    pub(super) observed_at_ms: i64,
+}
+
+impl BinanceWeb3Client {
+    pub(super) async fn investment_ids<E, F>(&self, mut request: F) -> Result<Vec<String>, E>
+    where
+        E: From<BinanceRequestError> + From<InvalidProviderData>,
+        F: FnMut(i32) -> models::ListDefiInvestmentsRequest,
+    {
+        let mut page_number = 1;
+        let mut investment_ids = Vec::new();
+        let mut seen = HashSet::new();
+        let mut provider_record_count = 0_usize;
+
+        loop {
+            let response = list_defi_investments(
+                &self.configuration,
+                ListDefiInvestmentsParams {
+                    list_defi_investments_request: request(page_number),
+                },
+            )
+            .await
+            .map_err(map_request_error)?;
+            ensure_business_success(response.code, response.success)?;
+            let page = required(response.data)?;
+            let total = page.total;
+            let investments = page.list.unwrap_or_default();
+            let record_count = investments.len();
+            provider_record_count += record_count;
+            append_investment_ids(&mut investment_ids, &mut seen, investments);
+            if !has_next_page(page_number, record_count, total) {
+                break;
+            }
+            page_number += 1;
+        }
+
+        if provider_record_count > 0 && investment_ids.is_empty() {
+            Err(InvalidProviderData.into())
+        } else {
+            Ok(investment_ids)
+        }
+    }
+
+    pub(super) async fn investment_detail<E>(
+        &self,
+        investment_id: &str,
+    ) -> Result<Option<ProviderInvestmentDetail>, E>
+    where
+        E: From<BinanceRequestError> + From<InvalidProviderData>,
+    {
+        let body = models::GetDefiInvestmentDetailRequest::new(investment_id.to_owned());
+        let response = get_defi_investment_detail(
+            &self.configuration,
+            GetDefiInvestmentDetailParams {
+                get_defi_investment_detail_request: body,
+            },
+        )
+        .await
+        .map_err(map_request_error)?;
+        match ensure_business_success(response.code, response.success) {
+            Ok(()) => {}
+            Err(BinanceRequestError::Rejected) => return Ok(None),
+            Err(error) => return Err(error.into()),
+        }
+        Ok(Some(ProviderInvestmentDetail {
+            investment: *required(response.data)?,
+            observed_at_ms: required(response.timestamp)?,
+        }))
+    }
+}
+
+fn append_investment_ids(
+    investment_ids: &mut Vec<String>,
+    seen: &mut HashSet<String>,
+    investments: Vec<models::DefiInvestment>,
+) {
+    for investment_id in investments
+        .into_iter()
+        .filter_map(|investment| investment.investment_id)
+        .filter(|investment_id| !investment_id.is_empty())
+    {
+        if seen.insert(investment_id.clone()) {
+            investment_ids.push(investment_id);
+        }
+    }
+}
+
+fn has_next_page(page: i32, record_count: usize, total: Option<i64>) -> bool {
+    if let Some(total) = total {
+        return i64::from(page) * i64::from(INVESTMENT_PAGE_SIZE) < total;
+    }
+    record_count == INVESTMENT_PAGE_SIZE as usize
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn pagination_deduplicates_investment_ids_and_honors_provider_totals() {
+        let investments = ["first", "first", "second"]
+            .into_iter()
+            .map(|id| {
+                let mut investment = models::DefiInvestment::new();
+                investment.investment_id = Some(id.to_owned());
+                investment
+            })
+            .collect();
+        let mut investment_ids = Vec::new();
+        let mut seen = HashSet::new();
+
+        append_investment_ids(&mut investment_ids, &mut seen, investments);
+
+        assert_eq!(investment_ids, vec!["first", "second"]);
+        assert!(has_next_page(1, INVESTMENT_PAGE_SIZE as usize, Some(101)));
+        assert!(has_next_page(1, 1, Some(101)));
+        assert!(!has_next_page(2, 1, Some(101)));
+    }
+}

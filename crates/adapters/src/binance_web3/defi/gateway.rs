@@ -4,8 +4,11 @@ use binance_web3_rwa::{
         de_fi_data_api::{ListDefiInvestmentsParams, list_defi_investments},
         de_fi_transaction_api::{
             BuildDefiClaimTransactionParams, BuildDefiDepositTransactionParams,
-            BuildDefiRedeemTransactionParams, build_defi_claim_transaction,
-            build_defi_deposit_transaction, build_defi_redeem_transaction,
+            BuildDefiRedeemTransactionParams, BuildLpAddTransactionParams,
+            BuildLpRemoveTransactionParams, CalculateLpAddPairedAmountsParams,
+            build_defi_claim_transaction, build_defi_deposit_transaction,
+            build_defi_redeem_transaction, build_lp_add_transaction, build_lp_remove_transaction,
+            calculate_lp_add_paired_amounts,
         },
         wallet_api::{GetTransactionDetailByHashParams, get_transaction_detail_by_hash},
     },
@@ -17,6 +20,7 @@ use stockfront_core::{
         PreparedBorrowingAction,
     },
     bstock_market::BNB_CHAIN_ID,
+    liquidity::{LiquidityWithdrawalCommand, PrepareLiquidityClaimRequest},
     wallet_portfolio::WalletAddress,
 };
 
@@ -27,6 +31,11 @@ use super::{
 };
 
 const VENUS_PROTOCOL_ID: &str = "venus";
+
+pub(super) struct LpEntryPlan {
+    pub(super) token_amounts: Vec<models::DefiTokenAmount>,
+    pub(super) transactions: models::DefiTransactionPlan,
+}
 
 impl BinanceWeb3Client {
     pub(crate) async fn prepare_venus_supply(
@@ -123,6 +132,101 @@ impl BinanceWeb3Client {
             .ok_or(DefiPlanError::InvalidData)
     }
 
+    pub(super) async fn build_lp_fee_claim_plan(
+        &self,
+        request: &PrepareLiquidityClaimRequest,
+    ) -> Result<models::DefiTransactionPlan, DefiPlanError> {
+        let body = lp_fee_claim_request(request);
+
+        let response = build_defi_claim_transaction(
+            &self.configuration,
+            BuildDefiClaimTransactionParams {
+                build_defi_claim_request: body,
+            },
+        )
+        .await
+        .map_err(map_request_error)?;
+        ensure_business_success(response.code, response.success)?;
+        response
+            .data
+            .map(|plan| *plan)
+            .ok_or(DefiPlanError::InvalidData)
+    }
+
+    pub(super) async fn build_lp_entry_plan(
+        &self,
+        wallet: WalletAddress,
+        investment_id: String,
+        input_token: Address,
+        input_amount: rust_decimal::Decimal,
+        price_range_percent: rust_decimal::Decimal,
+        slippage_bps: u32,
+    ) -> Result<LpEntryPlan, DefiPlanError> {
+        let input_token =
+            models::DefiTokenAmount::new(input_token.to_string(), input_amount.to_string());
+        let mut calculation = models::CalculateLpAddPairedAmountsRequest::new(
+            wallet.as_address().to_string(),
+            investment_id.clone(),
+            input_token.clone(),
+        );
+        calculation.price_range = Some(price_range_percent.to_string());
+        let response = calculate_lp_add_paired_amounts(
+            &self.configuration,
+            CalculateLpAddPairedAmountsParams {
+                calculate_lp_add_paired_amounts_request: calculation,
+            },
+        )
+        .await
+        .map_err(map_request_error)?;
+        ensure_business_success(response.code, response.success)?;
+        let amounts = response.data.ok_or(DefiPlanError::InvalidData)?;
+        let token_amounts = amounts.outputs;
+        let mut request = models::BuildLpAddRequest::new(
+            wallet.as_address().to_string(),
+            investment_id,
+            token_amounts.clone(),
+        );
+        request.tick_lower = Some(amounts.pool_info.tick_lower.clone());
+        request.tick_upper = Some(amounts.pool_info.tick_upper.clone());
+        request.slippage_bps = Some(slippage_bps.to_string());
+        request.simulate = Some(true);
+        let response = build_lp_add_transaction(
+            &self.configuration,
+            BuildLpAddTransactionParams {
+                build_lp_add_request: request,
+            },
+        )
+        .await
+        .map_err(map_request_error)?;
+        ensure_business_success(response.code, response.success)?;
+        let transactions = response.data.ok_or(DefiPlanError::InvalidData)?;
+
+        Ok(LpEntryPlan {
+            token_amounts,
+            transactions: *transactions,
+        })
+    }
+
+    pub(super) async fn build_lp_withdrawal_plan(
+        &self,
+        command: &LiquidityWithdrawalCommand,
+    ) -> Result<models::DefiTransactionPlan, DefiPlanError> {
+        let body = lp_remove_request(command);
+        let response = build_lp_remove_transaction(
+            &self.configuration,
+            BuildLpRemoveTransactionParams {
+                build_lp_remove_request: body,
+            },
+        )
+        .await
+        .map_err(map_request_error)?;
+        ensure_business_success(response.code, response.success)?;
+        response
+            .data
+            .map(|plan| *plan)
+            .ok_or(DefiPlanError::InvalidData)
+    }
+
     pub(crate) async fn borrowing_transaction_status(
         &self,
         transaction_hash: B256,
@@ -177,6 +281,18 @@ impl BinanceWeb3Client {
     }
 }
 
+fn lp_remove_request(command: &LiquidityWithdrawalCommand) -> models::BuildLpRemoveRequest {
+    let mut body = models::BuildLpRemoveRequest::new(
+        command.wallet.as_address().to_string(),
+        command.investment_id.clone(),
+        command.nft_id.clone(),
+        command.ratio.to_string(),
+    );
+    body.slippage_bps = Some(command.slippage_bps.to_string());
+    body.simulate = Some(true);
+    body
+}
+
 fn redemption_claim_request(
     wallet: WalletAddress,
     investment_id: String,
@@ -185,9 +301,23 @@ fn redemption_claim_request(
     let mut body = models::BuildDefiClaimRequest::new(
         wallet.as_address().to_string(),
         models::build_defi_claim_request::ClaimType::Redemption,
-        investment_id,
-        redemption_id,
     );
+    body.investment_id = Some(investment_id);
+    body.redemption_id = Some(redemption_id);
+    body.simulate = Some(true);
+    body
+}
+
+fn lp_fee_claim_request(request: &PrepareLiquidityClaimRequest) -> models::BuildDefiClaimRequest {
+    let claim_type = match request.claim_type {
+        stockfront_core::liquidity::LiquidityClaimType::LpFee => {
+            models::build_defi_claim_request::ClaimType::LpFee
+        }
+    };
+    let mut body =
+        models::BuildDefiClaimRequest::new(request.wallet.as_address().to_string(), claim_type);
+    body.investment_id = Some(request.investment_id.clone());
+    body.nft_id = Some(request.nft_id.clone());
     body.simulate = Some(true);
     body
 }
@@ -278,8 +408,43 @@ mod tests {
             request.claim_type,
             models::build_defi_claim_request::ClaimType::Redemption
         );
+        assert_eq!(request.investment_id.as_deref(), Some("investment"));
+        assert_eq!(request.redemption_id.as_deref(), Some("redemption"));
+        assert_eq!(request.simulate, Some(true));
+    }
+
+    #[test]
+    fn lp_fee_claim_uses_investment_and_nft_ids() {
+        let request = lp_fee_claim_request(&PrepareLiquidityClaimRequest {
+            wallet: wallet(),
+            investment_id: "investment".to_owned(),
+            claim_type: stockfront_core::liquidity::LiquidityClaimType::LpFee,
+            nft_id: "#7582092".to_owned(),
+        });
+
+        assert_eq!(
+            request.claim_type,
+            models::build_defi_claim_request::ClaimType::LpFee
+        );
+        assert_eq!(request.investment_id.as_deref(), Some("investment"));
+        assert_eq!(request.nft_id.as_deref(), Some("#7582092"));
+        assert_eq!(request.simulate, Some(true));
+    }
+
+    #[test]
+    fn lp_remove_uses_position_ratio_policy_and_simulation() {
+        let request = lp_remove_request(&LiquidityWithdrawalCommand {
+            wallet: wallet(),
+            investment_id: "investment".to_owned(),
+            nft_id: "#7582092".to_owned(),
+            ratio: Decimal::new(25, 2),
+            slippage_bps: 100,
+        });
+
         assert_eq!(request.investment_id, "investment");
-        assert_eq!(request.redemption_id, "redemption");
+        assert_eq!(request.nft_id, "#7582092");
+        assert_eq!(request.ratio, "0.25");
+        assert_eq!(request.slippage_bps.as_deref(), Some("100"));
         assert_eq!(request.simulate, Some(true));
     }
 

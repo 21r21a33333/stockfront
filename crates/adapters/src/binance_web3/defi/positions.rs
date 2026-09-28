@@ -307,6 +307,8 @@ mod tests {
                         protocol_total_value: Some("75".to_owned()),
                         pool_list: Some(vec![models::DefiPoolPosition {
                             pool_ca: None,
+                            pool_type: None,
+                            pool_detail: None,
                             position_collection_list: Some(vec![models::DefiPositionCollection {
                                 position_collection_detail: None,
                                 position_list: Some(positions),
@@ -321,6 +323,10 @@ mod tests {
 
     fn position_detail(redemption_id: &str, claim_types: &[&str]) -> models::DefiPositionDetail {
         models::DefiPositionDetail {
+            nft_id: None,
+            tick_lower: None,
+            tick_upper: None,
+            active: None,
             claim_types: Some(
                 claim_types
                     .iter()
@@ -351,6 +357,8 @@ mod tests {
                     token_value: Some(value.to_owned()),
                 }]),
                 borrow: None,
+                reward: None,
+                farming_reward: None,
             })),
             position_detail: None,
         }

@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     bstock_borrowing::{BorrowingAsset, BorrowingToken},
-    prepared_action::{ActionWarning, NetworkFee, PreparedTransaction},
+    prepared_action::{ActionPreview, AssetBalanceChange, PreparedTransaction},
     serialization::deserialize_from_string,
     wallet_portfolio::WalletAddress,
 };
@@ -182,29 +182,13 @@ pub enum CarryTransactionKind {
 
 pub type PreparedCarryTransaction = PreparedTransaction<CarryTransactionKind>;
 
-#[derive(Debug, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CarryBalanceChange {
-    pub token: BorrowingToken,
-    pub amount: Decimal,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub value_usd: Option<Decimal>,
-}
+pub type CarryBalanceChange = AssetBalanceChange;
 
 #[derive(Debug, Default, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CarryActionPreview {
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub balance_changes: Vec<CarryBalanceChange>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub estimated_network_fee: Option<NetworkFee>,
-    #[serde(
-        skip_serializing_if = "Option::is_none",
-        serialize_with = "crate::serialization::serialize_optional_as_string"
-    )]
-    pub interact_with: Option<Address>,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub warnings: Vec<ActionWarning>,
+    #[serde(flatten)]
+    pub action: ActionPreview,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub redemption_delay: Option<RedemptionDelay>,
 }

@@ -4,21 +4,17 @@ use axum::{
     Json,
     extract::{Path, Query, State, rejection::JsonRejection, rejection::QueryRejection},
 };
-use stockfront_core::{
-    bstock_market::Address,
-    carry::{
-        CarryAccount, CarryActionPlan, CarryOpportunity, CarryOpportunityQuery, CarryService,
-        PrepareCarryDepositRequest, PrepareCarryRedemptionClaimRequest,
-        PrepareCarryWithdrawalRequest, PreparedCarryDeposit,
-    },
+use stockfront_core::carry::{
+    CarryAccount, CarryActionPlan, CarryOpportunity, CarryOpportunityQuery, CarryService,
+    PrepareCarryDepositRequest, PrepareCarryRedemptionClaimRequest, PrepareCarryWithdrawalRequest,
+    PreparedCarryDeposit,
 };
 
 use super::super::{
-    error::ApiError,
     primitives::{ApiResult, List, Response},
     request::CarryOpportunitiesRequest,
 };
-use super::parse_wallet;
+use super::{parse_token_address, parse_wallet};
 
 pub(in crate::http) async fn opportunities(
     State(service): State<Arc<CarryService>>,
@@ -27,8 +23,8 @@ pub(in crate::http) async fn opportunities(
     let Query(request) = request?;
     let opportunities = service
         .opportunities(CarryOpportunityQuery {
-            collateral_token: parse_address(&request.collateral_token)?,
-            debt_token: parse_address(&request.debt_token)?,
+            collateral_token: parse_token_address(&request.collateral_token)?,
+            debt_token: parse_token_address(&request.debt_token)?,
         })
         .await?;
     Ok(Response::ok(List::all(opportunities)))
@@ -67,8 +63,4 @@ pub(in crate::http) async fn positions(
 ) -> ApiResult<CarryAccount> {
     let positions = service.positions(parse_wallet(&address)?).await?;
     Ok(Response::ok(positions))
-}
-
-fn parse_address(value: &str) -> Result<Address, ApiError> {
-    value.parse().map_err(|_| ApiError::INVALID_TOKEN_ADDRESS)
 }

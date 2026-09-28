@@ -46,9 +46,9 @@ Returns remain exposed to variable rates, stablecoin depegging, protocol risk, t
 
 ### Provide managed stock liquidity
 
-Stockfront identifies verified bStock/stablecoin pools and helps users create and manage concentrated-liquidity positions. It can balance assets, select a range, compound fees, monitor whether liquidity remains active, and prepare rebalancing or withdrawal actions.
+Stockfront identifies bStock/stablecoin opportunities and helps users create and manage concentrated-liquidity positions through reviewed PancakeSwap V3 investments. It calculates the paired token requirement for a selected range, prepares wallet-signed entry transactions, reports the live NFT position and range status, and prepares fee claims or partial and full withdrawals.
 
-A pool must pass depth, exit-liquidity, and price-impact checks before deposits are enabled. Otherwise, Stockfront exposes monitoring and simulated entry/exit instead of presenting unsafe liquidity as a usable strategy.
+New entries are restricted to explicitly reviewed investment IDs that Binance reports as investable. Fee claims and withdrawals remain available even when an investment is later removed from the entry allowlist, so policy changes cannot block an exit.
 
 ### Monitor risk and exit safely
 
@@ -69,7 +69,7 @@ The initial product is deliberately focused:
 1. bStock discovery, wallet portfolio, trade quotes, and wallet-signed execution.
 2. Borrowing against supported bStocks through Venus with direct onchain health verification.
 3. Conservative carry using supported bStock collateral, Venus borrowing, and reviewed existing earn products such as Lista.
-4. One verified PancakeSwap liquidity flow—or a transparent simulator when no pool passes the safety gate.
+4. One reviewed PancakeSwap V3 concentrated-liquidity flow with discovery, paired-amount calculation, wallet-signed entry, position tracking, fee claims, and partial or full withdrawal.
 5. Live carry, collateral-health, liquidity-range, and exit-liquidity monitoring.
 6. User-signed safety and exit actions.
 7. Transparent stock exposure, debt, carry positions, rates, and prepared unwind actions.
@@ -101,7 +101,8 @@ Cross-chain execution, options strategies, payment cards, permissionless strateg
 | Direct bStock collateral and borrowing | Venus |
 | Carry opportunity discovery and execution | Binance Web3 DeFi APIs |
 | Reviewed initial earn venue | Lista DAO |
-| Swaps and liquidity | PancakeSwap V3 / Infinity |
+| Swaps and MVP liquidity | PancakeSwap V3 through Binance Web3 APIs |
+| Future liquidity venues | PancakeSwap Infinity and other reviewed Binance-supported pools |
 | Post-MVP perpetual hedging | Aster |
 | Collateral pricing | Venus Resilient Oracle |
 | Future monitoring and prepared actions | Stockfront risk services |

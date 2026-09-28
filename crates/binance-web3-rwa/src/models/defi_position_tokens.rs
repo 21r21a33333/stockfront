@@ -17,6 +17,10 @@ pub struct DefiPositionTokens {
     pub supply: Option<Vec<models::DefiPositionToken>>,
     #[serde(rename = "borrow", skip_serializing_if = "Option::is_none")]
     pub borrow: Option<Vec<models::DefiPositionToken>>,
+    #[serde(rename = "reward", skip_serializing_if = "Option::is_none")]
+    pub reward: Option<Vec<models::DefiPositionToken>>,
+    #[serde(rename = "farming_reward", skip_serializing_if = "Option::is_none")]
+    pub farming_reward: Option<Vec<models::DefiPositionToken>>,
 }
 
 impl DefiPositionTokens {
@@ -24,6 +28,8 @@ impl DefiPositionTokens {
         DefiPositionTokens {
             supply: None,
             borrow: None,
+            reward: None,
+            farming_reward: None,
         }
     }
 }

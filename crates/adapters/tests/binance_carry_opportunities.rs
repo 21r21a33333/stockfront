@@ -139,18 +139,19 @@ async fn prepares_live_carry_deposit() -> Result<(), Box<dyn Error>> {
                 .is_some_and(|fee| fee > U256::ZERO)
         );
     }
-    assert_eq!(plan.preview.interact_with, Some(deposit.to));
+    assert_eq!(plan.preview.action.interact_with, Some(deposit.to));
     let fee = plan
         .preview
+        .action
         .estimated_network_fee
         .ok_or_else(|| io::Error::other("network fee missing from deposit preview"))?;
     assert!(fee.amount.is_sign_positive());
     assert_eq!(fee.token_symbol, "BNB");
     assert!(fee.value_usd.is_some_and(|value| value.is_sign_positive()));
-    assert!(plan.preview.balance_changes.iter().any(|change| {
+    assert!(plan.preview.action.balance_changes.iter().any(|change| {
         change.token.contract == opportunity.asset.contract && change.amount == -amount
     }));
-    assert!(plan.preview.warnings.iter().all(|warning| {
+    assert!(plan.preview.action.warnings.iter().all(|warning| {
         !warning.code.is_empty() && !warning.level.is_empty() && !warning.message.is_empty()
     }));
 
@@ -181,6 +182,7 @@ async fn deposits_live_borrowed_usdt_into_lista() -> Result<(), Box<dyn Error>> 
         .await?;
     let receipt_tokens = plan
         .preview
+        .action
         .balance_changes
         .iter()
         .filter(|change| change.amount.is_sign_positive())
@@ -269,6 +271,7 @@ async fn fully_redeems_live_lista_position() -> Result<(), Box<dyn Error>> {
     assert_valid_withdrawal_plan(&plan);
     assert!(
         plan.preview
+            .action
             .balance_changes
             .iter()
             .any(|change| { change.token.contract == LISUSD && change.amount == position_before })
@@ -325,6 +328,7 @@ async fn prepares_live_carry_redemption_claim() -> Result<(), Box<dyn Error>> {
     }));
     assert!(
         plan.preview
+            .action
             .estimated_network_fee
             .is_some_and(|fee| fee.amount.is_sign_positive())
     );
@@ -407,9 +411,9 @@ fn assert_valid_withdrawal_plan(plan: &stockfront_core::carry::CarryActionPlan) 
                 .max_fee_per_gas
                 .is_some_and(|gas| gas > U256::ZERO)
     }));
-    assert_eq!(plan.preview.interact_with, Some(redeem.to));
-    assert!(!plan.preview.balance_changes.is_empty());
-    assert!(plan.preview.balance_changes.iter().all(|change| {
+    assert_eq!(plan.preview.action.interact_with, Some(redeem.to));
+    assert!(!plan.preview.action.balance_changes.is_empty());
+    assert!(plan.preview.action.balance_changes.iter().all(|change| {
         change.token.contract != Address::ZERO
             && !change.token.symbol.is_empty()
             && change.amount != Decimal::ZERO
@@ -419,13 +423,14 @@ fn assert_valid_withdrawal_plan(plan: &stockfront_core::carry::CarryActionPlan) 
     }));
     let fee = plan
         .preview
+        .action
         .estimated_network_fee
         .as_ref()
         .unwrap_or_else(|| panic!("network fee missing from withdrawal preview"));
     assert!(fee.amount.is_sign_positive());
     assert_eq!(fee.token_symbol, "BNB");
     assert!(fee.value_usd.is_none_or(|value| value.is_sign_positive()));
-    assert!(plan.preview.warnings.iter().all(|warning| {
+    assert!(plan.preview.action.warnings.iter().all(|warning| {
         !warning.code.is_empty() && !warning.level.is_empty() && !warning.message.is_empty()
     }));
 }

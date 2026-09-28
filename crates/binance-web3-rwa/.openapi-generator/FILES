@@ -20,9 +20,15 @@ src/models/build_defi_deposit_request.rs
 src/models/build_defi_deposit_response.rs
 src/models/build_defi_redeem_request.rs
 src/models/build_defi_redeem_response.rs
+src/models/build_lp_add_request.rs
+src/models/build_lp_add_response.rs
+src/models/build_lp_remove_request.rs
+src/models/build_lp_remove_response.rs
 src/models/build_swap_transaction_data.rs
 src/models/build_swap_transaction_response.rs
 src/models/business_response.rs
+src/models/calculate_lp_add_paired_amounts_request.rs
+src/models/calculate_lp_add_paired_amounts_response.rs
 src/models/company_info.rs
 src/models/defi_address_position.rs
 src/models/defi_balance_change.rs
@@ -34,6 +40,7 @@ src/models/defi_investment_detail.rs
 src/models/defi_investment_page.rs
 src/models/defi_investment_token.rs
 src/models/defi_network_fee.rs
+src/models/defi_pool_detail.rs
 src/models/defi_pool_position.rs
 src/models/defi_position.rs
 src/models/defi_position_collection.rs
@@ -68,6 +75,8 @@ src/models/get_transaction_detail_by_hash_response.rs
 src/models/get_transaction_status_response.rs
 src/models/list_defi_investments_request.rs
 src/models/list_defi_investments_response.rs
+src/models/lp_add_paired_amounts.rs
+src/models/lp_pool_info.rs
 src/models/market_status_info.rs
 src/models/mod.rs
 src/models/protection.rs

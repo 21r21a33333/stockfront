@@ -9,6 +9,7 @@ use stockfront_core::bstock_borrowing::{BorrowingProviderError, BorrowingService
 use stockfront_core::bstock_market::{BstockMarketError, CatalogError, QueryError};
 use stockfront_core::bstock_trade::{BstockTradeError, TradeGatewayError};
 use stockfront_core::carry::{CarryServiceError, EarnProviderError};
+use stockfront_core::liquidity::{LiquidityProviderError, LiquidityServiceError};
 use stockfront_core::wallet_portfolio::{
     BalanceReaderError, WalletAddressError, WalletPortfolioError,
 };
@@ -223,6 +224,41 @@ impl ApiError {
         "carry_request_rejected",
         "the earn provider rejected the request",
     );
+    const UNSUPPORTED_BSTOCK: Self = Self::fixed(
+        StatusCode::BAD_REQUEST,
+        "unsupported_bstock",
+        "the token is not a supported bStock",
+    );
+    const LIQUIDITY_PROVIDER_UNAVAILABLE: Self = Self::fixed(
+        StatusCode::SERVICE_UNAVAILABLE,
+        "liquidity_provider_unavailable",
+        "the liquidity provider is temporarily unavailable",
+    );
+    const INVALID_LIQUIDITY_AMOUNT: Self = Self::fixed(
+        StatusCode::BAD_REQUEST,
+        "invalid_liquidity_amount",
+        "liquidity input amount must be greater than zero",
+    );
+    const INVALID_LIQUIDITY_RANGE: Self = Self::fixed(
+        StatusCode::BAD_REQUEST,
+        "invalid_liquidity_range",
+        "liquidity price range must be greater than zero",
+    );
+    const INVALID_LIQUIDITY_WITHDRAWAL_RATIO: Self = Self::fixed(
+        StatusCode::BAD_REQUEST,
+        "invalid_liquidity_withdrawal_ratio",
+        "liquidity withdrawal ratio must be greater than zero and at most one",
+    );
+    const LIQUIDITY_OPPORTUNITY_UNAVAILABLE: Self = Self::fixed(
+        StatusCode::CONFLICT,
+        "liquidity_opportunity_unavailable",
+        "the liquidity opportunity is not approved",
+    );
+    const LIQUIDITY_REQUEST_REJECTED: Self = Self::fixed(
+        StatusCode::UNPROCESSABLE_ENTITY,
+        "liquidity_request_rejected",
+        "the liquidity provider rejected the request",
+    );
     const fn fixed(status: StatusCode, code: &'static str, message: &'static str) -> Self {
         Self {
             status,
@@ -364,6 +400,34 @@ impl From<EarnProviderError> for ApiError {
             EarnProviderError::Unavailable => Self::CARRY_OPPORTUNITIES_UNAVAILABLE,
             EarnProviderError::Rejected => Self::CARRY_REQUEST_REJECTED,
             EarnProviderError::InvalidData => Self::INVALID_PROVIDER_RESPONSE,
+        }
+    }
+}
+
+impl From<LiquidityServiceError> for ApiError {
+    fn from(error: LiquidityServiceError) -> Self {
+        match error {
+            LiquidityServiceError::Catalog(error) => error.into(),
+            LiquidityServiceError::Provider(error) => error.into(),
+            LiquidityServiceError::UnsupportedBstock => Self::UNSUPPORTED_BSTOCK,
+            LiquidityServiceError::InvalidAmount => Self::INVALID_LIQUIDITY_AMOUNT,
+            LiquidityServiceError::InvalidPriceRange => Self::INVALID_LIQUIDITY_RANGE,
+            LiquidityServiceError::InvalidWithdrawalRatio => {
+                Self::INVALID_LIQUIDITY_WITHDRAWAL_RATIO
+            }
+            LiquidityServiceError::OpportunityUnavailable => {
+                Self::LIQUIDITY_OPPORTUNITY_UNAVAILABLE
+            }
+        }
+    }
+}
+
+impl From<LiquidityProviderError> for ApiError {
+    fn from(error: LiquidityProviderError) -> Self {
+        match error {
+            LiquidityProviderError::Unavailable => Self::LIQUIDITY_PROVIDER_UNAVAILABLE,
+            LiquidityProviderError::Rejected => Self::LIQUIDITY_REQUEST_REJECTED,
+            LiquidityProviderError::InvalidData => Self::INVALID_PROVIDER_RESPONSE,
         }
     }
 }

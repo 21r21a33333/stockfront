@@ -1,5 +1,9 @@
 mod actions;
 mod gateway;
+mod investments;
+mod liquidity;
+mod liquidity_actions;
+mod liquidity_positions;
 mod mapping;
 mod opportunities;
 mod positions;
