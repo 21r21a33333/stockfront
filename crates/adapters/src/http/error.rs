@@ -229,10 +229,30 @@ impl ApiError {
         "unsupported_bstock",
         "the token is not a supported bStock",
     );
-    const LIQUIDITY_OPPORTUNITIES_UNAVAILABLE: Self = Self::fixed(
+    const LIQUIDITY_PROVIDER_UNAVAILABLE: Self = Self::fixed(
         StatusCode::SERVICE_UNAVAILABLE,
-        "liquidity_opportunities_unavailable",
-        "liquidity opportunities are temporarily unavailable",
+        "liquidity_provider_unavailable",
+        "the liquidity provider is temporarily unavailable",
+    );
+    const INVALID_LIQUIDITY_AMOUNT: Self = Self::fixed(
+        StatusCode::BAD_REQUEST,
+        "invalid_liquidity_amount",
+        "liquidity input amount must be greater than zero",
+    );
+    const INVALID_LIQUIDITY_RANGE: Self = Self::fixed(
+        StatusCode::BAD_REQUEST,
+        "invalid_liquidity_range",
+        "liquidity price range must be greater than zero",
+    );
+    const LIQUIDITY_OPPORTUNITY_UNAVAILABLE: Self = Self::fixed(
+        StatusCode::CONFLICT,
+        "liquidity_opportunity_unavailable",
+        "the liquidity opportunity is not approved",
+    );
+    const LIQUIDITY_REQUEST_REJECTED: Self = Self::fixed(
+        StatusCode::UNPROCESSABLE_ENTITY,
+        "liquidity_request_rejected",
+        "the liquidity provider rejected the request",
     );
     const fn fixed(status: StatusCode, code: &'static str, message: &'static str) -> Self {
         Self {
@@ -385,6 +405,11 @@ impl From<LiquidityServiceError> for ApiError {
             LiquidityServiceError::Catalog(error) => error.into(),
             LiquidityServiceError::Provider(error) => error.into(),
             LiquidityServiceError::UnsupportedBstock => Self::UNSUPPORTED_BSTOCK,
+            LiquidityServiceError::InvalidAmount => Self::INVALID_LIQUIDITY_AMOUNT,
+            LiquidityServiceError::InvalidPriceRange => Self::INVALID_LIQUIDITY_RANGE,
+            LiquidityServiceError::OpportunityUnavailable => {
+                Self::LIQUIDITY_OPPORTUNITY_UNAVAILABLE
+            }
         }
     }
 }
@@ -392,7 +417,8 @@ impl From<LiquidityServiceError> for ApiError {
 impl From<LiquidityProviderError> for ApiError {
     fn from(error: LiquidityProviderError) -> Self {
         match error {
-            LiquidityProviderError::Unavailable => Self::LIQUIDITY_OPPORTUNITIES_UNAVAILABLE,
+            LiquidityProviderError::Unavailable => Self::LIQUIDITY_PROVIDER_UNAVAILABLE,
+            LiquidityProviderError::Rejected => Self::LIQUIDITY_REQUEST_REJECTED,
             LiquidityProviderError::InvalidData => Self::INVALID_PROVIDER_RESPONSE,
         }
     }

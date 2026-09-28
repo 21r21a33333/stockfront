@@ -114,7 +114,8 @@ impl From<BinanceRequestError> for EarnProviderError {
 impl From<BinanceRequestError> for LiquidityProviderError {
     fn from(error: BinanceRequestError) -> Self {
         match error {
-            BinanceRequestError::Rejected | BinanceRequestError::Unavailable => Self::Unavailable,
+            BinanceRequestError::Rejected => Self::Rejected,
+            BinanceRequestError::Unavailable => Self::Unavailable,
         }
     }
 }

@@ -4,8 +4,10 @@ use binance_web3_rwa::{
         de_fi_data_api::{ListDefiInvestmentsParams, list_defi_investments},
         de_fi_transaction_api::{
             BuildDefiClaimTransactionParams, BuildDefiDepositTransactionParams,
-            BuildDefiRedeemTransactionParams, build_defi_claim_transaction,
+            BuildDefiRedeemTransactionParams, BuildLpAddTransactionParams,
+            CalculateLpAddPairedAmountsParams, build_defi_claim_transaction,
             build_defi_deposit_transaction, build_defi_redeem_transaction,
+            build_lp_add_transaction, calculate_lp_add_paired_amounts,
         },
         wallet_api::{GetTransactionDetailByHashParams, get_transaction_detail_by_hash},
     },
@@ -27,6 +29,11 @@ use super::{
 };
 
 const VENUS_PROTOCOL_ID: &str = "venus";
+
+pub(super) struct LpEntryPlan {
+    pub(super) token_amounts: Vec<models::DefiTokenAmount>,
+    pub(super) transactions: models::DefiTransactionPlan,
+}
 
 impl BinanceWeb3Client {
     pub(crate) async fn prepare_venus_supply(
@@ -121,6 +128,60 @@ impl BinanceWeb3Client {
             .data
             .map(|plan| *plan)
             .ok_or(DefiPlanError::InvalidData)
+    }
+
+    pub(super) async fn build_lp_entry_plan(
+        &self,
+        wallet: WalletAddress,
+        investment_id: String,
+        input_token: Address,
+        input_amount: rust_decimal::Decimal,
+        price_range_percent: rust_decimal::Decimal,
+        slippage_bps: u32,
+    ) -> Result<LpEntryPlan, DefiPlanError> {
+        let input_token =
+            models::DefiTokenAmount::new(input_token.to_string(), input_amount.to_string());
+        let mut calculation = models::CalculateLpAddPairedAmountsRequest::new(
+            wallet.as_address().to_string(),
+            investment_id.clone(),
+            input_token.clone(),
+        );
+        calculation.price_range = Some(price_range_percent.to_string());
+        let response = calculate_lp_add_paired_amounts(
+            &self.configuration,
+            CalculateLpAddPairedAmountsParams {
+                calculate_lp_add_paired_amounts_request: calculation,
+            },
+        )
+        .await
+        .map_err(map_request_error)?;
+        ensure_business_success(response.code, response.success)?;
+        let amounts = response.data.ok_or(DefiPlanError::InvalidData)?;
+        let token_amounts = amounts.outputs;
+        let mut request = models::BuildLpAddRequest::new(
+            wallet.as_address().to_string(),
+            investment_id,
+            token_amounts.clone(),
+        );
+        request.tick_lower = Some(amounts.pool_info.tick_lower.clone());
+        request.tick_upper = Some(amounts.pool_info.tick_upper.clone());
+        request.slippage_bps = Some(slippage_bps.to_string());
+        request.simulate = Some(true);
+        let response = build_lp_add_transaction(
+            &self.configuration,
+            BuildLpAddTransactionParams {
+                build_lp_add_request: request,
+            },
+        )
+        .await
+        .map_err(map_request_error)?;
+        ensure_business_success(response.code, response.success)?;
+        let transactions = response.data.ok_or(DefiPlanError::InvalidData)?;
+
+        Ok(LpEntryPlan {
+            token_amounts,
+            transactions: *transactions,
+        })
     }
 
     pub(crate) async fn borrowing_transaction_status(

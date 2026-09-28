@@ -1,7 +1,12 @@
 use std::sync::Arc;
 
-use axum::extract::{Query, State, rejection::QueryRejection};
-use stockfront_core::liquidity::{LiquidityOpportunity, LiquidityService};
+use axum::{
+    Json,
+    extract::{Query, State, rejection::JsonRejection, rejection::QueryRejection},
+};
+use stockfront_core::liquidity::{
+    LiquidityOpportunity, LiquidityService, PrepareLiquidityEntryRequest, PreparedLiquidityEntry,
+};
 
 use super::{
     super::{
@@ -20,4 +25,13 @@ pub(in crate::http) async fn opportunities(
         .opportunities(parse_token_address(&request.bstock_token)?)
         .await?;
     Ok(Response::ok(List::all(opportunities)))
+}
+
+pub(in crate::http) async fn prepare_entry(
+    State(service): State<Arc<LiquidityService>>,
+    request: Result<Json<PrepareLiquidityEntryRequest>, JsonRejection>,
+) -> ApiResult<PreparedLiquidityEntry> {
+    let Json(request) = request?;
+    let entry = service.prepare_entry(&request).await?;
+    Ok(Response::ok(entry))
 }

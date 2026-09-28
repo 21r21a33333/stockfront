@@ -16,7 +16,7 @@ use stockfront_core::{
     bstock_market::BstockMarketService,
     bstock_trade::{BstockTradeService, TradePolicy},
     carry::{CarryPolicy, CarryService},
-    liquidity::LiquidityService,
+    liquidity::{LiquidityPolicy, LiquidityService},
     wallet_portfolio::WalletPortfolioService,
 };
 
@@ -36,6 +36,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
         borrow_debt_tokens,
         carry_investment_ids,
         min_carry_spread_bps,
+        liquidity_investment_ids,
+        liquidity_slippage_bps,
     } = Settings::from_env()?;
 
     let binance = BinanceWeb3Client::new(
@@ -78,7 +80,12 @@ async fn main() -> Result<(), Box<dyn Error>> {
         venus,
         BorrowingPolicy::new(borrow_debt_tokens)?,
     ));
-    let liquidity = Arc::new(LiquidityService::new(binance.clone(), binance.clone()));
+    let liquidity = Arc::new(LiquidityService::new(
+        binance.clone(),
+        binance.clone(),
+        binance.clone(),
+        LiquidityPolicy::new(liquidity_investment_ids, liquidity_slippage_bps)?,
+    ));
     let carry = Arc::new(CarryService::new(
         borrowing.clone(),
         binance.clone(),

@@ -21,6 +21,8 @@ const DEFAULT_VENUS_COMPTROLLER: &str = "0xfD36E2c2a6789Db23113685031d7F16329158
 const DEFAULT_BORROW_DEBT_TOKENS: &str = "0x55d398326f99059fF775485246999027B3197955";
 const DEFAULT_CARRY_INVESTMENT_IDS: &str = "";
 const DEFAULT_MIN_CARRY_SPREAD_BPS: &str = "100";
+const DEFAULT_LIQUIDITY_INVESTMENT_IDS: &str = "";
+const DEFAULT_LIQUIDITY_SLIPPAGE_BPS: &str = "100";
 
 #[derive(Deserialize)]
 pub(super) struct Settings {
@@ -46,6 +48,10 @@ pub(super) struct Settings {
     pub(super) carry_investment_ids: Vec<String>,
     #[serde(deserialize_with = "deserialize_from_str")]
     pub(super) min_carry_spread_bps: u32,
+    #[serde(deserialize_with = "deserialize_strings")]
+    pub(super) liquidity_investment_ids: Vec<String>,
+    #[serde(deserialize_with = "deserialize_from_str")]
+    pub(super) liquidity_slippage_bps: u32,
 }
 
 impl Settings {
@@ -72,6 +78,10 @@ impl Settings {
             .unwrap_or_else(|_| DEFAULT_CARRY_INVESTMENT_IDS.to_owned());
         let min_carry_spread_bps = env::var("STOCKFRONT_MIN_CARRY_SPREAD_BPS")
             .unwrap_or_else(|_| DEFAULT_MIN_CARRY_SPREAD_BPS.to_owned());
+        let liquidity_investment_ids = env::var("STOCKFRONT_LIQUIDITY_INVESTMENT_IDS")
+            .unwrap_or_else(|_| DEFAULT_LIQUIDITY_INVESTMENT_IDS.to_owned());
+        let liquidity_slippage_bps = env::var("STOCKFRONT_LIQUIDITY_SLIPPAGE_BPS")
+            .unwrap_or_else(|_| DEFAULT_LIQUIDITY_SLIPPAGE_BPS.to_owned());
         let fields = [
             ("binance_web3_api_key", BINANCE_WEB3_API_KEY),
             ("binance_web3_api_secret", BINANCE_WEB3_API_SECRET),
@@ -89,6 +99,11 @@ impl Settings {
             ("borrow_debt_tokens", borrow_debt_tokens.as_str()),
             ("carry_investment_ids", carry_investment_ids.as_str()),
             ("min_carry_spread_bps", min_carry_spread_bps.as_str()),
+            (
+                "liquidity_investment_ids",
+                liquidity_investment_ids.as_str(),
+            ),
+            ("liquidity_slippage_bps", liquidity_slippage_bps.as_str()),
         ];
         let values = fields
             .into_iter()

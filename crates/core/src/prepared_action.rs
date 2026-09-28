@@ -2,7 +2,10 @@ use alloy_primitives::{Address, Bytes, U256};
 use rust_decimal::Decimal;
 use serde::Serialize;
 
-use crate::serialization::{serialize_as_string, serialize_bytes, serialize_optional_as_string};
+use crate::{
+    bstock_borrowing::BorrowingToken,
+    serialization::{serialize_as_string, serialize_bytes, serialize_optional_as_string},
+};
 
 #[derive(Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -51,4 +54,29 @@ pub struct ActionWarning {
     pub code: String,
     pub level: String,
     pub message: String,
+}
+
+#[derive(Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AssetBalanceChange {
+    pub token: BorrowingToken,
+    pub amount: Decimal,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub value_usd: Option<Decimal>,
+}
+
+#[derive(Debug, Default, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ActionPreview {
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub balance_changes: Vec<AssetBalanceChange>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub estimated_network_fee: Option<NetworkFee>,
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        serialize_with = "crate::serialization::serialize_optional_as_string"
+    )]
+    pub interact_with: Option<Address>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub warnings: Vec<ActionWarning>,
 }

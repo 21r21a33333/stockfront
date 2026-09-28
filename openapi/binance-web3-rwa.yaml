@@ -88,6 +88,40 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/BuildDefiDepositResponse'
+  /api/v1/defi/transaction/lp-add/calculate:
+    post:
+      operationId: calculateLpAddPairedAmounts
+      tags: [DeFi transaction]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CalculateLpAddPairedAmountsRequest'
+      responses:
+        '200':
+          description: Required paired token amount or a Binance business error.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CalculateLpAddPairedAmountsResponse'
+  /api/v1/defi/transaction/lp-add:
+    post:
+      operationId: buildLpAddTransaction
+      tags: [DeFi transaction]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BuildLpAddRequest'
+      responses:
+        '200':
+          description: Ordered unsigned LP-add transactions or a Binance business error.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BuildLpAddResponse'
   /api/v1/defi/transaction/redeem:
     post:
       operationId: buildDefiRedeemTransaction
@@ -657,6 +691,72 @@ components:
         amount:
           type: string
     BuildDefiDepositResponse:
+      allOf:
+        - $ref: '#/components/schemas/BusinessResponse'
+        - type: object
+          properties:
+            data:
+              $ref: '#/components/schemas/DefiTransactionPlan'
+    CalculateLpAddPairedAmountsRequest:
+      type: object
+      required: [address, investmentId, inputToken]
+      properties:
+        address:
+          type: string
+        investmentId:
+          type: string
+        inputToken:
+          $ref: '#/components/schemas/DefiTokenAmount'
+        priceRange:
+          type: string
+    CalculateLpAddPairedAmountsResponse:
+      allOf:
+        - $ref: '#/components/schemas/BusinessResponse'
+        - type: object
+          properties:
+            data:
+              $ref: '#/components/schemas/LpAddPairedAmounts'
+    LpAddPairedAmounts:
+      type: object
+      required: [outputs, poolInfo]
+      properties:
+        outputs:
+          type: array
+          items:
+            $ref: '#/components/schemas/DefiTokenAmount'
+        poolInfo:
+          $ref: '#/components/schemas/LpPoolInfo'
+    LpPoolInfo:
+      type: object
+      required: [tickLower, tickUpper]
+      properties:
+        tickLower:
+          type: string
+        tickUpper:
+          type: string
+    BuildLpAddRequest:
+      type: object
+      required: [address, investmentId, tokenList]
+      properties:
+        address:
+          type: string
+        investmentId:
+          type: string
+        tokenList:
+          type: array
+          items:
+            $ref: '#/components/schemas/DefiTokenAmount'
+        tickLower:
+          type: string
+        tickUpper:
+          type: string
+        priceRange:
+          type: string
+        slippageBps:
+          type: string
+        simulate:
+          type: boolean
+    BuildLpAddResponse:
       allOf:
         - $ref: '#/components/schemas/BusinessResponse'
         - type: object
