@@ -15,6 +15,15 @@ use serde::{Deserialize, Serialize};
 pub struct DefiPoolPosition {
     #[serde(rename = "poolCa", skip_serializing_if = "Option::is_none")]
     pub pool_ca: Option<String>,
+    #[serde(rename = "poolType", skip_serializing_if = "Option::is_none")]
+    pub pool_type: Option<String>,
+    #[serde(
+        rename = "poolDetail",
+        default,
+        with = "::serde_with::rust::double_option",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub pool_detail: Option<Option<Box<models::DefiPoolDetail>>>,
     #[serde(
         rename = "positionCollectionList",
         skip_serializing_if = "Option::is_none"
@@ -26,6 +35,8 @@ impl DefiPoolPosition {
     pub fn new() -> DefiPoolPosition {
         DefiPoolPosition {
             pool_ca: None,
+            pool_type: None,
+            pool_detail: None,
             position_collection_list: None,
         }
     }

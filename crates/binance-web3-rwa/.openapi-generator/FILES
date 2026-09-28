@@ -38,6 +38,7 @@ src/models/defi_investment_detail.rs
 src/models/defi_investment_page.rs
 src/models/defi_investment_token.rs
 src/models/defi_network_fee.rs
+src/models/defi_pool_detail.rs
 src/models/defi_pool_position.rs
 src/models/defi_position.rs
 src/models/defi_position_collection.rs

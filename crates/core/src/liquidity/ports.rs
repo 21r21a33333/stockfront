@@ -2,7 +2,12 @@ use alloy_primitives::Address;
 use async_trait::async_trait;
 use thiserror::Error;
 
-use crate::liquidity::{LiquidityEntryCommand, LiquidityOpportunity, PreparedLiquidityEntry};
+use crate::{
+    liquidity::{
+        LiquidityAccount, LiquidityEntryCommand, LiquidityOpportunity, PreparedLiquidityEntry,
+    },
+    wallet_portfolio::WalletAddress,
+};
 
 #[derive(Clone, Copy, Debug, Error, Eq, PartialEq)]
 pub enum LiquidityProviderError {
@@ -15,11 +20,16 @@ pub enum LiquidityProviderError {
 }
 
 #[async_trait]
-pub trait LiquidityOpportunityReader: Send + Sync {
+pub trait LiquidityReader: Send + Sync {
     async fn opportunities(
         &self,
         bstock_token: Address,
     ) -> Result<Vec<LiquidityOpportunity>, LiquidityProviderError>;
+
+    async fn positions(
+        &self,
+        wallet: WalletAddress,
+    ) -> Result<LiquidityAccount, LiquidityProviderError>;
 }
 
 #[async_trait]

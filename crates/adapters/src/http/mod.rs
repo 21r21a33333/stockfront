@@ -135,5 +135,9 @@ pub fn liquidity_router(service: Arc<LiquidityService>) -> Router {
             "/v1/liquidity/positions/prepare",
             post(handlers::liquidity::prepare_entry),
         )
+        .route(
+            "/v1/wallets/{address}/liquidity-positions",
+            get(handlers::liquidity::positions),
+        )
         .with_state(service)
 }

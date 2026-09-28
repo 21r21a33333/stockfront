@@ -6,7 +6,8 @@ use stockfront_core::{
     bstock_borrowing::BorrowingToken,
     bstock_market::BNB_CHAIN_ID,
     carry::EarnRateType,
-    liquidity::{LiquidityOpportunity, LiquidityOpportunityReader, LiquidityProviderError},
+    liquidity::{LiquidityAccount, LiquidityOpportunity, LiquidityProviderError, LiquidityReader},
+    wallet_portfolio::WalletAddress,
 };
 
 use super::{
@@ -18,7 +19,7 @@ use super::{
 };
 
 #[async_trait]
-impl LiquidityOpportunityReader for BinanceWeb3Client {
+impl LiquidityReader for BinanceWeb3Client {
     async fn opportunities(
         &self,
         bstock_token: Address,
@@ -54,6 +55,13 @@ impl LiquidityOpportunityReader for BinanceWeb3Client {
         } else {
             Ok(opportunities)
         }
+    }
+
+    async fn positions(
+        &self,
+        wallet: WalletAddress,
+    ) -> Result<LiquidityAccount, LiquidityProviderError> {
+        self.liquidity_positions(wallet).await
     }
 }
 

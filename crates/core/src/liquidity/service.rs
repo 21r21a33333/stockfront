@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{collections::HashSet, sync::Arc};
 
 use alloy_primitives::Address;
 use rust_decimal::Decimal;
@@ -7,10 +7,11 @@ use thiserror::Error;
 use crate::{
     bstock_market::{BNB_CHAIN_ID, BstockCatalog, CatalogError},
     liquidity::{
-        LiquidityActionGateway, LiquidityEntryCommand, LiquidityOpportunity,
-        LiquidityOpportunityReader, LiquidityProviderError, PrepareLiquidityEntryRequest,
+        LiquidityAccount, LiquidityActionGateway, LiquidityEntryCommand, LiquidityOpportunity,
+        LiquidityProviderError, LiquidityReader, PrepareLiquidityEntryRequest,
         PreparedLiquidityEntry,
     },
+    wallet_portfolio::WalletAddress,
 };
 
 #[derive(Clone, Debug)]
@@ -70,7 +71,7 @@ pub enum LiquidityServiceError {
 
 pub struct LiquidityService {
     catalog: Arc<dyn BstockCatalog>,
-    opportunities: Arc<dyn LiquidityOpportunityReader>,
+    reader: Arc<dyn LiquidityReader>,
     actions: Arc<dyn LiquidityActionGateway>,
     policy: LiquidityPolicy,
 }
@@ -78,13 +79,13 @@ pub struct LiquidityService {
 impl LiquidityService {
     pub fn new(
         catalog: Arc<dyn BstockCatalog>,
-        opportunities: Arc<dyn LiquidityOpportunityReader>,
+        reader: Arc<dyn LiquidityReader>,
         actions: Arc<dyn LiquidityActionGateway>,
         policy: LiquidityPolicy,
     ) -> Self {
         Self {
             catalog,
-            opportunities,
+            reader,
             actions,
             policy,
         }
@@ -110,10 +111,44 @@ impl LiquidityService {
             return Err(LiquidityServiceError::UnsupportedBstock);
         }
 
-        self.opportunities
+        self.reader
             .opportunities(bstock_token)
             .await
             .map_err(Into::into)
+    }
+
+    /// Returns wallet-owned liquidity positions containing a supported bStock.
+    ///
+    /// # Errors
+    ///
+    /// Returns a provider or catalog error when current position data cannot be read safely.
+    pub async fn positions(
+        &self,
+        wallet: WalletAddress,
+    ) -> Result<LiquidityAccount, LiquidityServiceError> {
+        let supported = self
+            .catalog
+            .list_bstocks()
+            .await?
+            .into_iter()
+            .filter(|bstock| bstock.id.chain_id == BNB_CHAIN_ID)
+            .map(|bstock| bstock.id.contract)
+            .collect::<HashSet<_>>();
+        let mut account = self.reader.positions(wallet).await?;
+        account.positions.retain(|position| {
+            position
+                .assets
+                .iter()
+                .any(|asset| supported.contains(&asset.token.contract))
+        });
+        account.total_value_usd = account
+            .positions
+            .iter()
+            .try_fold(Decimal::ZERO, |total, position| {
+                total.checked_add(position.value_usd)
+            })
+            .ok_or(LiquidityProviderError::InvalidData)?;
+        Ok(account)
     }
 
     /// Returns paired token requirements and a simulated, unsigned LP-add plan.
@@ -160,7 +195,11 @@ mod tests {
     use alloy_primitives::{Address, address};
     use async_trait::async_trait;
 
-    use crate::bstock_market::{BstockDetails, BstockId, BstockSummary};
+    use crate::{
+        bstock_borrowing::{BorrowingAsset, BorrowingToken},
+        bstock_market::{AssetKind, BstockDetails, BstockId, BstockSummary},
+        liquidity::LiquidityPosition,
+    };
 
     use super::*;
 
@@ -180,12 +219,19 @@ mod tests {
     struct UnreachableProvider;
 
     #[async_trait]
-    impl LiquidityOpportunityReader for UnreachableProvider {
+    impl LiquidityReader for UnreachableProvider {
         async fn opportunities(
             &self,
             _bstock_token: Address,
         ) -> Result<Vec<LiquidityOpportunity>, LiquidityProviderError> {
             panic!("the provider must not be called for an unsupported token")
+        }
+
+        async fn positions(
+            &self,
+            _wallet: WalletAddress,
+        ) -> Result<LiquidityAccount, LiquidityProviderError> {
+            panic!("the provider must not be called")
         }
     }
 
@@ -213,6 +259,25 @@ mod tests {
                 transactions: Vec::new(),
                 preview: crate::prepared_action::ActionPreview::default(),
             })
+        }
+    }
+
+    struct FixedReader(LiquidityAccount);
+
+    #[async_trait]
+    impl LiquidityReader for FixedReader {
+        async fn opportunities(
+            &self,
+            _bstock_token: Address,
+        ) -> Result<Vec<LiquidityOpportunity>, LiquidityProviderError> {
+            Ok(Vec::new())
+        }
+
+        async fn positions(
+            &self,
+            _wallet: WalletAddress,
+        ) -> Result<LiquidityAccount, LiquidityProviderError> {
+            Ok(self.0.clone())
         }
     }
 
@@ -325,5 +390,87 @@ mod tests {
 
         assert!(result.is_ok());
         assert_eq!(gateway.0.load(Ordering::Relaxed), 250);
+    }
+
+    #[tokio::test]
+    async fn positions_keep_supported_bstocks_without_entry_allowlisting() {
+        let bstock = Address::with_last_byte(1);
+        let reader = Arc::new(FixedReader(LiquidityAccount {
+            chain_id: BNB_CHAIN_ID,
+            positions: vec![
+                position(bstock, "supported", 5),
+                position(Address::with_last_byte(2), "unrelated", 7),
+            ],
+            total_value_usd: Decimal::new(12, 0),
+            observed_at_ms: 42,
+        }));
+        let service = LiquidityService::new(
+            Arc::new(FixedCatalog(vec![summary(bstock)])),
+            reader,
+            Arc::new(UnreachableProvider),
+            LiquidityPolicy::new(Vec::new(), 100)
+                .unwrap_or_else(|error| panic!("test policy must be valid: {error}")),
+        );
+        let wallet = WalletAddress::try_from(Address::with_last_byte(9))
+            .unwrap_or_else(|error| panic!("test wallet must be valid: {error}"));
+
+        let account = service
+            .positions(wallet)
+            .await
+            .unwrap_or_else(|error| panic!("supported position was rejected: {error}"));
+
+        assert_eq!(account.positions.len(), 1);
+        assert_eq!(account.positions[0].position_id, "supported");
+        assert_eq!(account.total_value_usd, Decimal::new(5, 0));
+    }
+
+    fn position(token: Address, position_id: &str, value: i64) -> LiquidityPosition {
+        LiquidityPosition {
+            position_id: position_id.to_owned(),
+            investment_ids: vec!["unreviewed-investment".to_owned()],
+            protocol_id: "pancakeswap4".to_owned(),
+            protocol_name: "PancakeSwap".to_owned(),
+            pool_address: Address::with_last_byte(3),
+            nft_id: "1".to_owned(),
+            value_usd: Decimal::new(value, 0),
+            assets: vec![BorrowingAsset {
+                token: BorrowingToken {
+                    contract: token,
+                    symbol: "TOKEN".to_owned(),
+                },
+                amount: Decimal::ONE,
+                value_usd: Decimal::new(value, 0),
+            }],
+            claimable_assets: Vec::new(),
+            fee_tier: Some(2_500),
+            current_tick: Some(0),
+            lower_tick: -100,
+            upper_tick: 100,
+            in_range: true,
+            claim_actions: Vec::new(),
+        }
+    }
+
+    fn summary(contract: Address) -> BstockSummary {
+        BstockSummary {
+            id: BstockId {
+                chain_id: BNB_CHAIN_ID,
+                contract,
+            },
+            token_name: "Stock".to_owned(),
+            token_symbol: "STKB".to_owned(),
+            token_logo_url: None,
+            token_decimals: 18,
+            underlying_ticker: "STK".to_owned(),
+            underlying_name: "Stock".to_owned(),
+            asset_kind: AssetKind::Stock,
+            token_to_share_ratio: Decimal::ONE,
+            token_price_usd: None,
+            reference_price_usd: None,
+            volume_24h_usd: None,
+            market_cap_usd: None,
+            market_status: None,
+            tags: Vec::new(),
+        }
     }
 }

@@ -991,10 +991,22 @@ components:
       properties:
         poolCa:
           type: string
+        poolType:
+          type: string
+        poolDetail:
+          $ref: '#/components/schemas/DefiPoolDetail'
         positionCollectionList:
           type: array
           items:
             $ref: '#/components/schemas/DefiPositionCollection'
+    DefiPoolDetail:
+      type: object
+      nullable: true
+      properties:
+        feeTier:
+          type: string
+        tick:
+          type: string
     DefiPositionCollection:
       type: object
       properties:
@@ -1030,6 +1042,14 @@ components:
       type: object
       nullable: true
       properties:
+        nftId:
+          type: string
+        tickLower:
+          type: string
+        tickUpper:
+          type: string
+        active:
+          type: boolean
         claimTypes:
           type: array
           items:
@@ -1045,6 +1065,14 @@ components:
           items:
             $ref: '#/components/schemas/DefiPositionToken'
         borrow:
+          type: array
+          items:
+            $ref: '#/components/schemas/DefiPositionToken'
+        reward:
+          type: array
+          items:
+            $ref: '#/components/schemas/DefiPositionToken'
+        farming_reward:
           type: array
           items:
             $ref: '#/components/schemas/DefiPositionToken'

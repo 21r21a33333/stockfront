@@ -50,6 +50,8 @@ pub mod defi_investment_token;
 pub use self::defi_investment_token::DefiInvestmentToken;
 pub mod defi_network_fee;
 pub use self::defi_network_fee::DefiNetworkFee;
+pub mod defi_pool_detail;
+pub use self::defi_pool_detail::DefiPoolDetail;
 pub mod defi_pool_position;
 pub use self::defi_pool_position::DefiPoolPosition;
 pub mod defi_position;

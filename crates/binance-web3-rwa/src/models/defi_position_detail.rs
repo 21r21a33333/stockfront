@@ -13,6 +13,14 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Default, Debug, PartialEq, Serialize, Deserialize)]
 pub struct DefiPositionDetail {
+    #[serde(rename = "nftId", skip_serializing_if = "Option::is_none")]
+    pub nft_id: Option<String>,
+    #[serde(rename = "tickLower", skip_serializing_if = "Option::is_none")]
+    pub tick_lower: Option<String>,
+    #[serde(rename = "tickUpper", skip_serializing_if = "Option::is_none")]
+    pub tick_upper: Option<String>,
+    #[serde(rename = "active", skip_serializing_if = "Option::is_none")]
+    pub active: Option<bool>,
     #[serde(rename = "claimTypes", skip_serializing_if = "Option::is_none")]
     pub claim_types: Option<Vec<String>>,
     #[serde(
@@ -27,6 +35,10 @@ pub struct DefiPositionDetail {
 impl DefiPositionDetail {
     pub fn new() -> DefiPositionDetail {
         DefiPositionDetail {
+            nft_id: None,
+            tick_lower: None,
+            tick_upper: None,
+            active: None,
             claim_types: None,
             redemption_id: None,
         }

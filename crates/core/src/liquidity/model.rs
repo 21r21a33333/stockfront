@@ -3,7 +3,7 @@ use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    bstock_borrowing::BorrowingToken,
+    bstock_borrowing::{BorrowingAsset, BorrowingToken},
     carry::EarnRateType,
     prepared_action::{ActionPreview, PreparedTransaction},
     serialization::deserialize_from_string,
@@ -36,10 +36,52 @@ pub struct LiquidityOpportunity {
     pub observed_at_ms: i64,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum LiquidityClaimAction {
+    LpFee,
+    RewardInvestment,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LiquidityPosition {
+    pub position_id: String,
+    pub investment_ids: Vec<String>,
+    pub protocol_id: String,
+    pub protocol_name: String,
+    #[serde(serialize_with = "crate::serialization::serialize_as_string")]
+    pub pool_address: Address,
+    pub nft_id: String,
+    pub value_usd: Decimal,
+    pub assets: Vec<BorrowingAsset>,
+    pub claimable_assets: Vec<BorrowingAsset>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fee_tier: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub current_tick: Option<i32>,
+    pub lower_tick: i32,
+    pub upper_tick: i32,
+    pub in_range: bool,
+    pub claim_actions: Vec<LiquidityClaimAction>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LiquidityAccount {
+    pub chain_id: u64,
+    pub positions: Vec<LiquidityPosition>,
+    pub total_value_usd: Decimal,
+    pub observed_at_ms: i64,
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LiquidityAmount {
-    #[serde(deserialize_with = "deserialize_from_string")]
+    #[serde(
+        deserialize_with = "deserialize_from_string",
+        serialize_with = "crate::serialization::serialize_as_string"
+    )]
     pub token: Address,
     #[serde(deserialize_with = "deserialize_from_string")]
     pub amount: Decimal,
