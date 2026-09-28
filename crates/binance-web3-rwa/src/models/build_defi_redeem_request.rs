@@ -19,8 +19,6 @@ pub struct BuildDefiRedeemRequest {
     pub investment_id: String,
     #[serde(rename = "token", skip_serializing_if = "Option::is_none")]
     pub token: Option<Box<models::DefiTokenAmount>>,
-    #[serde(rename = "ratio", skip_serializing_if = "Option::is_none")]
-    pub ratio: Option<String>,
     #[serde(rename = "simulate", skip_serializing_if = "Option::is_none")]
     pub simulate: Option<bool>,
 }
@@ -31,7 +29,6 @@ impl BuildDefiRedeemRequest {
             address,
             investment_id,
             token: None,
-            ratio: None,
             simulate: None,
         }
     }

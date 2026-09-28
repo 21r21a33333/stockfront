@@ -152,7 +152,8 @@ pub struct PrepareCarryWithdrawalRequest {
 pub struct EarnWithdrawalCommand {
     pub wallet: WalletAddress,
     pub investment_id: String,
-    pub amount: CarryWithdrawalAmount,
+    pub token: Address,
+    pub amount: Decimal,
 }
 
 #[derive(Debug, Deserialize)]

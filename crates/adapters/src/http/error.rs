@@ -208,6 +208,11 @@ impl ApiError {
         "carry_opportunity_not_found",
         "the earn opportunity was not found",
     );
+    const CARRY_POSITION_NOT_FOUND: Self = Self::fixed(
+        StatusCode::NOT_FOUND,
+        "carry_position_not_found",
+        "the wallet has no position for the earn opportunity",
+    );
     const CARRY_OPPORTUNITY_UNAVAILABLE: Self = Self::fixed(
         StatusCode::CONFLICT,
         "carry_opportunity_unavailable",
@@ -347,6 +352,7 @@ impl From<CarryServiceError> for ApiError {
             CarryServiceError::InvalidDepositAmount => Self::INVALID_CARRY_DEPOSIT_AMOUNT,
             CarryServiceError::InvalidWithdrawalAmount => Self::INVALID_CARRY_WITHDRAWAL_AMOUNT,
             CarryServiceError::OpportunityNotFound => Self::CARRY_OPPORTUNITY_NOT_FOUND,
+            CarryServiceError::PositionNotFound => Self::CARRY_POSITION_NOT_FOUND,
             CarryServiceError::OpportunityUnavailable => Self::CARRY_OPPORTUNITY_UNAVAILABLE,
         }
     }

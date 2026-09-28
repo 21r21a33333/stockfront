@@ -669,8 +669,6 @@ components:
           type: string
         token:
           $ref: '#/components/schemas/DefiTokenAmount'
-        ratio:
-          type: string
         simulate:
           type: boolean
     BuildDefiRedeemResponse:

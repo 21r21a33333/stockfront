@@ -54,6 +54,8 @@ pub enum CarryServiceError {
     InvalidWithdrawalAmount,
     #[error("the earn opportunity was not found")]
     OpportunityNotFound,
+    #[error("the wallet has no position for the earn opportunity")]
+    PositionNotFound,
     #[error("the earn opportunity is not currently eligible")]
     OpportunityUnavailable,
 }
@@ -193,16 +195,24 @@ impl CarryService {
         ) {
             return Err(CarryServiceError::InvalidWithdrawalAmount);
         }
-        self.earn_reader
-            .opportunity(&request.investment_id)
-            .await?
-            .ok_or(CarryServiceError::OpportunityNotFound)?;
-        self.earn_gateway
-            .prepare_withdrawal(&EarnWithdrawalCommand {
+        let command = match request.amount {
+            CarryWithdrawalAmount::Exact { token, value } => EarnWithdrawalCommand {
                 wallet: request.wallet,
                 investment_id: request.investment_id.clone(),
-                amount: request.amount.clone(),
-            })
+                token,
+                amount: value,
+            },
+            CarryWithdrawalAmount::Full => {
+                let account = self
+                    .earn_reader
+                    .positions(request.wallet)
+                    .await
+                    .map_err(CarryServiceError::Positions)?;
+                resolve_full_withdrawal(request.wallet, &request.investment_id, &account)?
+            }
+        };
+        self.earn_gateway
+            .prepare_withdrawal(&command)
             .await
             .map_err(Into::into)
     }
@@ -225,6 +235,44 @@ impl CarryService {
             .await
             .map_err(Into::into)
     }
+}
+
+fn resolve_full_withdrawal(
+    wallet: WalletAddress,
+    investment_id: &str,
+    account: &CarryAccount,
+) -> Result<EarnWithdrawalCommand, CarryServiceError> {
+    let mut positions = account
+        .positions
+        .iter()
+        .filter(|position| position.investment_ids.iter().any(|id| id == investment_id));
+    let Some(first_position) = positions.next() else {
+        return Err(CarryServiceError::PositionNotFound);
+    };
+    let mut token = None;
+    let mut amount = Decimal::ZERO;
+
+    for position in std::iter::once(first_position).chain(positions) {
+        for asset in &position.assets {
+            if asset.amount <= Decimal::ZERO
+                || token.is_some_and(|token| token != asset.token.contract)
+            {
+                return Err(CarryServiceError::Positions(EarnProviderError::InvalidData));
+            }
+            token = Some(asset.token.contract);
+            amount = amount
+                .checked_add(asset.amount)
+                .ok_or(CarryServiceError::Positions(EarnProviderError::InvalidData))?;
+        }
+    }
+    let token = token.ok_or(CarryServiceError::Positions(EarnProviderError::InvalidData))?;
+
+    Ok(EarnWithdrawalCommand {
+        wallet,
+        investment_id: investment_id.to_owned(),
+        token,
+        amount,
+    })
 }
 
 fn assess(
@@ -304,11 +352,12 @@ mod tests {
             AssetKind, BNB_CHAIN_ID, BstockCatalog, BstockDetails, BstockId, BstockSummary,
             CatalogError,
         },
-        carry::{CarryActionPlan, CarryActionPreview, RedemptionDelay},
+        carry::{CarryActionPlan, CarryActionPreview, CarryPosition},
         wallet_portfolio::WalletAddress,
     };
 
     const INVESTMENT_ID: &str = "reviewed-investment";
+    const RETIRED_INVESTMENT_ID: &str = "retired-investment";
 
     #[test]
     fn computes_base_spread_from_integer_basis_points() {
@@ -445,12 +494,12 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn withdrawal_supports_exact_and_full_amounts_without_the_deposit_allowlist() {
+    async fn withdrawal_supports_existing_positions_that_are_no_longer_discoverable() {
         let service = service(CarryPolicy::new(Vec::new(), 100));
         let exact = service
             .prepare_withdrawal(&PrepareCarryWithdrawalRequest {
                 wallet: wallet(),
-                investment_id: INVESTMENT_ID.to_owned(),
+                investment_id: RETIRED_INVESTMENT_ID.to_owned(),
                 amount: CarryWithdrawalAmount::Exact {
                     token: Address::with_last_byte(3),
                     value: Decimal::new(25, 0),
@@ -461,24 +510,63 @@ mod tests {
         let full = service
             .prepare_withdrawal(&PrepareCarryWithdrawalRequest {
                 wallet: wallet(),
-                investment_id: INVESTMENT_ID.to_owned(),
+                investment_id: RETIRED_INVESTMENT_ID.to_owned(),
                 amount: CarryWithdrawalAmount::Full,
             })
             .await
             .unwrap_or_else(|error| panic!("full withdrawal rejected: {error}"));
 
         assert_eq!(exact.preview.redemption_delay, None);
-        assert_eq!(
-            full.preview.redemption_delay,
-            Some(RedemptionDelay {
-                min_days: Decimal::new(7, 0),
-                max_days: Decimal::new(10, 0),
-            })
-        );
+        assert_eq!(full.preview.redemption_delay, None);
+    }
+
+    #[test]
+    fn full_withdrawal_sums_matching_positions_for_the_same_token() {
+        let command = resolve_full_withdrawal(
+            wallet(),
+            INVESTMENT_ID,
+            &carry_account(vec![
+                carry_position(
+                    INVESTMENT_ID,
+                    Address::with_last_byte(3),
+                    Decimal::new(25, 1),
+                ),
+                carry_position(
+                    INVESTMENT_ID,
+                    Address::with_last_byte(3),
+                    Decimal::new(75, 1),
+                ),
+            ]),
+        )
+        .unwrap_or_else(|error| panic!("valid carry positions rejected: {error}"));
+
+        assert_eq!(command.wallet, wallet());
+        assert_eq!(command.investment_id, INVESTMENT_ID);
+        assert_eq!(command.token, Address::with_last_byte(3));
+        assert_eq!(command.amount, Decimal::TEN);
+    }
+
+    #[test]
+    fn full_withdrawal_rejects_missing_or_ambiguous_positions() {
+        assert!(matches!(
+            resolve_full_withdrawal(wallet(), INVESTMENT_ID, &carry_account(Vec::new())),
+            Err(CarryServiceError::PositionNotFound)
+        ));
+        assert!(matches!(
+            resolve_full_withdrawal(
+                wallet(),
+                INVESTMENT_ID,
+                &carry_account(vec![
+                    carry_position(INVESTMENT_ID, Address::with_last_byte(3), Decimal::ONE),
+                    carry_position(INVESTMENT_ID, Address::with_last_byte(4), Decimal::ONE),
+                ]),
+            ),
+            Err(CarryServiceError::Positions(EarnProviderError::InvalidData))
+        ));
     }
 
     #[tokio::test]
-    async fn withdrawal_rejects_non_positive_exact_amount_and_unknown_investment() {
+    async fn withdrawal_rejects_non_positive_exact_amount_and_missing_full_position() {
         let service = service(CarryPolicy::new(Vec::new(), 100));
         for value in [Decimal::ZERO, Decimal::NEGATIVE_ONE] {
             let request = PrepareCarryWithdrawalRequest {
@@ -501,7 +589,7 @@ mod tests {
         };
         assert!(matches!(
             service.prepare_withdrawal(&request).await,
-            Err(CarryServiceError::OpportunityNotFound)
+            Err(CarryServiceError::PositionNotFound)
         ));
     }
 
@@ -655,12 +743,11 @@ mod tests {
             &self,
             _wallet: WalletAddress,
         ) -> Result<CarryAccount, EarnProviderError> {
-            Ok(CarryAccount {
-                chain_id: BNB_CHAIN_ID,
-                positions: Vec::new(),
-                total_value_usd: Decimal::ZERO,
-                observed_at_ms: 2_000,
-            })
+            Ok(carry_account(vec![carry_position(
+                RETIRED_INVESTMENT_ID,
+                Address::with_last_byte(3),
+                Decimal::new(25, 0),
+            )]))
         }
     }
 
@@ -685,24 +772,12 @@ mod tests {
             command: &EarnWithdrawalCommand,
         ) -> Result<CarryActionPlan, EarnProviderError> {
             assert_eq!(command.wallet, wallet());
-            assert_eq!(command.investment_id, INVESTMENT_ID);
-            let redemption_delay = match command.amount {
-                CarryWithdrawalAmount::Exact { token, value } => {
-                    assert_eq!(token, Address::with_last_byte(3));
-                    assert_eq!(value, Decimal::new(25, 0));
-                    None
-                }
-                CarryWithdrawalAmount::Full => Some(RedemptionDelay {
-                    min_days: Decimal::new(7, 0),
-                    max_days: Decimal::new(10, 0),
-                }),
-            };
+            assert_eq!(command.investment_id, RETIRED_INVESTMENT_ID);
+            assert_eq!(command.token, Address::with_last_byte(3));
+            assert_eq!(command.amount, Decimal::new(25, 0));
             Ok(CarryActionPlan {
                 transactions: Vec::new(),
-                preview: CarryActionPreview {
-                    redemption_delay,
-                    ..CarryActionPreview::default()
-                },
+                preview: CarryActionPreview::default(),
             })
         }
 
@@ -735,6 +810,35 @@ mod tests {
     fn wallet() -> WalletAddress {
         WalletAddress::try_from(Address::with_last_byte(9))
             .unwrap_or_else(|error| panic!("valid wallet rejected: {error}"))
+    }
+
+    fn carry_account(positions: Vec<CarryPosition>) -> CarryAccount {
+        CarryAccount {
+            chain_id: BNB_CHAIN_ID,
+            positions,
+            total_value_usd: Decimal::ZERO,
+            observed_at_ms: 2_000,
+        }
+    }
+
+    fn carry_position(
+        investment_id: &str,
+        token_address: Address,
+        amount: Decimal,
+    ) -> CarryPosition {
+        CarryPosition {
+            position_id: format!("position-{token_address}"),
+            investment_ids: vec![investment_id.to_owned()],
+            protocol_id: "protocol".to_owned(),
+            protocol_name: "Protocol".to_owned(),
+            value_usd: amount,
+            assets: vec![crate::bstock_borrowing::BorrowingAsset {
+                token: token(token_address, "TOKEN"),
+                amount,
+                value_usd: amount,
+            }],
+            redemption: None,
+        }
     }
 
     fn market(

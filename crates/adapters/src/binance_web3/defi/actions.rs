@@ -36,7 +36,8 @@ impl EarnActionGateway for BinanceWeb3Client {
             .build_redeem_plan(
                 command.wallet,
                 command.investment_id.clone(),
-                &command.amount,
+                command.token,
+                command.amount,
             )
             .await
             .map_err(EarnProviderError::from)?;

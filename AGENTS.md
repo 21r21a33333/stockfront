@@ -64,6 +64,7 @@ Never write scaffolding, generated clients, production code or tests before the 
 - Core rules receive deterministic unit tests. Adapters receive integration tests against controlled fixtures or pinned forks when their behavior warrants it.
 - Every test must have a clear failure mode and user or protocol consequence.
 - Live-provider scenarios must validate every field Stockfront exposes, including units, provider sentinel values, transaction order and Stockfront-owned authorization scope. A successful response or non-empty calldata alone is not sufficient evidence before broadcasting funds.
+- For configuration-gated flows, live acceptance must exercise the composed application policy and prove the configured route is actionable. Provider discovery alone does not establish that the frontend-facing flow is usable.
 
 ## Comments and documentation
 

@@ -85,12 +85,15 @@ fn carry_account(
             {
                 continue;
             }
-            let position = CarryPosition::try_from(ProviderCarryPosition {
+            let candidate = ProviderCarryPosition {
                 position,
                 investment_ids,
                 protocol_id: protocol_id.clone(),
                 protocol_name: protocol_name.clone(),
-            })?;
+            };
+            let Some(position) = candidate.try_into_position()? else {
+                continue;
+            };
             total_value_usd = total_value_usd
                 .checked_add(position.value_usd)
                 .ok_or(InvalidProviderData)?;
@@ -113,39 +116,52 @@ struct ProviderCarryPosition {
     protocol_name: Option<String>,
 }
 
-impl TryFrom<ProviderCarryPosition> for CarryPosition {
-    type Error = InvalidProviderData;
-
-    fn try_from(provider: ProviderCarryPosition) -> Result<Self, Self::Error> {
-        if provider.investment_ids.is_empty() {
+impl ProviderCarryPosition {
+    fn try_into_position(self) -> Result<Option<CarryPosition>, InvalidProviderData> {
+        let models::DefiPosition {
+            position_id,
+            position_value,
+            token_list,
+            position_detail,
+            ..
+        } = self.position;
+        let supplied_tokens = token_list
+            .and_then(|tokens| tokens.supply)
+            .unwrap_or_default();
+        if supplied_tokens.is_empty() {
+            return Ok(None);
+        }
+        if self.investment_ids.is_empty() {
             return Err(InvalidProviderData);
         }
-        let redemption = provider
-            .position
-            .position_detail
+        let redemption = position_detail
             .flatten()
             .and_then(|detail| CarryRedemption::try_from(ProviderCarryRedemption(*detail)).ok());
-        let tokens = required(provider.position.token_list)?;
-        let assets = tokens
-            .supply
-            .unwrap_or_default()
+        let mut assets = supplied_tokens
             .into_iter()
             .map(ProviderPositionToken::from)
             .map(BorrowingAsset::try_from)
             .collect::<Result<Vec<_>, _>>()?;
-        if assets.is_empty() {
+        if assets
+            .iter()
+            .any(|asset| asset.amount < Decimal::ZERO || asset.value_usd < Decimal::ZERO)
+        {
             return Err(InvalidProviderData);
         }
+        assets.retain(|asset| !asset.amount.is_zero());
+        if assets.is_empty() {
+            return Ok(None);
+        }
 
-        Ok(Self {
-            position_id: required_non_empty(provider.position.position_id)?,
-            investment_ids: provider.investment_ids,
-            protocol_id: required_non_empty(provider.protocol_id)?,
-            protocol_name: required_non_empty(provider.protocol_name)?,
-            value_usd: parse(&required(provider.position.position_value)?)?,
+        Ok(Some(CarryPosition {
+            position_id: required_non_empty(position_id)?,
+            investment_ids: self.investment_ids,
+            protocol_id: required_non_empty(self.protocol_id)?,
+            protocol_name: required_non_empty(self.protocol_name)?,
+            value_usd: parse(&required(position_value)?)?,
             assets,
             redemption,
-        })
+        }))
     }
 }
 
@@ -222,6 +238,63 @@ mod tests {
         );
     }
 
+    #[test]
+    fn excludes_borrow_only_records_from_carry_positions() {
+        let account = carry_account(
+            snapshot(vec![
+                position(&["deposit"], "25"),
+                borrow_position("borrow", "10"),
+            ]),
+            &HashSet::from(["deposit".to_owned(), "borrow".to_owned()]),
+        )
+        .unwrap_or_else(|_| panic!("borrow-only record invalidated carry positions"));
+
+        assert_eq!(account.positions.len(), 1);
+        assert_eq!(account.positions[0].investment_ids, ["deposit"]);
+        assert_eq!(account.total_value_usd, Decimal::new(25, 0));
+    }
+
+    #[test]
+    fn excludes_stale_zero_positions_without_dropping_nonzero_dust() {
+        let mut redeemed = position(&["redeemed"], "0.00000438");
+        let redeemed_asset = redeemed
+            .token_list
+            .as_deref_mut()
+            .and_then(|tokens| tokens.supply.as_deref_mut())
+            .and_then(|assets| assets.first_mut())
+            .unwrap_or_else(|| panic!("position fixture has no supplied token"));
+        redeemed_asset.token_amount = Some("0.0".to_owned());
+        redeemed_asset.token_value = Some("0.00000000".to_owned());
+
+        let account = carry_account(
+            snapshot(vec![redeemed, position(&["dust"], "0.00000191")]),
+            &HashSet::from(["redeemed".to_owned(), "dust".to_owned()]),
+        )
+        .unwrap_or_else(|_| panic!("valid dust position was rejected"));
+
+        assert_eq!(account.positions.len(), 1);
+        assert_eq!(account.positions[0].investment_ids, ["dust"]);
+        assert_eq!(account.total_value_usd, Decimal::new(191, 8));
+    }
+
+    #[test]
+    fn rejects_malformed_supplied_records() {
+        let mut malformed = position(&["deposit"], "25");
+        let supplied = malformed
+            .token_list
+            .as_deref_mut()
+            .and_then(|tokens| tokens.supply.as_deref_mut())
+            .unwrap_or_else(|| panic!("position fixture has no supplied token"));
+        supplied[0].token_amount = None;
+
+        let result = carry_account(
+            snapshot(vec![malformed]),
+            &HashSet::from(["deposit".to_owned()]),
+        );
+
+        assert!(matches!(result, Err(InvalidProviderData)));
+    }
+
     fn snapshot(positions: Vec<models::DefiPosition>) -> DefiPositionSnapshot {
         DefiPositionSnapshot {
             positions: models::DefiPositions {
@@ -281,5 +354,15 @@ mod tests {
             })),
             position_detail: None,
         }
+    }
+
+    fn borrow_position(investment_id: &str, value: &str) -> models::DefiPosition {
+        let mut position = position(&[investment_id], value);
+        let tokens = position
+            .token_list
+            .as_deref_mut()
+            .unwrap_or_else(|| panic!("position fixture has no tokens"));
+        tokens.borrow = tokens.supply.take();
+        position
     }
 }

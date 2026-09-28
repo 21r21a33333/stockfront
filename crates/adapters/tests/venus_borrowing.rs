@@ -34,8 +34,8 @@ const VENUS_TSLAB: alloy_primitives::Address = address!("97421799419Eb782628e73e
 const VENUS_COMPTROLLER: alloy_primitives::Address =
     address!("fD36E2c2a6789Db23113685031d7F16329158384");
 const VENUS_USDT: alloy_primitives::Address = address!("fD5840Cd36d94D7229439859C0112a4185BC0255");
-const BORROW_AMOUNT: &str = "0.01";
-const BORROW_AMOUNT_RAW: u64 = 10_000_000_000_000_000;
+const BORROW_AMOUNT: &str = "1";
+const BORROW_AMOUNT_RAW: u64 = 1_000_000_000_000_000_000;
 const POSITION_ATTEMPTS: usize = 30;
 const POSITION_POLL_INTERVAL: Duration = Duration::from_secs(2);
 
@@ -209,7 +209,7 @@ async fn prepares_live_collateral_activation_and_borrow() -> Result<(), Box<dyn 
 }
 
 #[tokio::test]
-#[ignore = "borrows 0.01 USDT from Venus on BSC mainnet and creates live debt"]
+#[ignore = "borrows 1 USDT from Venus on BSC mainnet and creates live debt"]
 async fn borrows_live_usdt_against_tesla_bstock_on_venus() -> Result<(), Box<dyn Error>> {
     let context = live_evm_context().await?;
     let wallet = context.wallet.as_address();
@@ -285,6 +285,61 @@ async fn prepares_full_live_usdt_repayment_approval() -> Result<(), Box<dyn Erro
 #[ignore = "fully repays live Venus USDT debt on BSC mainnet and spends BNB for gas"]
 async fn fully_repays_live_usdt_debt_on_venus() -> Result<(), Box<dyn Error>> {
     let context = live_evm_context().await?;
+    let adapter = live_venus_adapter(true).await?;
+    repay_live_usdt_debt(&context, &adapter).await
+}
+
+#[tokio::test]
+#[ignore = "requires Binance Web3 credentials and a STOCKFRONT_TEST_WALLET with supplied Venus collateral"]
+async fn prepares_full_live_tesla_bstock_withdrawal() -> Result<(), Box<dyn Error>> {
+    let wallet_address: Address = env::var("STOCKFRONT_TEST_WALLET")?.parse()?;
+    let wallet = WalletAddress::try_from(wallet_address)?;
+    let adapter = live_venus_adapter(true).await?;
+    let account = adapter
+        .read_account(wallet)
+        .await
+        .map_err(|error| io::Error::other(format!("account preflight failed: {error}")))?;
+
+    if !account.total_borrowed_usd.is_zero() {
+        return Err(io::Error::other("wallet still has outstanding Venus debt").into());
+    }
+    if tslab_supply(&account)?.is_zero() {
+        return Err(io::Error::other("wallet has no supplied Venus TSLAB to withdraw").into());
+    }
+    let withdrawal = adapter
+        .prepare_withdrawal(&PrepareWithdrawalRequest {
+            wallet,
+            collateral_token: TSLAB,
+            amount: PositionAmount::Full,
+        })
+        .await
+        .map_err(|error| io::Error::other(format!("withdrawal preparation failed: {error}")))?;
+    validated_full_withdrawal(&withdrawal)?;
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "fully withdraws supplied TSLAB from Venus on BSC mainnet and spends BNB for gas"]
+async fn fully_withdraws_live_tesla_bstock_from_venus() -> Result<(), Box<dyn Error>> {
+    let context = live_evm_context().await?;
+    let adapter = live_venus_adapter(true).await?;
+    withdraw_live_tslab(&context, &adapter).await
+}
+
+#[tokio::test]
+#[ignore = "fully repays Venus USDT debt and returns all supplied TSLAB to the wallet on BSC mainnet"]
+async fn fully_repays_debt_and_returns_tesla_bstock_to_wallet() -> Result<(), Box<dyn Error>> {
+    let context = live_evm_context().await?;
+    let adapter = live_venus_adapter(true).await?;
+
+    repay_live_usdt_debt(&context, &adapter).await?;
+    withdraw_live_tslab(&context, &adapter).await
+}
+
+async fn repay_live_usdt_debt(
+    context: &live_evm_support::LiveEvmContext,
+    adapter: &stockfront_adapters::venus::VenusBorrowingAdapter,
+) -> Result<(), Box<dyn Error>> {
     let wallet = context.wallet.as_address();
     let debt_market = TestVenusDebtMarket::new(VENUS_USDT, &context.provider);
     let starting_debt = debt_market.borrowBalanceCurrent(wallet).call().await?;
@@ -292,7 +347,6 @@ async fn fully_repays_live_usdt_debt_on_venus() -> Result<(), Box<dyn Error>> {
         return Err(io::Error::other("wallet has no Venus USDT debt to repay").into());
     }
 
-    let adapter = live_venus_adapter(true).await?;
     let request = PrepareRepaymentRequest {
         wallet: context.wallet,
         debt_token: USDT,
@@ -354,49 +408,19 @@ async fn fully_repays_live_usdt_debt_on_venus() -> Result<(), Box<dyn Error>> {
     assert!(spent >= debt_before_repayment);
     assert!(spent <= allowance);
 
-    wait_for_indexed_repayment(&adapter, context.wallet, transaction_hash).await
+    wait_for_indexed_repayment(adapter, context.wallet, transaction_hash).await
 }
 
-#[tokio::test]
-#[ignore = "requires Binance Web3 credentials and a STOCKFRONT_TEST_WALLET with supplied Venus collateral"]
-async fn prepares_full_live_tesla_bstock_withdrawal() -> Result<(), Box<dyn Error>> {
-    let wallet_address: Address = env::var("STOCKFRONT_TEST_WALLET")?.parse()?;
-    let wallet = WalletAddress::try_from(wallet_address)?;
-    let adapter = live_venus_adapter(true).await?;
-    let account = adapter
-        .read_account(wallet)
-        .await
-        .map_err(|error| io::Error::other(format!("account preflight failed: {error}")))?;
-
-    if !account.total_borrowed_usd.is_zero() {
-        return Err(io::Error::other("wallet still has outstanding Venus debt").into());
-    }
-    if tslab_supply(&account)?.is_zero() {
-        return Err(io::Error::other("wallet has no supplied Venus TSLAB to withdraw").into());
-    }
-    let withdrawal = adapter
-        .prepare_withdrawal(&PrepareWithdrawalRequest {
-            wallet,
-            collateral_token: TSLAB,
-            amount: PositionAmount::Full,
-        })
-        .await
-        .map_err(|error| io::Error::other(format!("withdrawal preparation failed: {error}")))?;
-    validated_full_withdrawal(&withdrawal)?;
-    Ok(())
-}
-
-#[tokio::test]
-#[ignore = "fully withdraws supplied TSLAB from Venus on BSC mainnet and spends BNB for gas"]
-async fn fully_withdraws_live_tesla_bstock_from_venus() -> Result<(), Box<dyn Error>> {
-    let context = live_evm_context().await?;
+async fn withdraw_live_tslab(
+    context: &live_evm_support::LiveEvmContext,
+    adapter: &stockfront_adapters::venus::VenusBorrowingAdapter,
+) -> Result<(), Box<dyn Error>> {
     let wallet = context.wallet.as_address();
     let starting_vtoken_balance = token_balance(&context.provider, VENUS_TSLAB, wallet).await?;
     if starting_vtoken_balance == U256::ZERO {
         return Err(io::Error::other("wallet has no Venus TSLAB position to withdraw").into());
     }
 
-    let adapter = live_venus_adapter(true).await?;
     let account = adapter.read_account(context.wallet).await?;
     if !account.total_borrowed_usd.is_zero() {
         return Err(io::Error::other("wallet still has outstanding Venus debt").into());
@@ -429,7 +453,7 @@ async fn fully_withdraws_live_tesla_bstock_from_venus() -> Result<(), Box<dyn Er
         U256::ZERO
     );
     assert!(token_balance(&context.provider, TSLAB, wallet).await? > starting_tslab_balance);
-    wait_for_indexed_withdrawal(&adapter, context.wallet, transaction_hash).await
+    wait_for_indexed_withdrawal(adapter, context.wallet, transaction_hash).await
 }
 
 struct PreparedApproval<'action> {

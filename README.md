@@ -2,7 +2,7 @@
 
 **More from every stock.**
 
-Stockfront is a non-custodial portfolio and income layer for tokenized stocks on BNB Chain. It helps users discover and purchase bStocks, borrow without selling them, enter a conservative automated carry vault, provide verified stock liquidity, and manage risk from one place.
+Stockfront is a non-custodial portfolio and income layer for tokenized stocks on BNB Chain. It helps users discover and trade bStocks, borrow without selling them, deploy borrowed stablecoins into reviewed earn opportunities, provide stock liquidity, and manage risk from one place.
 
 Instead of creating another exchange, lending market, or oracle, Stockfront composes established BNB Chain infrastructure and adds the strategy orchestration, accounting, automation, monitoring, and controlled exits needed to make tokenized stocks useful in DeFi.
 
@@ -27,21 +27,22 @@ This is the trusted entry and accounting layer used by every Stockfront strategy
 
 Users can supply supported bStocks to Venus, enable them as collateral, and borrow an approved stablecoin while retaining their stock exposure. Stockfront exposes the complete loan position and prepares wallet-signed supply, collateral, borrow, repay, and withdrawal actions with health-factor previews.
 
-### Earn through a Conservative Carry Vault
+### Earn through conservative carry
 
-The first pooled strategy is intentionally narrow:
+The first carry strategy composes existing protocols instead of introducing another custody or vault contract:
 
 ```text
-Deposit NVDAB
-→ supply it to an approved bStock collateral market
-→ borrow a conservative amount of USDT
-→ lend USDT in one approved BNB Chain market
-→ compound the positive interest-rate spread
+Supply a supported bStock to Venus
+→ enable it as collateral
+→ borrow an approved stablecoin conservatively
+→ deposit that stablecoin into a reviewed BNB Chain earn opportunity
+→ redeem the earn position
+→ repay the debt before withdrawing the bStock
 ```
 
-The return combines the user's stock exposure with the spread between stablecoin lending yield and borrowing cost. The vault borrows only when expected lending yield exceeds borrowing cost, fees, and a safety margin.
+Stockfront discovers earn products through Binance Web3, compares sustainable base APY with the matching Venus borrow APY, and enables deposits only for explicitly reviewed investments whose spread clears the configured safety margin. The user signs every transaction and retains the resulting protocol position tokens.
 
-The vault is capped, transparent, and designed around conservative leverage, liquidity reserves, contract-limited automation, and emergency unwinding. It is not principal-protected and does not promise guaranteed returns.
+Returns remain exposed to variable rates, stablecoin depegging, protocol risk, transaction costs, and bStock collateral liquidation. They are not guaranteed or principal-protected.
 
 ### Provide managed stock liquidity
 
@@ -59,7 +60,7 @@ The portfolio and risk layer brings together:
 - Stock/reference-price deviations.
 - Dividend, split, rebase, and multiplier-adjusted accounting.
 
-Alerts prepare concrete actions such as repaying debt, adding collateral, reducing leverage, rebalancing liquidity, or exiting. Users approve and sign actions for personal positions; pooled-vault keepers operate only within contract-enforced limits.
+Alerts prepare concrete actions such as repaying debt, adding collateral, reducing leverage, rebalancing liquidity, or exiting. Users approve and sign every action.
 
 ## MVP
 
@@ -67,13 +68,13 @@ The initial product is deliberately focused:
 
 1. bStock discovery, wallet portfolio, trade quotes, and wallet-signed execution.
 2. Borrowing against supported bStocks through Venus with direct onchain health verification.
-3. One capped Conservative Carry Vault using NVDAB, USDT, and approved borrowing and lending markets.
+3. Conservative carry using supported bStock collateral, Venus borrowing, and reviewed existing earn products such as Lista.
 4. One verified PancakeSwap liquidity flow—or a transparent simulator when no pool passes the safety gate.
 5. Live carry, collateral-health, liquidity-range, and exit-liquidity monitoring.
 6. User-signed safety and exit actions.
-7. Transparent vault assets, debt, multiplier, NAV, and share accounting.
+7. Transparent stock exposure, debt, carry positions, rates, and prepared unwind actions.
 
-Only the Conservative Carry Vault is a custom pooled vault in the MVP.
+The MVP does not deploy a custom pooled vault. It composes existing protocol positions in the user's wallet.
 
 ## Strategy roadmap
 
@@ -98,13 +99,12 @@ Cross-chain execution, options strategies, payment cards, permissionless strateg
 | Wallet and DeFi discovery | Binance Wallet and DeFi APIs |
 | Quotes and transaction construction | Binance Trading and Transaction APIs |
 | Direct bStock collateral and borrowing | Venus |
-| Candidate carry-vault markets | Lista and Aave V3 on BNB Chain, subject to live-market validation |
+| Carry opportunity discovery and execution | Binance Web3 DeFi APIs |
+| Reviewed initial earn venue | Lista DAO |
 | Swaps and liquidity | PancakeSwap V3 / Infinity |
 | Post-MVP perpetual hedging | Aster |
 | Collateral pricing | Venus Resilient Oracle |
-| Vault accounting | OpenZeppelin ERC-4626 |
-| Monitoring and constrained automation | OpenZeppelin Monitor / Relayer |
-| Emergency administration | Safe multisig |
+| Future monitoring and prepared actions | Stockfront risk services |
 
 GoldRush may provide historical backfill when primary API coverage is insufficient. DeBank may be used for portfolio reconciliation, but never as the source of truth for liquidation-sensitive decisions.
 
@@ -112,15 +112,15 @@ GoldRush may provide historical backfill when primary API coverage is insufficie
 
 - Non-custodial personal positions and user-signed transactions.
 - Conservative loan-to-value targets below liquidation thresholds.
-- Hard deposit and debt caps.
+- Respect protocol supply, borrow, and liquidity limits.
+- Allow deposits only into explicitly reviewed earn investments.
 - No new borrowing when expected carry becomes negative.
 - No deposits when prices are stale or oracle protection is active.
 - Explicit withdrawal liquidity and emergency-unwind paths.
 - Sustainable protocol yield separated from temporary incentives.
 - Correct accounting for dividends, rebases, splits, and market closures.
 - Repayment of strategy debt before collateral is released during an unwind.
-- Security review before vault caps are raised.
-- Keepers cannot transfer funds to arbitrary addresses.
+- Repayment and withdrawal plans use the wallet's live indexed positions.
 
 ## Architecture principles
 

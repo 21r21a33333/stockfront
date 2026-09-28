@@ -17,7 +17,6 @@ use stockfront_core::{
         PreparedBorrowingAction,
     },
     bstock_market::BNB_CHAIN_ID,
-    carry::CarryWithdrawalAmount,
     wallet_portfolio::WalletAddress,
 };
 
@@ -81,9 +80,10 @@ impl BinanceWeb3Client {
         &self,
         wallet: WalletAddress,
         investment_id: String,
-        amount: &CarryWithdrawalAmount,
+        token: Address,
+        amount: rust_decimal::Decimal,
     ) -> Result<models::DefiTransactionPlan, DefiPlanError> {
-        let body = redeem_request(wallet, investment_id, amount);
+        let body = redeem_request(wallet, investment_id, token, amount);
 
         let response = build_defi_redeem_transaction(
             &self.configuration,
@@ -195,21 +195,15 @@ fn redemption_claim_request(
 fn redeem_request(
     wallet: WalletAddress,
     investment_id: String,
-    amount: &CarryWithdrawalAmount,
+    token: Address,
+    amount: rust_decimal::Decimal,
 ) -> models::BuildDefiRedeemRequest {
     let mut body =
         models::BuildDefiRedeemRequest::new(wallet.as_address().to_string(), investment_id);
-    match amount {
-        CarryWithdrawalAmount::Exact { token, value } => {
-            body.token = Some(Box::new(models::DefiTokenAmount::new(
-                token.to_string(),
-                value.to_string(),
-            )));
-        }
-        CarryWithdrawalAmount::Full => {
-            body.ratio = Some("1".to_owned());
-        }
-    }
+    body.token = Some(Box::new(models::DefiTokenAmount::new(
+        token.to_string(),
+        amount.to_string(),
+    )));
     body.simulate = Some(true);
     body
 }
@@ -252,41 +246,24 @@ fn map_transaction_provider_error<T>(
 mod tests {
     use alloy_primitives::Address;
     use rust_decimal::Decimal;
-    use stockfront_core::carry::CarryWithdrawalAmount;
 
     use super::*;
 
     #[test]
-    fn exact_redeem_request_uses_token_amount_without_ratio() {
+    fn redeem_request_uses_exact_token_amount() {
         let token = Address::with_last_byte(3);
         let request = redeem_request(
             wallet(),
             "investment".to_owned(),
-            &CarryWithdrawalAmount::Exact {
-                token,
-                value: Decimal::new(25, 1),
-            },
+            token,
+            Decimal::new(25, 1),
         );
 
-        assert_eq!(request.ratio, None);
         let amount = request
             .token
             .unwrap_or_else(|| panic!("exact request omitted token amount"));
         assert_eq!(amount.token_address, token.to_string());
         assert_eq!(amount.amount, "2.5");
-        assert_eq!(request.simulate, Some(true));
-    }
-
-    #[test]
-    fn full_redeem_request_uses_full_ratio_without_token_amount() {
-        let request = redeem_request(
-            wallet(),
-            "investment".to_owned(),
-            &CarryWithdrawalAmount::Full,
-        );
-
-        assert_eq!(request.token, None);
-        assert_eq!(request.ratio.as_deref(), Some("1"));
         assert_eq!(request.simulate, Some(true));
     }
 
