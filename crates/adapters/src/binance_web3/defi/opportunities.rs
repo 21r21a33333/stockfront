@@ -2,13 +2,7 @@ use std::collections::HashSet;
 
 use alloy_primitives::Address;
 use async_trait::async_trait;
-use binance_web3_rwa::{
-    apis::de_fi_data_api::{
-        GetDefiInvestmentDetailParams, ListDefiInvestmentsParams, get_defi_investment_detail,
-        list_defi_investments,
-    },
-    models,
-};
+use binance_web3_rwa::models;
 use rust_decimal::Decimal;
 use stockfront_core::{
     bstock_borrowing::BorrowingToken,
@@ -17,15 +11,14 @@ use stockfront_core::{
     wallet_portfolio::WalletAddress,
 };
 
-use super::super::{
-    client::BinanceWeb3Client,
-    provider::{
-        BinanceRequestError, InvalidProviderData, ensure_business_success, map_request_error,
-        parse, required, required_non_empty,
+use super::{
+    super::{
+        client::BinanceWeb3Client,
+        provider::{InvalidProviderData, parse, required, required_non_empty},
     },
+    investments::INVESTMENT_PAGE_SIZE,
 };
 
-const PAGE_SIZE: i32 = 100;
 const EARN_INVESTMENT_TYPE: &str = "Earn";
 
 #[async_trait]
@@ -41,7 +34,10 @@ impl EarnReader for BinanceWeb3Client {
         let mut opportunities = Vec::with_capacity(investment_ids.len());
 
         for investment_id in investment_ids {
-            let Some(detail) = self.earn_investment_detail(&investment_id).await? else {
+            let Some(detail) = self
+                .investment_detail::<EarnProviderError>(&investment_id)
+                .await?
+            else {
                 continue;
             };
             if !is_bsc_earn(&detail.investment) {
@@ -68,7 +64,10 @@ impl EarnReader for BinanceWeb3Client {
         &self,
         investment_id: &str,
     ) -> Result<Option<EarnOpportunity>, EarnProviderError> {
-        let Some(detail) = self.earn_investment_detail(investment_id).await? else {
+        let Some(detail) = self
+            .investment_detail::<EarnProviderError>(investment_id)
+            .await?
+        else {
             return Ok(None);
         };
         if !is_bsc_earn(&detail.investment) {
@@ -92,38 +91,8 @@ impl EarnReader for BinanceWeb3Client {
 
 impl BinanceWeb3Client {
     async fn earn_investment_ids(&self, asset: Address) -> Result<Vec<String>, EarnProviderError> {
-        let mut page_number = 1;
-        let mut investment_ids = Vec::new();
-        let mut seen = HashSet::new();
-        let mut provider_record_count = 0_usize;
-
-        loop {
-            let response = list_defi_investments(
-                &self.configuration,
-                ListDefiInvestmentsParams {
-                    list_defi_investments_request: earn_list_request(asset, page_number),
-                },
-            )
+        self.investment_ids::<EarnProviderError, _>(|page| earn_list_request(asset, page))
             .await
-            .map_err(map_request_error)?;
-            ensure_business_success(response.code, response.success)?;
-            let page = required(response.data)?;
-            let total = page.total;
-            let investments = page.list.unwrap_or_default();
-            let record_count = investments.len();
-            provider_record_count += record_count;
-            append_investment_ids(&mut investment_ids, &mut seen, investments);
-            if !has_next_page(page_number, record_count, total) {
-                break;
-            }
-            page_number += 1;
-        }
-
-        if provider_record_count > 0 && investment_ids.is_empty() {
-            Err(EarnProviderError::InvalidData)
-        } else {
-            Ok(investment_ids)
-        }
     }
 
     pub(super) async fn is_bsc_earn_investment(
@@ -131,33 +100,9 @@ impl BinanceWeb3Client {
         investment_id: &str,
     ) -> Result<bool, EarnProviderError> {
         Ok(self
-            .earn_investment_detail(investment_id)
+            .investment_detail::<EarnProviderError>(investment_id)
             .await?
             .is_some_and(|detail| is_bsc_earn(&detail.investment)))
-    }
-
-    async fn earn_investment_detail(
-        &self,
-        investment_id: &str,
-    ) -> Result<Option<ProviderInvestmentDetail>, EarnProviderError> {
-        let body = models::GetDefiInvestmentDetailRequest::new(investment_id.to_owned());
-        let response = get_defi_investment_detail(
-            &self.configuration,
-            GetDefiInvestmentDetailParams {
-                get_defi_investment_detail_request: body,
-            },
-        )
-        .await
-        .map_err(map_request_error)?;
-        match ensure_business_success(response.code, response.success) {
-            Ok(()) => {}
-            Err(BinanceRequestError::Rejected) => return Ok(None),
-            Err(error) => return Err(error.into()),
-        }
-        Ok(Some(ProviderInvestmentDetail {
-            investment: *required(response.data)?,
-            observed_at_ms: required(response.timestamp)?,
-        }))
     }
 }
 
@@ -170,13 +115,8 @@ fn earn_list_request(asset: Address, page: i32) -> models::ListDefiInvestmentsRe
     request.sort_field = Some(models::list_defi_investments_request::SortField::Apy);
     request.sort_direction = Some(models::list_defi_investments_request::SortDirection::Desc);
     request.page = Some(page);
-    request.size = Some(PAGE_SIZE);
+    request.size = Some(INVESTMENT_PAGE_SIZE);
     request
-}
-
-struct ProviderInvestmentDetail {
-    investment: models::DefiInvestmentDetail,
-    observed_at_ms: i64,
 }
 
 struct ProviderEarnOpportunity {
@@ -253,29 +193,6 @@ fn single_asset(detail: &models::DefiInvestmentDetail) -> Result<Address, Invali
     assets.into_iter().next().ok_or(InvalidProviderData)
 }
 
-fn append_investment_ids(
-    investment_ids: &mut Vec<String>,
-    seen: &mut HashSet<String>,
-    investments: Vec<models::DefiInvestment>,
-) {
-    for investment_id in investments
-        .into_iter()
-        .filter_map(|investment| investment.investment_id)
-        .filter(|investment_id| !investment_id.is_empty())
-    {
-        if seen.insert(investment_id.clone()) {
-            investment_ids.push(investment_id);
-        }
-    }
-}
-
-fn has_next_page(page: i32, record_count: usize, total: Option<i64>) -> bool {
-    if let Some(total) = total {
-        return i64::from(page) * i64::from(PAGE_SIZE) < total;
-    }
-    record_count == PAGE_SIZE as usize
-}
-
 #[cfg(test)]
 mod tests {
     use alloy_primitives::address;
@@ -331,27 +248,6 @@ mod tests {
         detail.binance_chain_id = Some(BNB_CHAIN_ID.to_string());
         detail.invest_type = Some("LiquidityPool".to_owned());
         assert!(!is_bsc_earn(&detail));
-    }
-
-    #[test]
-    fn discovery_deduplicates_rows_and_tracks_provider_pages() {
-        let investments = ["first", "first", "second"]
-            .into_iter()
-            .map(|id| {
-                let mut investment = models::DefiInvestment::new();
-                investment.investment_id = Some(id.to_owned());
-                investment
-            })
-            .collect();
-        let mut investment_ids = Vec::new();
-        let mut seen = HashSet::new();
-
-        append_investment_ids(&mut investment_ids, &mut seen, investments);
-
-        assert_eq!(investment_ids, vec!["first", "second"]);
-        assert!(has_next_page(1, PAGE_SIZE as usize, Some(101)));
-        assert!(has_next_page(1, 1, Some(101)));
-        assert!(!has_next_page(2, 1, Some(101)));
     }
 
     #[test]

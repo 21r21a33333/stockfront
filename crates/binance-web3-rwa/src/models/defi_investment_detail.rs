@@ -37,6 +37,10 @@ pub struct DefiInvestmentDetail {
     pub apy_type: Option<String>,
     #[serde(rename = "tvl", skip_serializing_if = "Option::is_none")]
     pub tvl: Option<String>,
+    #[serde(rename = "poolAddress", skip_serializing_if = "Option::is_none")]
+    pub pool_address: Option<String>,
+    #[serde(rename = "feeRate", skip_serializing_if = "Option::is_none")]
+    pub fee_rate: Option<String>,
     #[serde(rename = "assetTokenList", skip_serializing_if = "Option::is_none")]
     pub asset_token_list: Option<Vec<models::DefiInvestmentToken>>,
 }
@@ -56,6 +60,8 @@ impl DefiInvestmentDetail {
             apy_display: None,
             apy_type: None,
             tvl: None,
+            pool_address: None,
+            fee_rate: None,
             asset_token_list: None,
         }
     }

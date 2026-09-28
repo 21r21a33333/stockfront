@@ -621,6 +621,10 @@ components:
           type: string
         tvl:
           type: string
+        poolAddress:
+          type: string
+        feeRate:
+          type: string
         assetTokenList:
           type: array
           items:

@@ -1,6 +1,7 @@
 pub(super) mod borrowing;
 pub(super) mod bstocks;
 pub(super) mod carry;
+pub(super) mod liquidity;
 pub(super) mod trades;
 pub(super) mod wallets;
 
@@ -13,4 +14,8 @@ pub(super) fn parse_wallet(value: &str) -> Result<WalletAddress, ApiError> {
         .parse::<Address>()
         .map_err(|_| ApiError::INVALID_WALLET_ADDRESS)?;
     WalletAddress::try_from(address).map_err(Into::into)
+}
+
+pub(super) fn parse_token_address(value: &str) -> Result<Address, ApiError> {
+    value.parse().map_err(|_| ApiError::INVALID_TOKEN_ADDRESS)
 }

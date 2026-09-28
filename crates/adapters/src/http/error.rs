@@ -9,6 +9,7 @@ use stockfront_core::bstock_borrowing::{BorrowingProviderError, BorrowingService
 use stockfront_core::bstock_market::{BstockMarketError, CatalogError, QueryError};
 use stockfront_core::bstock_trade::{BstockTradeError, TradeGatewayError};
 use stockfront_core::carry::{CarryServiceError, EarnProviderError};
+use stockfront_core::liquidity::{LiquidityProviderError, LiquidityServiceError};
 use stockfront_core::wallet_portfolio::{
     BalanceReaderError, WalletAddressError, WalletPortfolioError,
 };
@@ -223,6 +224,16 @@ impl ApiError {
         "carry_request_rejected",
         "the earn provider rejected the request",
     );
+    const UNSUPPORTED_BSTOCK: Self = Self::fixed(
+        StatusCode::BAD_REQUEST,
+        "unsupported_bstock",
+        "the token is not a supported bStock",
+    );
+    const LIQUIDITY_OPPORTUNITIES_UNAVAILABLE: Self = Self::fixed(
+        StatusCode::SERVICE_UNAVAILABLE,
+        "liquidity_opportunities_unavailable",
+        "liquidity opportunities are temporarily unavailable",
+    );
     const fn fixed(status: StatusCode, code: &'static str, message: &'static str) -> Self {
         Self {
             status,
@@ -364,6 +375,25 @@ impl From<EarnProviderError> for ApiError {
             EarnProviderError::Unavailable => Self::CARRY_OPPORTUNITIES_UNAVAILABLE,
             EarnProviderError::Rejected => Self::CARRY_REQUEST_REJECTED,
             EarnProviderError::InvalidData => Self::INVALID_PROVIDER_RESPONSE,
+        }
+    }
+}
+
+impl From<LiquidityServiceError> for ApiError {
+    fn from(error: LiquidityServiceError) -> Self {
+        match error {
+            LiquidityServiceError::Catalog(error) => error.into(),
+            LiquidityServiceError::Provider(error) => error.into(),
+            LiquidityServiceError::UnsupportedBstock => Self::UNSUPPORTED_BSTOCK,
+        }
+    }
+}
+
+impl From<LiquidityProviderError> for ApiError {
+    fn from(error: LiquidityProviderError) -> Self {
+        match error {
+            LiquidityProviderError::Unavailable => Self::LIQUIDITY_OPPORTUNITIES_UNAVAILABLE,
+            LiquidityProviderError::InvalidData => Self::INVALID_PROVIDER_RESPONSE,
         }
     }
 }
