@@ -121,19 +121,10 @@ async fn prepares_live_carry_deposit() -> Result<(), Box<dyn Error>> {
 }
 
 #[tokio::test]
-#[ignore = "requires live Binance Web3 credentials, STOCKFRONT_TEST_WALLET, and reviewed carry investments"]
+#[ignore = "requires live Binance Web3 credentials and a STOCKFRONT_TEST_WALLET with earn positions"]
 async fn reads_live_carry_positions() -> Result<(), Box<dyn Error>> {
     let wallet = WalletAddress::try_from(env::var("STOCKFRONT_TEST_WALLET")?.parse::<Address>()?)?;
-    let investment_ids = env::var("STOCKFRONT_CARRY_INVESTMENT_IDS")?
-        .split(',')
-        .map(str::trim)
-        .filter(|id| !id.is_empty())
-        .map(str::to_owned)
-        .collect::<Vec<_>>();
-    if investment_ids.is_empty() {
-        return Err(io::Error::other("no reviewed carry investment is configured").into());
-    }
-    let account = live_client()?.positions(wallet, &investment_ids).await?;
+    let account = live_client()?.positions(wallet).await?;
 
     assert_eq!(account.chain_id, 56);
     assert!(account.observed_at_ms > 0);
@@ -151,7 +142,11 @@ async fn reads_live_carry_positions() -> Result<(), Box<dyn Error>> {
     );
     assert!(account.positions.iter().all(|position| {
         !position.position_id.is_empty()
-            && investment_ids.contains(&position.investment_id)
+            && !position.investment_ids.is_empty()
+            && position
+                .investment_ids
+                .iter()
+                .all(|investment_id| !investment_id.is_empty())
             && !position.protocol_id.is_empty()
             && !position.protocol_name.is_empty()
             && position.value_usd >= Decimal::ZERO

@@ -26,6 +26,7 @@ use super::super::{
 };
 
 const PAGE_SIZE: i32 = 100;
+const EARN_INVESTMENT_TYPE: &str = "Earn";
 
 #[async_trait]
 impl EarnReader for BinanceWeb3Client {
@@ -43,6 +44,9 @@ impl EarnReader for BinanceWeb3Client {
             let Some(detail) = self.earn_investment_detail(&investment_id).await? else {
                 continue;
             };
+            if !is_bsc_earn(&detail.investment) {
+                continue;
+            }
             if let Ok(opportunity) = EarnOpportunity::try_from(ProviderEarnOpportunity {
                 investment_id,
                 asset,
@@ -67,6 +71,9 @@ impl EarnReader for BinanceWeb3Client {
         let Some(detail) = self.earn_investment_detail(investment_id).await? else {
             return Ok(None);
         };
+        if !is_bsc_earn(&detail.investment) {
+            return Ok(None);
+        }
         let asset = single_asset(&detail.investment)?;
         EarnOpportunity::try_from(ProviderEarnOpportunity {
             investment_id: investment_id.to_owned(),
@@ -78,12 +85,8 @@ impl EarnReader for BinanceWeb3Client {
         .map_err(Into::into)
     }
 
-    async fn positions(
-        &self,
-        wallet: WalletAddress,
-        investment_ids: &[String],
-    ) -> Result<CarryAccount, EarnProviderError> {
-        self.earn_positions(wallet, investment_ids).await
+    async fn positions(&self, wallet: WalletAddress) -> Result<CarryAccount, EarnProviderError> {
+        self.earn_positions(wallet).await
     }
 }
 
@@ -121,6 +124,16 @@ impl BinanceWeb3Client {
         } else {
             Ok(investment_ids)
         }
+    }
+
+    pub(super) async fn is_bsc_earn_investment(
+        &self,
+        investment_id: &str,
+    ) -> Result<bool, EarnProviderError> {
+        Ok(self
+            .earn_investment_detail(investment_id)
+            .await?
+            .is_some_and(|detail| is_bsc_earn(&detail.investment)))
     }
 
     async fn earn_investment_detail(
@@ -220,6 +233,11 @@ impl TryFrom<ProviderEarnOpportunity> for EarnOpportunity {
     }
 }
 
+fn is_bsc_earn(investment: &models::DefiInvestmentDetail) -> bool {
+    investment.binance_chain_id.as_deref() == Some("56")
+        && investment.invest_type.as_deref() == Some(EARN_INVESTMENT_TYPE)
+}
+
 fn single_asset(detail: &models::DefiInvestmentDetail) -> Result<Address, InvalidProviderData> {
     let assets = detail
         .asset_token_list
@@ -267,25 +285,13 @@ mod tests {
     #[test]
     fn maps_apy_and_optional_fields_without_float_conversion() {
         let asset = address!("55d398326f99059fF775485246999027B3197955");
-        let mut detail = models::DefiInvestmentDetail::new();
-        detail.defi_protocol_id = Some("venus".to_owned());
-        detail.protocol_name = Some("Venus".to_owned());
-        detail.investment_name = Some("USDT Supply".to_owned());
-        detail.investable = Some(true);
-        detail.apy_bps = Some(725);
-        detail.apy_display = Some("7.25%".to_owned());
-        detail.apy_type = Some("APY".to_owned());
-        detail.tvl = Some("1234.56".to_owned());
-        let mut token = models::DefiInvestmentToken::new();
-        token.token_address = Some(asset.to_string());
-        token.token_symbol = Some("USDT".to_owned());
-        detail.asset_token_list = Some(vec![token]);
+        let investment = investment(asset, "APY", "7.25%", 725);
 
         let opportunity = EarnOpportunity::try_from(ProviderEarnOpportunity {
             investment_id: "investment".to_owned(),
             asset,
             observed_at_ms: 123,
-            detail,
+            detail: investment,
         })
         .unwrap_or_else(|_| panic!("valid fixture must map"));
 
@@ -298,25 +304,14 @@ mod tests {
     #[test]
     fn supports_apr_and_omits_invalid_optional_tvl() {
         let asset = address!("55d398326f99059fF775485246999027B3197955");
-        let mut detail = models::DefiInvestmentDetail::new();
-        detail.defi_protocol_id = Some("lista".to_owned());
-        detail.protocol_name = Some("Lista DAO".to_owned());
-        detail.investment_name = Some("USDT Vault".to_owned());
-        detail.investable = Some(true);
-        detail.apy_bps = Some(500);
-        detail.apy_display = Some("5.00%".to_owned());
-        detail.apy_type = Some("APR".to_owned());
-        detail.tvl = Some("unknown".to_owned());
-        let mut token = models::DefiInvestmentToken::new();
-        token.token_address = Some(asset.to_string());
-        token.token_symbol = Some("USDT".to_owned());
-        detail.asset_token_list = Some(vec![token]);
+        let mut investment = investment(asset, "APR", "5.00%", 500);
+        investment.tvl = Some("unknown".to_owned());
 
         let opportunity = EarnOpportunity::try_from(ProviderEarnOpportunity {
             investment_id: "investment".to_owned(),
             asset,
             observed_at_ms: 123,
-            detail,
+            detail: investment,
         })
         .unwrap_or_else(|_| panic!("valid fixture must map"));
 
@@ -325,7 +320,21 @@ mod tests {
     }
 
     #[test]
-    fn deduplicates_investment_ids_and_tracks_provider_pages() {
+    fn direct_lookup_accepts_only_bsc_earn_products() {
+        let mut detail = models::DefiInvestmentDetail::new();
+        detail.binance_chain_id = Some(BNB_CHAIN_ID.to_string());
+        detail.invest_type = Some(EARN_INVESTMENT_TYPE.to_owned());
+        assert!(is_bsc_earn(&detail));
+
+        detail.binance_chain_id = Some("1".to_owned());
+        assert!(!is_bsc_earn(&detail));
+        detail.binance_chain_id = Some(BNB_CHAIN_ID.to_string());
+        detail.invest_type = Some("LiquidityPool".to_owned());
+        assert!(!is_bsc_earn(&detail));
+    }
+
+    #[test]
+    fn discovery_deduplicates_rows_and_tracks_provider_pages() {
         let investments = ["first", "first", "second"]
             .into_iter()
             .map(|id| {
@@ -367,5 +376,29 @@ mod tests {
                 r#""binanceChainId":"56","sortField":"apy","sortDirection":"DESC","page":1,"size":100}"#,
             )
         );
+    }
+
+    fn investment(
+        asset: Address,
+        rate_type: &str,
+        rate_display: &str,
+        rate_bps: i64,
+    ) -> models::DefiInvestmentDetail {
+        let mut investment = models::DefiInvestmentDetail::new();
+        investment.binance_chain_id = Some(BNB_CHAIN_ID.to_string());
+        investment.defi_protocol_id = Some("venus".to_owned());
+        investment.protocol_name = Some("Venus".to_owned());
+        investment.investment_name = Some("USDT Supply".to_owned());
+        investment.invest_type = Some(EARN_INVESTMENT_TYPE.to_owned());
+        investment.investable = Some(true);
+        investment.apy_bps = Some(rate_bps);
+        investment.apy_display = Some(rate_display.to_owned());
+        investment.apy_type = Some(rate_type.to_owned());
+        investment.tvl = Some("1234.56".to_owned());
+        let mut token = models::DefiInvestmentToken::new();
+        token.token_address = Some(asset.to_string());
+        token.token_symbol = Some("USDT".to_owned());
+        investment.asset_token_list = Some(vec![token]);
+        investment
     }
 }

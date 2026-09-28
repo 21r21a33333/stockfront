@@ -29,11 +29,7 @@ pub trait EarnReader: Send + Sync {
         investment_id: &str,
     ) -> Result<Option<EarnOpportunity>, EarnProviderError>;
 
-    async fn positions(
-        &self,
-        wallet: WalletAddress,
-        investment_ids: &[String],
-    ) -> Result<CarryAccount, EarnProviderError>;
+    async fn positions(&self, wallet: WalletAddress) -> Result<CarryAccount, EarnProviderError>;
 }
 
 #[async_trait]

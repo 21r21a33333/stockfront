@@ -562,6 +562,8 @@ components:
     DefiInvestmentDetail:
       type: object
       properties:
+        binanceChainId:
+          type: string
         defiProtocolId:
           type: string
         protocolName:
@@ -571,6 +573,8 @@ components:
         investmentId:
           type: string
         investmentName:
+          type: string
+        investType:
           type: string
         investable:
           type: boolean

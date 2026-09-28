@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use binance_web3_rwa::models;
 use rust_decimal::Decimal;
 use stockfront_core::{
@@ -17,16 +19,38 @@ impl BinanceWeb3Client {
     pub(super) async fn earn_positions(
         &self,
         wallet: WalletAddress,
-        reviewed_investment_ids: &[String],
     ) -> Result<CarryAccount, EarnProviderError> {
         let snapshot = self.defi_positions::<EarnProviderError>(wallet).await?;
-        carry_account(snapshot, reviewed_investment_ids).map_err(Into::into)
+        let mut earn_investment_ids = HashSet::new();
+        for investment_id in investment_ids(&snapshot) {
+            if self.is_bsc_earn_investment(&investment_id).await? {
+                earn_investment_ids.insert(investment_id);
+            }
+        }
+        carry_account(snapshot, &earn_investment_ids).map_err(Into::into)
     }
+}
+
+fn investment_ids(snapshot: &DefiPositionSnapshot) -> HashSet<String> {
+    snapshot
+        .positions
+        .address_list
+        .as_deref()
+        .unwrap_or_default()
+        .iter()
+        .flat_map(|address| address.protocol_list.as_deref().unwrap_or_default())
+        .flat_map(|protocol| protocol.pool_list.as_deref().unwrap_or_default())
+        .flat_map(|pool| pool.position_collection_list.as_deref().unwrap_or_default())
+        .flat_map(|collection| collection.position_list.as_deref().unwrap_or_default())
+        .flat_map(|position| position.investment_ids.as_deref().unwrap_or_default())
+        .filter(|investment_id| !investment_id.is_empty())
+        .cloned()
+        .collect()
 }
 
 fn carry_account(
     snapshot: DefiPositionSnapshot,
-    reviewed_investment_ids: &[String],
+    earn_investment_ids: &HashSet<String>,
 ) -> Result<CarryAccount, InvalidProviderData> {
     let mut positions = Vec::new();
     let mut total_value_usd = Decimal::ZERO;
@@ -47,18 +71,23 @@ fn carry_account(
             .flat_map(|pool| pool.position_collection_list.unwrap_or_default())
             .flat_map(|collection| collection.position_list.unwrap_or_default())
         {
-            let Some(investment_id) = reviewed_investment_ids.iter().find(|reviewed| {
-                position
-                    .investment_ids
-                    .as_deref()
-                    .unwrap_or_default()
-                    .contains(reviewed)
-            }) else {
+            let investment_ids = position
+                .investment_ids
+                .as_deref()
+                .unwrap_or_default()
+                .iter()
+                .filter(|investment_id| !investment_id.is_empty())
+                .cloned()
+                .collect::<Vec<_>>();
+            if !investment_ids
+                .iter()
+                .any(|investment_id| earn_investment_ids.contains(investment_id))
+            {
                 continue;
-            };
+            }
             let position = CarryPosition::try_from(ProviderCarryPosition {
                 position,
-                investment_id: investment_id.clone(),
+                investment_ids,
                 protocol_id: protocol_id.clone(),
                 protocol_name: protocol_name.clone(),
             })?;
@@ -79,7 +108,7 @@ fn carry_account(
 
 struct ProviderCarryPosition {
     position: models::DefiPosition,
-    investment_id: String,
+    investment_ids: Vec<String>,
     protocol_id: Option<String>,
     protocol_name: Option<String>,
 }
@@ -88,6 +117,9 @@ impl TryFrom<ProviderCarryPosition> for CarryPosition {
     type Error = InvalidProviderData;
 
     fn try_from(provider: ProviderCarryPosition) -> Result<Self, Self::Error> {
+        if provider.investment_ids.is_empty() {
+            return Err(InvalidProviderData);
+        }
         let tokens = required(provider.position.token_list)?;
         let assets = tokens
             .supply
@@ -102,7 +134,7 @@ impl TryFrom<ProviderCarryPosition> for CarryPosition {
 
         Ok(Self {
             position_id: required_non_empty(provider.position.position_id)?,
-            investment_id: provider.investment_id,
+            investment_ids: provider.investment_ids,
             protocol_id: required_non_empty(provider.protocol_id)?,
             protocol_name: required_non_empty(provider.protocol_name)?,
             value_usd: parse(&required(provider.position.position_value)?)?,
@@ -118,7 +150,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn selects_only_reviewed_positions_and_totals_their_value() {
+    fn keeps_all_ids_for_each_resolved_earn_position() {
         let snapshot = DefiPositionSnapshot {
             positions: models::DefiPositions {
                 total_value: Some("75".to_owned()),
@@ -133,8 +165,8 @@ mod tests {
                             position_collection_list: Some(vec![models::DefiPositionCollection {
                                 position_collection_detail: None,
                                 position_list: Some(vec![
-                                    position("reviewed", "25"),
-                                    position("unrelated", "50"),
+                                    position(&["base", "reward"], "25"),
+                                    position(&["unrelated"], "50"),
                                 ]),
                             }]),
                         }]),
@@ -144,19 +176,24 @@ mod tests {
             observed_at_ms: 1_000,
         };
 
-        let account = carry_account(snapshot, &["reviewed".to_owned()])
+        let account = carry_account(snapshot, &HashSet::from(["base".to_owned()]))
             .unwrap_or_else(|_| panic!("valid position fixture was rejected"));
 
         assert_eq!(account.positions.len(), 1);
-        assert_eq!(account.positions[0].investment_id, "reviewed");
+        assert_eq!(account.positions[0].investment_ids, ["base", "reward"]);
         assert_eq!(account.total_value_usd, Decimal::new(25, 0));
         assert_eq!(account.observed_at_ms, 1_000);
     }
 
-    fn position(investment_id: &str, value: &str) -> models::DefiPosition {
+    fn position(investment_ids: &[&str], value: &str) -> models::DefiPosition {
         models::DefiPosition {
-            position_id: Some(format!("position-{investment_id}")),
-            investment_ids: Some(vec![investment_id.to_owned()]),
+            position_id: Some(format!("position-{}", investment_ids[0])),
+            investment_ids: Some(
+                investment_ids
+                    .iter()
+                    .map(|investment_id| (*investment_id).to_owned())
+                    .collect(),
+            ),
             position_value: Some(value.to_owned()),
             token_list: Some(Box::new(models::DefiPositionTokens {
                 supply: Some(vec![models::DefiPositionToken {

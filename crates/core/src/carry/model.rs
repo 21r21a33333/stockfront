@@ -42,7 +42,7 @@ pub struct EarnOpportunity {
 #[serde(rename_all = "camelCase")]
 pub struct CarryPosition {
     pub position_id: String,
-    pub investment_id: String,
+    pub investment_ids: Vec<String>,
     pub protocol_id: String,
     pub protocol_name: String,
     pub value_usd: Decimal,
@@ -71,6 +71,7 @@ pub enum CarryQualification {
 pub enum CarryOpportunityReason {
     EarnUnavailable,
     BorrowUnavailable,
+    UnsupportedRateType,
     InsufficientBaseSpread,
     UnreviewedInvestment,
 }
@@ -89,7 +90,8 @@ pub struct CarryOpportunity {
     pub base_earn_rate_bps: i64,
     pub base_earn_rate_display: String,
     pub borrow_apy_percent: Decimal,
-    pub base_spread_percent: Decimal,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub base_spread_percent: Option<Decimal>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reported_tvl_usd: Option<Decimal>,
     pub available_borrow_liquidity: Decimal,

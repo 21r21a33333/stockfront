@@ -10,7 +10,8 @@ use crate::{
     carry::{
         CarryAccount, CarryOpportunity, CarryOpportunityQuery, CarryOpportunityReason,
         CarryQualification, EarnActionGateway, EarnDepositCommand, EarnOpportunity,
-        EarnProviderError, EarnReader, PrepareCarryDepositRequest, PreparedCarryDeposit,
+        EarnProviderError, EarnRateType, EarnReader, PrepareCarryDepositRequest,
+        PreparedCarryDeposit,
     },
     wallet_portfolio::WalletAddress,
 };
@@ -111,7 +112,7 @@ impl CarryService {
         Ok(opportunities)
     }
 
-    /// Returns positions associated with reviewed carry investments for a wallet.
+    /// Returns the wallet's BNB Chain earn positions.
     ///
     /// # Errors
     ///
@@ -121,7 +122,7 @@ impl CarryService {
         wallet: WalletAddress,
     ) -> Result<CarryAccount, CarryServiceError> {
         self.earn_reader
-            .positions(wallet, &self.policy.reviewed_investment_ids)
+            .positions(wallet)
             .await
             .map_err(CarryServiceError::Positions)
     }
@@ -179,8 +180,9 @@ fn assess(
     earn: &EarnOpportunity,
     policy: &CarryPolicy,
 ) -> CarryOpportunity {
-    let base_earn_rate_percent = Decimal::from(earn.base_rate_bps) / Decimal::from(100);
-    let base_spread_percent = base_earn_rate_percent - market.borrow_apy_percent;
+    let base_spread_percent = (earn.rate_type == EarnRateType::Apy).then(|| {
+        Decimal::from(earn.base_rate_bps) / Decimal::from(100) - market.borrow_apy_percent
+    });
     let minimum_base_spread_percent =
         Decimal::from(policy.minimum_base_spread_bps) / Decimal::from(100);
     let mut reasons = Vec::new();
@@ -194,7 +196,10 @@ fn assess(
     {
         reasons.push(CarryOpportunityReason::BorrowUnavailable);
     }
-    if base_spread_percent < minimum_base_spread_percent {
+    if earn.rate_type != EarnRateType::Apy {
+        reasons.push(CarryOpportunityReason::UnsupportedRateType);
+    }
+    if base_spread_percent.is_some_and(|spread| spread < minimum_base_spread_percent) {
         reasons.push(CarryOpportunityReason::InsufficientBaseSpread);
     }
 
@@ -247,7 +252,7 @@ mod tests {
             AssetKind, BNB_CHAIN_ID, BstockCatalog, BstockDetails, BstockId, BstockSummary,
             CatalogError,
         },
-        carry::{CarryDepositPlan, CarryDepositPreview, EarnRateType},
+        carry::{CarryDepositPlan, CarryDepositPreview},
         wallet_portfolio::WalletAddress,
     };
 
@@ -261,7 +266,7 @@ mod tests {
             &CarryPolicy::new(vec![INVESTMENT_ID.to_owned()], 100),
         );
 
-        assert_eq!(opportunity.base_spread_percent, Decimal::new(3, 0));
+        assert_eq!(opportunity.base_spread_percent, Some(Decimal::new(3, 0)));
         assert_eq!(opportunity.qualification, CarryQualification::Eligible);
         assert!(opportunity.reasons.is_empty());
     }
@@ -302,6 +307,26 @@ mod tests {
                 CarryOpportunityReason::BorrowUnavailable,
                 CarryOpportunityReason::InsufficientBaseSpread,
             ]
+        );
+    }
+
+    #[test]
+    fn apr_opportunity_is_visible_but_never_compared_with_borrow_apy() {
+        let policy = CarryPolicy::new(vec![INVESTMENT_ID.to_owned()], 100);
+        let mut earn = earn(900, true);
+        earn.rate_type = EarnRateType::Apr;
+
+        let opportunity = assess(
+            &market(Decimal::new(4, 0), true, Decimal::new(1_000, 0)),
+            &earn,
+            &policy,
+        );
+
+        assert_eq!(opportunity.base_spread_percent, None);
+        assert_eq!(opportunity.qualification, CarryQualification::Unavailable);
+        assert_eq!(
+            opportunity.reasons,
+            vec![CarryOpportunityReason::UnsupportedRateType]
         );
     }
 
@@ -355,8 +380,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn positions_use_the_reviewed_investment_scope() {
-        let service = service(CarryPolicy::new(vec![INVESTMENT_ID.to_owned()], 100));
+    async fn positions_are_not_scoped_by_the_deposit_allowlist() {
+        let service = service(CarryPolicy::new(Vec::new(), 100));
 
         let account = service
             .positions(wallet())
@@ -500,9 +525,7 @@ mod tests {
         async fn positions(
             &self,
             _wallet: WalletAddress,
-            investment_ids: &[String],
         ) -> Result<CarryAccount, EarnProviderError> {
-            assert_eq!(investment_ids, &[INVESTMENT_ID.to_owned()]);
             Ok(CarryAccount {
                 chain_id: BNB_CHAIN_ID,
                 positions: Vec::new(),

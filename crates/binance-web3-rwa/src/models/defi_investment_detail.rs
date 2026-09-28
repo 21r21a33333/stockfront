@@ -13,6 +13,8 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Default, Debug, PartialEq, Serialize, Deserialize)]
 pub struct DefiInvestmentDetail {
+    #[serde(rename = "binanceChainId", skip_serializing_if = "Option::is_none")]
+    pub binance_chain_id: Option<String>,
     #[serde(rename = "defiProtocolId", skip_serializing_if = "Option::is_none")]
     pub defi_protocol_id: Option<String>,
     #[serde(rename = "protocolName", skip_serializing_if = "Option::is_none")]
@@ -23,6 +25,8 @@ pub struct DefiInvestmentDetail {
     pub investment_id: Option<String>,
     #[serde(rename = "investmentName", skip_serializing_if = "Option::is_none")]
     pub investment_name: Option<String>,
+    #[serde(rename = "investType", skip_serializing_if = "Option::is_none")]
+    pub invest_type: Option<String>,
     #[serde(rename = "investable", skip_serializing_if = "Option::is_none")]
     pub investable: Option<bool>,
     #[serde(rename = "apyBps", skip_serializing_if = "Option::is_none")]
@@ -40,11 +44,13 @@ pub struct DefiInvestmentDetail {
 impl DefiInvestmentDetail {
     pub fn new() -> DefiInvestmentDetail {
         DefiInvestmentDetail {
+            binance_chain_id: None,
             defi_protocol_id: None,
             protocol_name: None,
             protocol_logo: None,
             investment_id: None,
             investment_name: None,
+            invest_type: None,
             investable: None,
             apy_bps: None,
             apy_display: None,
