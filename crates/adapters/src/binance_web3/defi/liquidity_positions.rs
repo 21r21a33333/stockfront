@@ -165,7 +165,7 @@ impl ProviderLiquidityPosition {
 fn map_assets(
     tokens: Vec<models::DefiPositionToken>,
 ) -> Result<Vec<BorrowingAsset>, InvalidProviderData> {
-    let assets = tokens
+    let mut assets = tokens
         .into_iter()
         .map(ProviderPositionToken)
         .map(BorrowingAsset::try_from)
@@ -176,6 +176,7 @@ fn map_assets(
     {
         return Err(InvalidProviderData);
     }
+    assets.retain(|asset| !asset.amount.is_zero());
     Ok(assets)
 }
 
@@ -230,6 +231,19 @@ mod tests {
         );
         assert_eq!(account.total_value_usd, Decimal::new(71, 2));
         assert_eq!(account.observed_at_ms, 1_000);
+    }
+
+    #[test]
+    fn excludes_zero_balance_assets_from_stale_positions() {
+        let assets = map_assets(vec![token(
+            "5b1910eAaD6450E50f816082Aa078C41F10C292f",
+            "TSLAB",
+            "0",
+            "0",
+        )])
+        .unwrap_or_else(|_| panic!("zero-balance provider asset was invalid"));
+
+        assert!(assets.is_empty());
     }
 
     fn snapshot() -> DefiPositionSnapshot {
