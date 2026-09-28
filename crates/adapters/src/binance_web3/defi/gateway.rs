@@ -19,6 +19,7 @@ use stockfront_core::{
         PreparedBorrowingAction,
     },
     bstock_market::BNB_CHAIN_ID,
+    liquidity::PrepareLiquidityClaimRequest,
     wallet_portfolio::WalletAddress,
 };
 
@@ -114,6 +115,27 @@ impl BinanceWeb3Client {
         redemption_id: String,
     ) -> Result<models::DefiTransactionPlan, DefiPlanError> {
         let body = redemption_claim_request(wallet, investment_id, redemption_id);
+
+        let response = build_defi_claim_transaction(
+            &self.configuration,
+            BuildDefiClaimTransactionParams {
+                build_defi_claim_request: body,
+            },
+        )
+        .await
+        .map_err(map_request_error)?;
+        ensure_business_success(response.code, response.success)?;
+        response
+            .data
+            .map(|plan| *plan)
+            .ok_or(DefiPlanError::InvalidData)
+    }
+
+    pub(super) async fn build_lp_fee_claim_plan(
+        &self,
+        request: &PrepareLiquidityClaimRequest,
+    ) -> Result<models::DefiTransactionPlan, DefiPlanError> {
+        let body = lp_fee_claim_request(request);
 
         let response = build_defi_claim_transaction(
             &self.configuration,
@@ -246,9 +268,23 @@ fn redemption_claim_request(
     let mut body = models::BuildDefiClaimRequest::new(
         wallet.as_address().to_string(),
         models::build_defi_claim_request::ClaimType::Redemption,
-        investment_id,
-        redemption_id,
     );
+    body.investment_id = Some(investment_id);
+    body.redemption_id = Some(redemption_id);
+    body.simulate = Some(true);
+    body
+}
+
+fn lp_fee_claim_request(request: &PrepareLiquidityClaimRequest) -> models::BuildDefiClaimRequest {
+    let claim_type = match request.claim_type {
+        stockfront_core::liquidity::LiquidityClaimType::LpFee => {
+            models::build_defi_claim_request::ClaimType::LpFee
+        }
+    };
+    let mut body =
+        models::BuildDefiClaimRequest::new(request.wallet.as_address().to_string(), claim_type);
+    body.investment_id = Some(request.investment_id.clone());
+    body.nft_id = Some(request.nft_id.clone());
     body.simulate = Some(true);
     body
 }
@@ -339,8 +375,26 @@ mod tests {
             request.claim_type,
             models::build_defi_claim_request::ClaimType::Redemption
         );
-        assert_eq!(request.investment_id, "investment");
-        assert_eq!(request.redemption_id, "redemption");
+        assert_eq!(request.investment_id.as_deref(), Some("investment"));
+        assert_eq!(request.redemption_id.as_deref(), Some("redemption"));
+        assert_eq!(request.simulate, Some(true));
+    }
+
+    #[test]
+    fn lp_fee_claim_uses_investment_and_nft_ids() {
+        let request = lp_fee_claim_request(&PrepareLiquidityClaimRequest {
+            wallet: wallet(),
+            investment_id: "investment".to_owned(),
+            claim_type: stockfront_core::liquidity::LiquidityClaimType::LpFee,
+            nft_id: "#7582092".to_owned(),
+        });
+
+        assert_eq!(
+            request.claim_type,
+            models::build_defi_claim_request::ClaimType::LpFee
+        );
+        assert_eq!(request.investment_id.as_deref(), Some("investment"));
+        assert_eq!(request.nft_id.as_deref(), Some("#7582092"));
         assert_eq!(request.simulate, Some(true));
     }
 

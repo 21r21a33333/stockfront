@@ -43,6 +43,12 @@ pub enum LiquidityClaimAction {
     RewardInvestment,
 }
 
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum LiquidityClaimType {
+    LpFee,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LiquidityPosition {
@@ -97,6 +103,15 @@ pub struct PrepareLiquidityEntryRequest {
     pub price_range_percent: Decimal,
 }
 
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct PrepareLiquidityClaimRequest {
+    pub wallet: WalletAddress,
+    pub investment_id: String,
+    pub claim_type: LiquidityClaimType,
+    pub nft_id: String,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct LiquidityEntryCommand {
     pub wallet: WalletAddress,
@@ -111,6 +126,7 @@ pub struct LiquidityEntryCommand {
 pub enum LiquidityTransactionKind {
     Approve,
     LpAdd,
+    Claim,
 }
 
 pub type PreparedLiquidityTransaction = PreparedTransaction<LiquidityTransactionKind>;
@@ -119,6 +135,13 @@ pub type PreparedLiquidityTransaction = PreparedTransaction<LiquidityTransaction
 #[serde(rename_all = "camelCase")]
 pub struct PreparedLiquidityEntry {
     pub required_amounts: Vec<LiquidityAmount>,
+    pub transactions: Vec<PreparedLiquidityTransaction>,
+    pub preview: ActionPreview,
+}
+
+#[derive(Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PreparedLiquidityAction {
     pub transactions: Vec<PreparedLiquidityTransaction>,
     pub preview: ActionPreview,
 }

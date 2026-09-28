@@ -4,7 +4,8 @@ use thiserror::Error;
 
 use crate::{
     liquidity::{
-        LiquidityAccount, LiquidityEntryCommand, LiquidityOpportunity, PreparedLiquidityEntry,
+        LiquidityAccount, LiquidityEntryCommand, LiquidityOpportunity,
+        PrepareLiquidityClaimRequest, PreparedLiquidityAction, PreparedLiquidityEntry,
     },
     wallet_portfolio::WalletAddress,
 };
@@ -38,4 +39,9 @@ pub trait LiquidityActionGateway: Send + Sync {
         &self,
         command: &LiquidityEntryCommand,
     ) -> Result<PreparedLiquidityEntry, LiquidityProviderError>;
+
+    async fn prepare_claim(
+        &self,
+        request: &PrepareLiquidityClaimRequest,
+    ) -> Result<PreparedLiquidityAction, LiquidityProviderError>;
 }

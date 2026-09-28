@@ -11,7 +11,8 @@ use alloy_primitives::{Address, U256, address, utils::parse_units};
 use rust_decimal::Decimal;
 use stockfront_core::{
     liquidity::{
-        LiquidityAccount, LiquidityPolicy, LiquidityService, LiquidityTransactionKind,
+        LiquidityAccount, LiquidityClaimAction, LiquidityClaimType, LiquidityPolicy,
+        LiquidityService, LiquidityTransactionKind, PrepareLiquidityClaimRequest,
         PrepareLiquidityEntryRequest, PreparedLiquidityEntry,
     },
     wallet_portfolio::WalletAddress,
@@ -347,6 +348,200 @@ async fn reads_live_bstock_liquidity_positions() -> Result<(), Box<dyn Error>> {
     assert!(account.observed_at_ms > 0);
 
     Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires Binance credentials and a live bStock LP position with claimable fees"]
+async fn prepares_live_bstock_liquidity_fee_claim() -> Result<(), Box<dyn Error>> {
+    let client = Arc::new(live_client()?);
+    let service = LiquidityService::new(
+        client.clone(),
+        client.clone(),
+        client,
+        LiquidityPolicy::new(Vec::new(), 100)?,
+    );
+    let wallet = configured_position_wallet()?;
+    let (request, _) = claimable_fee_request(&service, wallet).await?;
+
+    let action = service.prepare_claim(&request).await?;
+
+    let (claim, preceding) = action
+        .transactions
+        .split_last()
+        .ok_or_else(|| io::Error::other("Binance returned no LP-fee claim transaction"))?;
+    assert_eq!(claim.kind, LiquidityTransactionKind::Claim);
+    assert!(
+        preceding
+            .iter()
+            .all(|transaction| transaction.kind == LiquidityTransactionKind::Approve)
+    );
+    assert!(action.transactions.iter().all(|transaction| {
+        transaction.to != Address::ZERO
+            && !transaction.data.is_empty()
+            && transaction.gas_limit.is_some_and(|gas| gas > U256::ZERO)
+            && (transaction.gas_price.is_some_and(|gas| gas > U256::ZERO)
+                || transaction
+                    .max_fee_per_gas
+                    .is_some_and(|gas| gas > U256::ZERO))
+    }));
+    assert!(
+        action
+            .preview
+            .estimated_network_fee
+            .is_some_and(|fee| fee.amount.is_sign_positive())
+    );
+    assert!(
+        action
+            .preview
+            .balance_changes
+            .iter()
+            .any(|change| change.amount.is_sign_positive())
+    );
+
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "claims live bStock LP fees on BSC mainnet and spends BNB"]
+async fn claims_live_bstock_liquidity_fees() -> Result<(), Box<dyn Error>> {
+    let context = live_evm_context().await?;
+    let client = Arc::new(live_client()?);
+    let service = LiquidityService::new(
+        client.clone(),
+        client.clone(),
+        client,
+        LiquidityPolicy::new(Vec::new(), 100)?,
+    );
+    let (request, starting_claimable) = claimable_fee_request(&service, context.wallet).await?;
+    if starting_claimable.is_empty() {
+        return Err(io::Error::other("the LP position has no claimable fee assets").into());
+    }
+    let wallet = context.wallet.as_address();
+    let mut starting_balances = Vec::with_capacity(starting_claimable.len());
+    for &(token, _) in &starting_claimable {
+        starting_balances.push((
+            token,
+            token_balance(&context.provider, token, wallet).await?,
+        ));
+    }
+    let action = service.prepare_claim(&request).await?;
+    if action
+        .transactions
+        .last()
+        .map(|transaction| transaction.kind)
+        != Some(LiquidityTransactionKind::Claim)
+    {
+        return Err(io::Error::other("unexpected LP-fee claim transaction sequence").into());
+    }
+
+    for transaction in action.transactions {
+        send_transaction(
+            &context.provider,
+            transaction.to,
+            transaction.data,
+            transaction.value,
+        )
+        .await?;
+    }
+
+    let mut received_fees = false;
+    for (token, starting_balance) in starting_balances {
+        received_fees |= token_balance(&context.provider, token, wallet).await? > starting_balance;
+    }
+    if !received_fees {
+        return Err(io::Error::other("LP-fee claim did not increase any wallet balance").into());
+    }
+
+    wait_for_claimable_fees_to_decrease(
+        &service,
+        context.wallet,
+        &request.nft_id,
+        &starting_claimable,
+    )
+    .await
+}
+
+async fn claimable_fee_request(
+    service: &LiquidityService,
+    wallet: WalletAddress,
+) -> Result<(PrepareLiquidityClaimRequest, Vec<(Address, Decimal)>), Box<dyn Error>> {
+    let reviewed = configured_investments()?;
+    let position = service
+        .positions(wallet)
+        .await?
+        .positions
+        .into_iter()
+        .find(|position| {
+            position
+                .claim_actions
+                .contains(&LiquidityClaimAction::LpFee)
+                && position
+                    .investment_ids
+                    .iter()
+                    .any(|id| reviewed.contains(id))
+        })
+        .ok_or_else(|| {
+            io::Error::other(
+                "Binance has not exposed LP_FEE for a configured bStock liquidity position",
+            )
+        })?;
+    let investment_id = position
+        .investment_ids
+        .iter()
+        .find(|id| reviewed.contains(id))
+        .cloned()
+        .ok_or_else(|| io::Error::other("position omitted its configured investment ID"))?;
+    let claimable_tokens = position
+        .claimable_assets
+        .into_iter()
+        .filter(|asset| asset.token.contract != Address::ZERO && asset.amount.is_sign_positive())
+        .map(|asset| (asset.token.contract, asset.amount))
+        .collect();
+    Ok((
+        PrepareLiquidityClaimRequest {
+            wallet,
+            investment_id,
+            claim_type: LiquidityClaimType::LpFee,
+            nft_id: position.nft_id,
+        },
+        claimable_tokens,
+    ))
+}
+
+async fn wait_for_claimable_fees_to_decrease(
+    service: &LiquidityService,
+    wallet: WalletAddress,
+    nft_id: &str,
+    starting: &[(Address, Decimal)],
+) -> Result<(), Box<dyn Error>> {
+    for _ in 0..POSITION_ATTEMPTS {
+        let account = service.positions(wallet).await?;
+        if account
+            .positions
+            .iter()
+            .find(|position| position.nft_id == nft_id)
+            .is_some_and(|position| {
+                starting.iter().all(|(token, amount)| {
+                    position
+                        .claimable_assets
+                        .iter()
+                        .find(|asset| asset.token.contract == *token)
+                        .map_or(Decimal::ZERO, |asset| asset.amount)
+                        < *amount
+                })
+            })
+        {
+            return Ok(());
+        }
+        tokio::time::sleep(POSITION_POLL_INTERVAL).await;
+    }
+    Err(io::Error::other("Binance did not index the reduced LP-fee balance in time").into())
+}
+
+fn configured_position_wallet() -> Result<WalletAddress, Box<dyn Error>> {
+    let wallet = env::var("STOCKFRONT_LIQUIDITY_POSITION_WALLET")
+        .or_else(|_| env::var("STOCKFRONT_TEST_WALLET"))?;
+    Ok(WalletAddress::try_from(wallet.parse::<Address>()?)?)
 }
 
 async fn ensure_required_balances(

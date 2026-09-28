@@ -8,8 +8,8 @@ use crate::{
     bstock_market::{BNB_CHAIN_ID, BstockCatalog, CatalogError},
     liquidity::{
         LiquidityAccount, LiquidityActionGateway, LiquidityEntryCommand, LiquidityOpportunity,
-        LiquidityProviderError, LiquidityReader, PrepareLiquidityEntryRequest,
-        PreparedLiquidityEntry,
+        LiquidityProviderError, LiquidityReader, PrepareLiquidityClaimRequest,
+        PrepareLiquidityEntryRequest, PreparedLiquidityAction, PreparedLiquidityEntry,
     },
     wallet_portfolio::WalletAddress,
 };
@@ -186,11 +186,28 @@ impl LiquidityService {
             .await
             .map_err(Into::into)
     }
+
+    /// Returns a simulated, unsigned claim plan for an existing liquidity position.
+    ///
+    /// Claims remain available when an investment is no longer approved for new entries.
+    ///
+    /// # Errors
+    ///
+    /// Returns a provider error when the claim cannot be prepared.
+    pub async fn prepare_claim(
+        &self,
+        request: &PrepareLiquidityClaimRequest,
+    ) -> Result<PreparedLiquidityAction, LiquidityServiceError> {
+        self.actions
+            .prepare_claim(request)
+            .await
+            .map_err(Into::into)
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use std::sync::atomic::{AtomicU32, Ordering};
+    use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 
     use alloy_primitives::{Address, address};
     use async_trait::async_trait;
@@ -243,9 +260,19 @@ mod tests {
         ) -> Result<PreparedLiquidityEntry, LiquidityProviderError> {
             panic!("the provider must not be called for an invalid entry")
         }
+
+        async fn prepare_claim(
+            &self,
+            _request: &PrepareLiquidityClaimRequest,
+        ) -> Result<PreparedLiquidityAction, LiquidityProviderError> {
+            panic!("the provider must not be called")
+        }
     }
 
-    struct RecordingGateway(AtomicU32);
+    struct RecordingGateway {
+        slippage_bps: AtomicU32,
+        claim_called: AtomicBool,
+    }
 
     #[async_trait]
     impl LiquidityActionGateway for RecordingGateway {
@@ -253,9 +280,21 @@ mod tests {
             &self,
             command: &LiquidityEntryCommand,
         ) -> Result<PreparedLiquidityEntry, LiquidityProviderError> {
-            self.0.store(command.slippage_bps, Ordering::Relaxed);
+            self.slippage_bps
+                .store(command.slippage_bps, Ordering::Relaxed);
             Ok(PreparedLiquidityEntry {
                 required_amounts: vec![command.input],
+                transactions: Vec::new(),
+                preview: crate::prepared_action::ActionPreview::default(),
+            })
+        }
+
+        async fn prepare_claim(
+            &self,
+            _request: &PrepareLiquidityClaimRequest,
+        ) -> Result<PreparedLiquidityAction, LiquidityProviderError> {
+            self.claim_called.store(true, Ordering::Relaxed);
+            Ok(PreparedLiquidityAction {
                 transactions: Vec::new(),
                 preview: crate::prepared_action::ActionPreview::default(),
             })
@@ -367,7 +406,10 @@ mod tests {
     #[tokio::test]
     async fn reviewed_entries_use_policy_slippage() {
         let reader = Arc::new(UnreachableProvider);
-        let gateway = Arc::new(RecordingGateway(AtomicU32::new(0)));
+        let gateway = Arc::new(RecordingGateway {
+            slippage_bps: AtomicU32::new(0),
+            claim_called: AtomicBool::new(false),
+        });
         let service = LiquidityService::new(
             Arc::new(FixedCatalog(Vec::new())),
             reader,
@@ -389,7 +431,35 @@ mod tests {
         let result = service.prepare_entry(&request).await;
 
         assert!(result.is_ok());
-        assert_eq!(gateway.0.load(Ordering::Relaxed), 250);
+        assert_eq!(gateway.slippage_bps.load(Ordering::Relaxed), 250);
+    }
+
+    #[tokio::test]
+    async fn claims_remain_available_without_entry_allowlisting() {
+        let reader = Arc::new(UnreachableProvider);
+        let gateway = Arc::new(RecordingGateway {
+            slippage_bps: AtomicU32::new(0),
+            claim_called: AtomicBool::new(false),
+        });
+        let service = LiquidityService::new(
+            Arc::new(FixedCatalog(Vec::new())),
+            reader,
+            gateway.clone(),
+            LiquidityPolicy::new(Vec::new(), 100)
+                .unwrap_or_else(|error| panic!("test policy must be valid: {error}")),
+        );
+        let request = PrepareLiquidityClaimRequest {
+            wallet: WalletAddress::try_from(Address::with_last_byte(1))
+                .unwrap_or_else(|error| panic!("test wallet must be valid: {error}")),
+            investment_id: "no-longer-reviewed".to_owned(),
+            claim_type: crate::liquidity::LiquidityClaimType::LpFee,
+            nft_id: "#1".to_owned(),
+        };
+
+        let result = service.prepare_claim(&request).await;
+
+        assert!(result.is_ok());
+        assert!(gateway.claim_called.load(Ordering::Relaxed));
     }
 
     #[tokio::test]

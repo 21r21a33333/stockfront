@@ -10,7 +10,8 @@ use stockfront_core::{
         RedemptionDelay,
     },
     liquidity::{
-        LiquidityAmount, LiquidityProviderError, LiquidityTransactionKind, PreparedLiquidityEntry,
+        LiquidityAmount, LiquidityProviderError, LiquidityTransactionKind, PreparedLiquidityAction,
+        PreparedLiquidityEntry,
     },
     prepared_action::{
         ActionPreview, ActionWarning, AssetBalanceChange, NetworkFee, PreparedTransaction,
@@ -283,6 +284,34 @@ impl TryFrom<ProviderLiquidityEntryPlan> for PreparedLiquidityEntry {
 
         Ok(Self {
             required_amounts,
+            transactions,
+            preview,
+        })
+    }
+}
+
+pub(super) struct ProviderLiquidityClaimPlan(pub(super) models::DefiTransactionPlan);
+
+impl TryFrom<ProviderLiquidityClaimPlan> for PreparedLiquidityAction {
+    type Error = LiquidityProviderError;
+
+    fn try_from(value: ProviderLiquidityClaimPlan) -> Result<Self, Self::Error> {
+        let plan = value.0;
+        let transactions = prepared_transactions(plan.data_list, |kind| match kind {
+            models::defi_transaction::CallDataType::Approve => {
+                Some(LiquidityTransactionKind::Approve)
+            }
+            models::defi_transaction::CallDataType::Claim => Some(LiquidityTransactionKind::Claim),
+            _ => None,
+        })?;
+        if transactions.last().map(|transaction| transaction.kind)
+            != Some(LiquidityTransactionKind::Claim)
+        {
+            return Err(LiquidityProviderError::InvalidData);
+        }
+        let preview = required(plan.preview)?;
+        let preview = action_preview(&preview)?;
+        Ok(Self {
             transactions,
             preview,
         })
@@ -681,6 +710,38 @@ mod tests {
         assert_eq!(entry.transactions[1].kind, LiquidityTransactionKind::LpAdd);
         assert_eq!(entry.preview.interact_with, Some(contract));
         assert_eq!(entry.preview.balance_changes.len(), 1);
+    }
+
+    #[test]
+    fn liquidity_claim_maps_the_claim_action_and_preview() {
+        let token = Address::with_last_byte(1);
+        let contract = Address::with_last_byte(2);
+        let mut claim = models::DefiTransaction::new();
+        claim.call_data_type = Some(models::defi_transaction::CallDataType::Claim);
+        claim.to = Some(Some(contract.to_string()));
+        claim.data = Some("0x0102".to_owned());
+
+        let mut balance_change = models::DefiBalanceChange::new();
+        balance_change.token_address = Some(token.to_string());
+        balance_change.token_symbol = Some("USDT".to_owned());
+        balance_change.amount = Some("0.25".to_owned());
+        let mut preview = models::DefiTransactionPreview::new();
+        preview.balance_change = Some(vec![balance_change]);
+        let mut plan = models::DefiTransactionPlan::new();
+        plan.data_list = Some(vec![claim]);
+        plan.preview = Some(Box::new(preview));
+
+        let action = PreparedLiquidityAction::try_from(ProviderLiquidityClaimPlan(plan))
+            .unwrap_or_else(|error| panic!("valid liquidity claim rejected: {error}"));
+
+        assert_eq!(action.transactions.len(), 1);
+        assert_eq!(action.transactions[0].kind, LiquidityTransactionKind::Claim);
+        assert_eq!(action.preview.balance_changes.len(), 1);
+        assert_eq!(action.preview.balance_changes[0].token.contract, token);
+        assert_eq!(
+            action.preview.balance_changes[0].amount,
+            Decimal::new(25, 2)
+        );
     }
 
     #[test]

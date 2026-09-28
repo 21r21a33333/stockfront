@@ -5,8 +5,8 @@ use axum::{
     extract::{Path, Query, State, rejection::JsonRejection, rejection::QueryRejection},
 };
 use stockfront_core::liquidity::{
-    LiquidityAccount, LiquidityOpportunity, LiquidityService, PrepareLiquidityEntryRequest,
-    PreparedLiquidityEntry,
+    LiquidityAccount, LiquidityOpportunity, LiquidityService, PrepareLiquidityClaimRequest,
+    PrepareLiquidityEntryRequest, PreparedLiquidityAction, PreparedLiquidityEntry,
 };
 
 use super::{
@@ -43,4 +43,13 @@ pub(in crate::http) async fn prepare_entry(
     let Json(request) = request?;
     let entry = service.prepare_entry(&request).await?;
     Ok(Response::ok(entry))
+}
+
+pub(in crate::http) async fn prepare_claim(
+    State(service): State<Arc<LiquidityService>>,
+    request: Result<Json<PrepareLiquidityClaimRequest>, JsonRejection>,
+) -> ApiResult<PreparedLiquidityAction> {
+    let Json(request) = request?;
+    let claim = service.prepare_claim(&request).await?;
+    Ok(Response::ok(claim))
 }

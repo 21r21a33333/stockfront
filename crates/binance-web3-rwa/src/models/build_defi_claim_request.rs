@@ -18,26 +18,33 @@ pub struct BuildDefiClaimRequest {
     /// Type of claim to prepare.
     #[serde(rename = "claimType")]
     pub claim_type: ClaimType,
-    #[serde(rename = "investmentId")]
-    pub investment_id: String,
-    #[serde(rename = "redemptionId")]
-    pub redemption_id: String,
+    #[serde(rename = "binanceChainId", skip_serializing_if = "Option::is_none")]
+    pub binance_chain_id: Option<String>,
+    #[serde(rename = "investmentId", skip_serializing_if = "Option::is_none")]
+    pub investment_id: Option<String>,
+    #[serde(rename = "defiProtocolId", skip_serializing_if = "Option::is_none")]
+    pub defi_protocol_id: Option<String>,
+    #[serde(rename = "nftId", skip_serializing_if = "Option::is_none")]
+    pub nft_id: Option<String>,
+    #[serde(rename = "redemptionId", skip_serializing_if = "Option::is_none")]
+    pub redemption_id: Option<String>,
+    #[serde(rename = "tokenAddressList", skip_serializing_if = "Option::is_none")]
+    pub token_address_list: Option<Vec<String>>,
     #[serde(rename = "simulate", skip_serializing_if = "Option::is_none")]
     pub simulate: Option<bool>,
 }
 
 impl BuildDefiClaimRequest {
-    pub fn new(
-        address: String,
-        claim_type: ClaimType,
-        investment_id: String,
-        redemption_id: String,
-    ) -> BuildDefiClaimRequest {
+    pub fn new(address: String, claim_type: ClaimType) -> BuildDefiClaimRequest {
         BuildDefiClaimRequest {
             address,
             claim_type,
-            investment_id,
-            redemption_id,
+            binance_chain_id: None,
+            investment_id: None,
+            defi_protocol_id: None,
+            nft_id: None,
+            redemption_id: None,
+            token_address_list: None,
             simulate: None,
         }
     }
@@ -47,7 +54,13 @@ impl BuildDefiClaimRequest {
     Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize, Default,
 )]
 pub enum ClaimType {
-    #[serde(rename = "REDEMPTION")]
+    #[serde(rename = "REWARD_PROTOCOL")]
     #[default]
+    RewardProtocol,
+    #[serde(rename = "REWARD_INVESTMENT")]
+    RewardInvestment,
+    #[serde(rename = "LP_FEE")]
+    LpFee,
+    #[serde(rename = "REDEMPTION")]
     Redemption,
 }

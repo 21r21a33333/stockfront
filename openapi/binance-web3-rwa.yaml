@@ -784,18 +784,28 @@ components:
               $ref: '#/components/schemas/DefiTransactionPlan'
     BuildDefiClaimRequest:
       type: object
-      required: [address, claimType, investmentId, redemptionId]
+      required: [address, claimType]
       properties:
         address:
           type: string
         claimType:
           type: string
           description: Type of claim to prepare.
-          enum: [REDEMPTION]
+          enum: [REWARD_PROTOCOL, REWARD_INVESTMENT, LP_FEE, REDEMPTION]
+        binanceChainId:
+          type: string
         investmentId:
+          type: string
+        defiProtocolId:
+          type: string
+        nftId:
           type: string
         redemptionId:
           type: string
+        tokenAddressList:
+          type: array
+          items:
+            type: string
         simulate:
           type: boolean
     BuildDefiClaimResponse:
