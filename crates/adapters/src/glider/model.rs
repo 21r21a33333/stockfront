@@ -1,17 +1,25 @@
 use std::str::FromStr;
 
-use alloy_primitives::{Address, B256};
+use alloy_primitives::{Address, B256, U256};
+use chrono::DateTime;
 use glider_api::models::{
-    CreateEnrollData, CreateEnrollSignatureData, DiscoveryStrategyItem, StrategyAllocationAsset,
+    CreateEnrollData, CreateEnrollSignatureData, DiscoveryStrategyItem, PortfolioAsset,
+    PortfolioListItem, PortfolioPositionsData, PortfolioSchedule, SmartAccount,
+    StrategyAllocationAsset,
+    portfolio_position_warning::Kind as PositionWarningKind,
+    portfolio_schedule::{Frequency, Status},
 };
 use rust_decimal::Decimal;
 use stockfront_core::{
     baskets::BasketKind,
     bstock_market::BNB_CHAIN_ID,
     managed_portfolios::{
-        ManagedPortfolioAccount, ManagedPortfolioAllocation, ManagedPortfolioEnrollment,
-        ManagedPortfolioEnrollmentAuthorization, ManagedPortfolioPerformance,
-        ManagedPortfolioProviderError, ManagedPortfolioTemplate, ManagedPortfolioTemplateMetrics,
+        ManagedPortfolioAccount, ManagedPortfolioAllocation, ManagedPortfolioAssetPosition,
+        ManagedPortfolioAutomationStatus, ManagedPortfolioEnrollment,
+        ManagedPortfolioEnrollmentAuthorization, ManagedPortfolioFrequency,
+        ManagedPortfolioPerformance, ManagedPortfolioPositions, ManagedPortfolioProviderError,
+        ManagedPortfolioSchedule, ManagedPortfolioSummary, ManagedPortfolioTemplate,
+        ManagedPortfolioTemplateMetrics, ManagedPortfolioWarning, ManagedPortfolioWarningKind,
         PreparedManagedPortfolioEnrollment,
     },
 };
@@ -26,6 +34,10 @@ struct BnbManagedPortfolioAllocation(ManagedPortfolioAllocation);
 pub(super) struct BnbPreparedManagedPortfolioEnrollment(PreparedManagedPortfolioEnrollment);
 
 pub(super) struct BnbManagedPortfolioEnrollment(ManagedPortfolioEnrollment);
+
+pub(super) struct BnbManagedPortfolioSummary(ManagedPortfolioSummary);
+
+pub(super) struct BnbManagedPortfolioPositions(ManagedPortfolioPositions);
 
 impl From<BnbManagedPortfolioTemplate> for ManagedPortfolioTemplate {
     fn from(value: BnbManagedPortfolioTemplate) -> Self {
@@ -47,6 +59,18 @@ impl From<BnbPreparedManagedPortfolioEnrollment> for PreparedManagedPortfolioEnr
 
 impl From<BnbManagedPortfolioEnrollment> for ManagedPortfolioEnrollment {
     fn from(value: BnbManagedPortfolioEnrollment) -> Self {
+        value.0
+    }
+}
+
+impl From<BnbManagedPortfolioSummary> for ManagedPortfolioSummary {
+    fn from(value: BnbManagedPortfolioSummary) -> Self {
+        value.0
+    }
+}
+
+impl From<BnbManagedPortfolioPositions> for ManagedPortfolioPositions {
+    fn from(value: BnbManagedPortfolioPositions) -> Self {
         value.0
     }
 }
@@ -167,6 +191,158 @@ impl TryFrom<CreateEnrollData> for BnbManagedPortfolioEnrollment {
             },
         }))
     }
+}
+
+impl TryFrom<PortfolioListItem> for BnbManagedPortfolioSummary {
+    type Error = ManagedPortfolioProviderError;
+
+    fn try_from(value: PortfolioListItem) -> Result<Self, Self::Error> {
+        let template_name =
+            non_empty(&value.strategy_name).ok_or(ManagedPortfolioProviderError::InvalidData)?;
+        let smart_account = value
+            .smart_accounts
+            .iter()
+            .find_map(bnb_account)
+            .ok_or(ManagedPortfolioProviderError::InvalidData)?;
+        let schedule = value.schedule.as_deref().map(map_schedule).transpose()?;
+
+        Ok(Self(ManagedPortfolioSummary {
+            portfolio_id: value.portfolio_id,
+            name: value.portfolio_name.as_deref().and_then(non_empty),
+            template_id: value.strategy_id,
+            template_name,
+            smart_account,
+            schedule,
+        }))
+    }
+}
+
+impl TryFrom<PortfolioPositionsData> for BnbManagedPortfolioPositions {
+    type Error = ManagedPortfolioProviderError;
+
+    fn try_from(value: PortfolioPositionsData) -> Result<Self, Self::Error> {
+        let smart_account = value
+            .smart_accounts
+            .iter()
+            .find_map(bnb_account)
+            .ok_or(ManagedPortfolioProviderError::InvalidData)?;
+        let assets = value
+            .assets
+            .into_iter()
+            .map(map_bnb_asset)
+            .filter_map(Result::transpose)
+            .collect::<Result<Vec<_>, _>>()?;
+        let total_value_usd = assets.iter().map(|asset| asset.value_usd).sum::<Decimal>();
+        let warnings = value
+            .warnings
+            .into_iter()
+            .map(|warning| ManagedPortfolioWarning {
+                kind: match warning.kind {
+                    PositionWarningKind::MissingSmartAccount => {
+                        ManagedPortfolioWarningKind::MissingSmartAccount
+                    }
+                    PositionWarningKind::RpcError => ManagedPortfolioWarningKind::RpcError,
+                    PositionWarningKind::MissingPrice => ManagedPortfolioWarningKind::MissingPrice,
+                    PositionWarningKind::BlocklistedAsset => {
+                        ManagedPortfolioWarningKind::BlocklistedAsset
+                    }
+                    PositionWarningKind::MissingAsset => ManagedPortfolioWarningKind::MissingAsset,
+                    PositionWarningKind::InTransitReadFailed => {
+                        ManagedPortfolioWarningKind::InTransitReadFailed
+                    }
+                },
+                message: warning.message,
+            })
+            .collect();
+
+        Ok(Self(ManagedPortfolioPositions {
+            portfolio_id: value.portfolio_id,
+            smart_account,
+            total_value_usd,
+            assets,
+            warnings,
+            observed_at_ms: parse_timestamp(&value.fetched_at)?,
+        }))
+    }
+}
+
+fn map_schedule(
+    schedule: &PortfolioSchedule,
+) -> Result<ManagedPortfolioSchedule, ManagedPortfolioProviderError> {
+    Ok(ManagedPortfolioSchedule {
+        status: match schedule.status {
+            Status::Active => ManagedPortfolioAutomationStatus::Active,
+            Status::Paused => ManagedPortfolioAutomationStatus::Paused,
+        },
+        frequency: schedule.frequency.map(|frequency| match frequency {
+            Frequency::Hourly => ManagedPortfolioFrequency::Hourly,
+            Frequency::Daily => ManagedPortfolioFrequency::Daily,
+            Frequency::Weekly => ManagedPortfolioFrequency::Weekly,
+            Frequency::Monthly => ManagedPortfolioFrequency::Monthly,
+        }),
+        interval_ms: schedule
+            .interval_ms
+            .map(u64::try_from)
+            .transpose()
+            .map_err(|_| ManagedPortfolioProviderError::InvalidData)?,
+        next_rebalance_at_ms: schedule
+            .next_due_at
+            .as_deref()
+            .map(parse_timestamp)
+            .transpose()?,
+        last_rebalance_at_ms: schedule
+            .last_rebalance_at
+            .as_deref()
+            .map(parse_timestamp)
+            .transpose()?,
+    })
+}
+
+fn map_bnb_asset(
+    asset: PortfolioAsset,
+) -> Result<Option<ManagedPortfolioAssetPosition>, ManagedPortfolioProviderError> {
+    if !asset.smart_account_id.starts_with(BNB_ACCOUNT_PREFIX) {
+        return Ok(None);
+    }
+    let Some(contract) = asset.asset_id.strip_prefix(BNB_ERC20_PREFIX) else {
+        return Ok(None);
+    };
+
+    Ok(Some(ManagedPortfolioAssetPosition {
+        contract: contract
+            .parse()
+            .map_err(|_| ManagedPortfolioProviderError::InvalidData)?,
+        symbol: asset.symbol,
+        decimals: u8::try_from(asset.decimals)
+            .map_err(|_| ManagedPortfolioProviderError::InvalidData)?,
+        raw_amount: U256::from_str(&asset.balance_raw)
+            .map_err(|_| ManagedPortfolioProviderError::InvalidData)?,
+        amount: parse_decimal(&asset.balance)?,
+        price_usd: parse_decimal(&asset.price_usd)?,
+        value_usd: parse_decimal(&asset.value_usd)?,
+    }))
+}
+
+fn bnb_account(account: &SmartAccount) -> Option<ManagedPortfolioAccount> {
+    let address = account
+        .account_id
+        .strip_prefix(BNB_ACCOUNT_PREFIX)?
+        .parse()
+        .ok()?;
+    Some(ManagedPortfolioAccount {
+        chain_id: BNB_CHAIN_ID,
+        address,
+    })
+}
+
+fn parse_decimal(value: &str) -> Result<Decimal, ManagedPortfolioProviderError> {
+    Decimal::from_str(value).map_err(|_| ManagedPortfolioProviderError::InvalidData)
+}
+
+fn parse_timestamp(value: &str) -> Result<i64, ManagedPortfolioProviderError> {
+    DateTime::parse_from_rfc3339(value)
+        .map(|timestamp| timestamp.timestamp_millis())
+        .map_err(|_| ManagedPortfolioProviderError::InvalidData)
 }
 
 fn non_empty(value: &str) -> Option<String> {
@@ -296,6 +472,110 @@ mod tests {
             "0x02Fca66C1D1aFB4E2A7884261eB00F63598a7436"
                 .parse::<Address>()
                 .unwrap_or_else(|error| panic!("valid address rejected: {error}"))
+        );
+    }
+
+    #[test]
+    fn maps_bnb_portfolio_summary_and_schedule() {
+        let portfolio = serde_json::from_value::<PortfolioListItem>(serde_json::json!({
+            "portfolioId": "portfolio-1",
+            "portfolioName": "  Technology Portfolio  ",
+            "ownerAccountId": "eip155:0:0x4b393bEc5DeE11799F698440AB19c0FBfe15d74c",
+            "strategyId": "strategy-1",
+            "strategyName": "Technology Leaders",
+            "strategyDescription": null,
+            "smartAccounts": [{
+                "accountId": "eip155:56:0x02Fca66C1D1aFB4E2A7884261eB00F63598a7436"
+            }],
+            "schedule": {
+                "status": "active",
+                "frequency": "monthly",
+                "intervalMs": 2_592_000_000_i64,
+                "nextDueAt": "2026-10-01T12:00:00.000Z",
+                "lastRebalanceAt": null
+            },
+            "createdAt": "2026-09-30T12:00:00.000Z"
+        }))
+        .unwrap_or_else(|error| panic!("valid generated model rejected: {error}"));
+
+        let summary = ManagedPortfolioSummary::from(
+            BnbManagedPortfolioSummary::try_from(portfolio)
+                .unwrap_or_else(|error| panic!("valid BNB portfolio rejected: {error}")),
+        );
+
+        assert_eq!(summary.name.as_deref(), Some("Technology Portfolio"));
+        assert_eq!(summary.template_id, "strategy-1");
+        assert_eq!(summary.smart_account.chain_id, BNB_CHAIN_ID);
+        let schedule = summary.schedule.expect("test portfolio has a schedule");
+        assert_eq!(schedule.status, ManagedPortfolioAutomationStatus::Active);
+        assert_eq!(schedule.frequency, Some(ManagedPortfolioFrequency::Monthly));
+        assert_eq!(schedule.interval_ms, Some(2_592_000_000));
+        assert_eq!(
+            schedule.next_rebalance_at_ms,
+            Some(
+                DateTime::parse_from_rfc3339("2026-10-01T12:00:00.000Z")
+                    .expect("test timestamp is valid")
+                    .timestamp_millis()
+            )
+        );
+    }
+
+    #[test]
+    fn maps_exact_bnb_positions_and_preserves_warnings() {
+        let positions = serde_json::from_value::<PortfolioPositionsData>(serde_json::json!({
+            "portfolioId": "portfolio-1",
+            "totalValueUsd": "223.760000",
+            "inTransit": { "totalUsd": "0.000000", "items": [] },
+            "fetchedAt": "2026-09-30T12:05:10.000Z",
+            "smartAccounts": [{
+                "accountId": "eip155:56:0x02Fca66C1D1aFB4E2A7884261eB00F63598a7436"
+            }],
+            "assets": [{
+                "assetId": "eip155:56/erc20:0x02Fca66C1D1aFB4E2A7884261eB00F63598a7436",
+                "smartAccountId": "eip155:56:0x02Fca66C1D1aFB4E2A7884261eB00F63598a7436",
+                "symbol": "NVDAB",
+                "decimals": 18,
+                "balance": "1.000000000000000001",
+                "balanceRaw": "1000000000000000001",
+                "priceUsd": "223.760000",
+                "valueUsd": "223.760000"
+            }, {
+                "assetId": "eip155:8453/erc20:0x0000000000000000000000000000000000000001",
+                "smartAccountId": "eip155:8453:0x0000000000000000000000000000000000000002",
+                "symbol": "OTHER",
+                "decimals": 18,
+                "balance": "1",
+                "balanceRaw": "1000000000000000000",
+                "priceUsd": "1",
+                "valueUsd": "1"
+            }],
+            "warnings": [{
+                "kind": "MISSING_PRICE",
+                "message": "one upstream price was unavailable"
+            }]
+        }))
+        .unwrap_or_else(|error| panic!("valid generated model rejected: {error}"));
+
+        let positions = ManagedPortfolioPositions::from(
+            BnbManagedPortfolioPositions::try_from(positions)
+                .unwrap_or_else(|error| panic!("valid BNB positions rejected: {error}")),
+        );
+
+        assert_eq!(positions.total_value_usd, Decimal::new(22_376, 2));
+        assert_eq!(positions.assets.len(), 1);
+        assert_eq!(positions.assets[0].decimals, 18);
+        assert_eq!(
+            positions.assets[0].raw_amount,
+            U256::from(1_000_000_000_000_000_001_u128)
+        );
+        assert_eq!(
+            positions.assets[0].amount,
+            Decimal::from_str("1.000000000000000001").expect("test amount is valid")
+        );
+        assert_eq!(positions.warnings.len(), 1);
+        assert_eq!(
+            positions.warnings[0].kind,
+            ManagedPortfolioWarningKind::MissingPrice
         );
     }
 }

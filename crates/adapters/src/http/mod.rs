@@ -31,6 +31,14 @@ pub fn managed_portfolio_router(service: Arc<ManagedPortfolioService>) -> Router
             "/v1/managed-portfolios/enrollments",
             post(handlers::managed_portfolios::enroll),
         )
+        .route(
+            "/v1/wallets/{address}/managed-portfolios",
+            get(handlers::managed_portfolios::portfolios),
+        )
+        .route(
+            "/v1/managed-portfolios/{portfolio_id}/positions",
+            get(handlers::managed_portfolios::positions),
+        )
         .with_state(service)
 }
 

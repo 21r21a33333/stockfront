@@ -313,6 +313,230 @@
           }
         }
       }
+    },
+    "/portfolios": {
+      "get": {
+        "operationId": "portfolios.list",
+        "tags": [
+          "Portfolios"
+        ],
+        "summary": "List portfolios",
+        "description": "Returns the authenticated tenant's portfolios with optional filtering by `ownerAccountId`, `strategyId`, and `status`. Live balances and positions are served by `GET /v2/portfolios/{portfolioId}/positions`. Cursor-paginated, most recently created first; use the opaque `nextCursor` to fetch the next page.",
+        "security": [
+          {
+            "apiKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "description": "Filter to a single end-user's portfolios under this tenant. CAIP-10 account identifier — for EVM use the chain-agnostic form `eip155:0:0x<address>`.",
+              "example": "eip155:0:0xabcdef0000000000000000000000000000000001"
+            },
+            "required": false,
+            "description": "Filter to a single end-user's portfolios under this tenant. CAIP-10 account identifier — for EVM use the chain-agnostic form `eip155:0:0x<address>`.",
+            "name": "ownerAccountId",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256,
+              "description": "Filter to portfolios mirroring a specific strategy",
+              "example": "01JWZEE2MF30KVRMRX53N88VA4"
+            },
+            "required": false,
+            "description": "Filter to portfolios mirroring a specific strategy",
+            "name": "strategyId",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "active",
+                "paused"
+              ],
+              "description": "Filter by rebalance schedule status. When set, portfolios without a schedule row are excluded.",
+              "example": "active"
+            },
+            "required": false,
+            "description": "Filter by rebalance schedule status. When set, portfolios without a schedule row are excluded.",
+            "name": "status",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200,
+              "default": 50,
+              "description": "Max items per page (1–200)",
+              "example": 50
+            },
+            "required": false,
+            "description": "Max items per page (1–200)",
+            "name": "limit",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Opaque pagination cursor from a previous response. Pass the previous response's `nextCursor` verbatim."
+            },
+            "required": false,
+            "description": "Opaque pagination cursor from a previous response. Pass the previous response's `nextCursor` verbatim.",
+            "name": "cursor",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Tenant portfolios",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListPortfoliosResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request (bad cursor, filters, or pagination params)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/V2ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid API key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/V2ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Missing required scope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/V2ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/V2ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/portfolios/{portfolioId}/positions": {
+      "get": {
+        "operationId": "portfolios.getPositions",
+        "tags": [
+          "Portfolios"
+        ],
+        "summary": "Get portfolio live positions",
+        "description": "Returns real-time per-asset balances and USD values for a portfolio. The `assets[]` array spans every asset class the underlying allocation supports — ERC-20 tokens, SPL tokens, and tokenized real-world assets (equities, treasuries) — using one uniform shape (`assetId`, `symbol`, `decimals`, `balance`, `balanceRaw`, `priceUsd`, `valueUsd`). Token metadata and prices are sourced from Glider's upstream data providers and passed through unchanged. Results may be cached for up to 30 seconds. Partial failures are surfaced in `warnings[]` and do not fail the request — the endpoint returns 200 with whatever loaded. For schedule/status polling (including `nextDueAt` and `lastRebalanceAt`) without live balances, use `GET /v2/portfolios/{portfolioId}` instead.",
+        "security": [
+          {
+            "apiKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256,
+              "description": "Portfolio identifier",
+              "example": "a1b2c3d4"
+            },
+            "required": true,
+            "description": "Portfolio identifier",
+            "name": "portfolioId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Portfolio live positions",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GetPortfolioPositionsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/V2ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid API key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/V2ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Missing required scope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/V2ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Portfolio not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/V2ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error or live balance service unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/V2ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -838,6 +1062,388 @@
         },
         "required": [
           "accountId"
+        ]
+      },
+      "ListPortfoliosResponse": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "description": "Request succeeded."
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "portfolios": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/PortfolioListItem"
+                }
+              }
+            },
+            "required": [
+              "portfolios"
+            ]
+          },
+          "nextCursor": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Opaque cursor for the next page. Null when there are no more results."
+          }
+        },
+        "required": [
+          "success",
+          "data",
+          "nextCursor"
+        ]
+      },
+      "PortfolioListItem": {
+        "type": "object",
+        "properties": {
+          "portfolioId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256,
+            "description": "Portfolio identifier",
+            "example": "a1b2c3d4"
+          },
+          "portfolioName": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Integrator-provided display name for the portfolio. Null when the portfolio was created without one.",
+            "example": "Alice's Portfolio"
+          },
+          "ownerAccountId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "End-user wallet as a chain-agnostic CAIP-10 identifier (`eip155:0:<addr>`). Null only for legacy rows without an owner recorded.",
+            "example": "eip155:0:0xabcdef0000000000000000000000000000000001"
+          },
+          "strategyId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256,
+            "description": "Strategy identifier (ULID)",
+            "example": "01JWZEE2MF30KVRMRX53N88VA4"
+          },
+          "strategyName": {
+            "type": "string",
+            "description": "Strategy display name at read time",
+            "example": "Conservative Yield"
+          },
+          "strategyDescription": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Strategy description as set by the integrator at strategy creation time. Null when the strategy was created without one.",
+            "example": "Multi-chain balanced allocation strategy"
+          },
+          "smartAccounts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SmartAccount"
+            },
+            "description": "Per-chain smart accounts owned by this portfolio. Each entry is the canonical `SmartAccount` object."
+          },
+          "schedule": {
+            "$ref": "#/components/schemas/PortfolioSchedule"
+          },
+          "createdAt": {
+            "type": "string",
+            "description": "ISO 8601 creation timestamp",
+            "example": "2026-04-17T12:00:00.000Z"
+          }
+        },
+        "required": [
+          "portfolioId",
+          "portfolioName",
+          "ownerAccountId",
+          "strategyId",
+          "strategyName",
+          "strategyDescription",
+          "smartAccounts",
+          "schedule",
+          "createdAt"
+        ]
+      },
+      "PortfolioSchedule": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "paused"
+            ],
+            "description": "Portfolio rebalance schedule status. `active` = scheduler will tick. `paused` = integrator has paused automation.",
+            "example": "active"
+          },
+          "frequency": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "hourly",
+              "daily",
+              "weekly",
+              "monthly",
+              null
+            ],
+            "description": "Resolved cadence enum. Null when the stored spec uses a non-standard `intervalMs` that does not map to the enum.",
+            "example": "daily"
+          },
+          "intervalMs": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "exclusiveMinimum": 0,
+            "description": "Raw interval between rebalances in milliseconds",
+            "example": 86400000
+          },
+          "nextDueAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "ISO 8601 timestamp for the next scheduled rebalance. Use this to render 'next rebalance in …' UI or to decide whether to trigger a manual rebalance now. Null when the schedule is paused or no next tick has been computed yet.",
+            "example": "2026-04-18T12:00:00.000Z"
+          },
+          "lastRebalanceAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "ISO 8601 timestamp for the most recent rebalance run (manual or scheduled). Null until the portfolio's first rebalance completes.",
+            "example": "2026-04-17T12:00:00.000Z"
+          }
+        },
+        "required": [
+          "status",
+          "frequency",
+          "intervalMs",
+          "nextDueAt",
+          "lastRebalanceAt"
+        ],
+        "description": "Rebalance schedule projection. Null when no rebalance schedule has been created for this portfolio."
+      },
+      "GetPortfolioPositionsResponse": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "description": "Request succeeded."
+          },
+          "data": {
+            "$ref": "#/components/schemas/PortfolioPositionsData"
+          }
+        },
+        "required": [
+          "success",
+          "data"
+        ]
+      },
+      "PortfolioPositionsData": {
+        "type": "object",
+        "properties": {
+          "portfolioId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256,
+            "description": "Portfolio identifier",
+            "example": "a1b2c3d4"
+          },
+          "totalValueUsd": {
+            "type": "string",
+            "description": "Total USD value as a decimal string, `.toFixed(6)`. Sum of asset `valueUsd` for a single portfolio.",
+            "example": "1500.500000"
+          },
+          "inTransit": {
+            "$ref": "#/components/schemas/PortfolioInTransit"
+          },
+          "fetchedAt": {
+            "type": "string",
+            "description": "ISO 8601 timestamp at which balances + prices were read",
+            "example": "2026-04-17T12:05:10.000Z"
+          },
+          "smartAccounts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SmartAccount"
+            },
+            "description": "Smart accounts configured for this portfolio. Always present regardless of whether live balances loaded."
+          },
+          "assets": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PortfolioAsset"
+            }
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PortfolioPositionWarning"
+            },
+            "description": "Non-fatal issues encountered while loading positions (e.g. a chain was unavailable, a price was missing). Empty array means a fully-healthy read."
+          }
+        },
+        "required": [
+          "portfolioId",
+          "totalValueUsd",
+          "inTransit",
+          "fetchedAt",
+          "smartAccounts",
+          "assets",
+          "warnings"
+        ]
+      },
+      "PortfolioInTransit": {
+        "type": "object",
+        "properties": {
+          "totalUsd": {
+            "type": "string",
+            "description": "USD value as a decimal string, `.toFixed(6)`",
+            "example": "1500.500000"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PortfolioInTransitItem"
+            },
+            "description": "Open bridge legs included in totalValueUsd but not yet reflected as destination-chain asset rows."
+          }
+        },
+        "required": [
+          "totalUsd",
+          "items"
+        ],
+        "description": "Open bridge value included in totalValueUsd but not yet visible as settled destination-chain asset rows."
+      },
+      "PortfolioInTransitItem": {
+        "type": "object",
+        "properties": {
+          "sourceAssetId": {
+            "type": "string",
+            "description": "Source asset identifier used for the in-transit bridge leg. This matches the source asset id used internally for the portfolio position.",
+            "example": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913:8453"
+          },
+          "destinationChainId": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "description": "Destination EVM chain id for the bridge leg.",
+            "example": 42161
+          },
+          "amountRaw": {
+            "type": "string",
+            "description": "Raw integer token balance as a decimal string (no decimals applied). The on-chain `uint256` amount before dividing by `10^decimals`.",
+            "example": "1500500000"
+          },
+          "valueUsd": {
+            "type": "string",
+            "description": "USD value as a decimal string, `.toFixed(6)`",
+            "example": "1500.500000"
+          }
+        },
+        "required": [
+          "sourceAssetId",
+          "destinationChainId",
+          "amountRaw",
+          "valueUsd"
+        ]
+      },
+      "PortfolioAsset": {
+        "type": "object",
+        "properties": {
+          "assetId": {
+            "type": "string",
+            "description": "CAIP-19 asset identifier (fully chain-qualified). Covers ERC-20, SPL, and tokenized RWA assets — the same shape regardless of asset class.",
+            "example": "eip155:8453/erc20:0x833589fcd6edb6e08f4c7c32d4f71b54bda02913"
+          },
+          "smartAccountId": {
+            "type": "string",
+            "description": "CAIP-10 account identifier for the smart account (Kernel smart account). Always chain-bound — the same smart account address on a different chain is a different account.",
+            "example": "eip155:8453:0xe3a2d1f49aee887e42655b56371d4d76bbf58058"
+          },
+          "symbol": {
+            "type": "string",
+            "description": "Asset symbol as reported by the upstream data provider (e.g. `USDC`, `MORPHO`, or a tokenized-equity ticker).",
+            "example": "USDC"
+          },
+          "decimals": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Integer exponent used to convert `balanceRaw` to `balance`. The only non-string financial field on the v2 surface.",
+            "example": 6
+          },
+          "balance": {
+            "type": "string",
+            "description": "Human-readable token balance as a decimal string",
+            "example": "1500.500000"
+          },
+          "balanceRaw": {
+            "type": "string",
+            "description": "Raw integer token balance as a decimal string (no decimals applied). The on-chain `uint256` amount before dividing by `10^decimals`.",
+            "example": "1500500000"
+          },
+          "priceUsd": {
+            "type": "string",
+            "description": "Unit price in USD as a decimal string, `.toFixed(6)`",
+            "example": "1.000000"
+          },
+          "valueUsd": {
+            "type": "string",
+            "description": "USD value as a decimal string, `.toFixed(6)`",
+            "example": "1500.500000"
+          }
+        },
+        "required": [
+          "assetId",
+          "smartAccountId",
+          "symbol",
+          "decimals",
+          "balance",
+          "balanceRaw",
+          "priceUsd",
+          "valueUsd"
+        ]
+      },
+      "PortfolioPositionWarning": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "MISSING_SMART_ACCOUNT",
+              "RPC_ERROR",
+              "MISSING_PRICE",
+              "BLOCKLISTED_ASSET",
+              "MISSING_ASSET",
+              "IN_TRANSIT_READ_FAILED"
+            ],
+            "description": "Warning kind",
+            "example": "RPC_ERROR"
+          },
+          "message": {
+            "type": "string",
+            "description": "Human-readable detail",
+            "example": "chain 1 RPC timeout"
+          }
+        },
+        "required": [
+          "kind",
+          "message"
         ]
       }
     }

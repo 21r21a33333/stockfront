@@ -7,6 +7,7 @@ src/apis/configuration.rs
 src/apis/discovery_api.rs
 src/apis/enrollment_api.rs
 src/apis/mod.rs
+src/apis/portfolios_api.rs
 src/lib.rs
 src/models/create_enroll_data.rs
 src/models/create_enroll_request.rs
@@ -17,9 +18,19 @@ src/models/create_enroll_signature_response.rs
 src/models/discovery_strategy_item.rs
 src/models/discovery_strategy_metrics.rs
 src/models/discovery_strategy_performance.rs
+src/models/get_portfolio_positions_response.rs
 src/models/list_discovery_strategies_response.rs
 src/models/list_discovery_strategies_response_data.rs
+src/models/list_portfolios_response.rs
+src/models/list_portfolios_response_data.rs
 src/models/mod.rs
+src/models/portfolio_asset.rs
+src/models/portfolio_in_transit.rs
+src/models/portfolio_in_transit_item.rs
+src/models/portfolio_list_item.rs
+src/models/portfolio_position_warning.rs
+src/models/portfolio_positions_data.rs
+src/models/portfolio_schedule.rs
 src/models/session_key_message_ecdsa.rs
 src/models/smart_account.rs
 src/models/strategy_allocation.rs

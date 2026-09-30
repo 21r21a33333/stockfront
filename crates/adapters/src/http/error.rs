@@ -12,7 +12,8 @@ use stockfront_core::bstock_trade::{TradeCatalogError, TradeError, TradeGatewayE
 use stockfront_core::carry::{CarryServiceError, EarnProviderError};
 use stockfront_core::liquidity::{LiquidityProviderError, LiquidityServiceError};
 use stockfront_core::managed_portfolios::{
-    ListManagedPortfolioTemplatesQueryError, ManagedPortfolioProviderError,
+    ListManagedPortfolioTemplatesQueryError, ListManagedPortfoliosQueryError,
+    ManagedPortfolioProviderError,
 };
 use stockfront_core::wallet_portfolio::{
     BalanceReaderError, WalletAddressError, WalletPortfolioError,
@@ -283,6 +284,11 @@ impl ApiError {
         "managed_portfolio_enrollment_conflict",
         "the wallet is already enrolled or the enrollment state has changed",
     );
+    const MANAGED_PORTFOLIO_NOT_FOUND: Self = Self::fixed(
+        StatusCode::NOT_FOUND,
+        "managed_portfolio_not_found",
+        "the managed portfolio was not found",
+    );
     const fn fixed(status: StatusCode, code: &'static str, message: &'static str) -> Self {
         Self {
             status,
@@ -322,6 +328,12 @@ impl From<ListManagedPortfolioTemplatesQueryError> for ApiError {
     }
 }
 
+impl From<ListManagedPortfoliosQueryError> for ApiError {
+    fn from(error: ListManagedPortfoliosQueryError) -> Self {
+        Self::dynamic(StatusCode::BAD_REQUEST, "invalid_query", error.to_string())
+    }
+}
+
 impl From<ManagedPortfolioProviderError> for ApiError {
     fn from(error: ManagedPortfolioProviderError) -> Self {
         match error {
@@ -331,6 +343,7 @@ impl From<ManagedPortfolioProviderError> for ApiError {
             ManagedPortfolioProviderError::InvalidData => Self::INVALID_PROVIDER_RESPONSE,
             ManagedPortfolioProviderError::Rejected => Self::MANAGED_PORTFOLIO_ENROLLMENT_REJECTED,
             ManagedPortfolioProviderError::Conflict => Self::MANAGED_PORTFOLIO_ENROLLMENT_CONFLICT,
+            ManagedPortfolioProviderError::NotFound => Self::MANAGED_PORTFOLIO_NOT_FOUND,
         }
     }
 }

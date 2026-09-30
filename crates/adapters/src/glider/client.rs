@@ -4,26 +4,31 @@ use glider_api::{
     apis::{
         Error as GliderApiError,
         configuration::{ApiKey, Configuration},
-        discovery_api::{
-            DiscoveryStrategiesListError, DiscoveryStrategiesListParams, discovery_strategies_list,
-        },
+        discovery_api::{DiscoveryStrategiesListParams, discovery_strategies_list},
         enrollment_api::{
             EnrollmentCreateParams, EnrollmentPrepareSignatureParams, enrollment_create,
             enrollment_prepare_signature,
         },
+        portfolios_api::{
+            PortfoliosGetPositionsError, PortfoliosGetPositionsParams, PortfoliosListParams,
+            portfolios_get_positions, portfolios_list,
+        },
     },
     models::{
         CreateEnrollRequest, CreateEnrollResponse, CreateEnrollSignatureRequest,
-        CreateEnrollSignatureResponse, ListDiscoveryStrategiesResponse,
+        CreateEnrollSignatureResponse, GetPortfolioPositionsResponse,
+        ListDiscoveryStrategiesResponse, ListPortfoliosResponse,
         create_enroll_request::AccountType as EnrollAccountType,
         create_enroll_signature_request::AccountType as PrepareAccountType,
     },
 };
 use reqwest_middleware::ClientBuilder;
 use stockfront_core::managed_portfolios::{
-    EnrollManagedPortfolioRequest, ListManagedPortfolioTemplatesQuery, ManagedPortfolioCollection,
-    ManagedPortfolioProviderError, ManagedPortfolioSort, PrepareManagedPortfolioEnrollmentRequest,
+    EnrollManagedPortfolioRequest, ListManagedPortfolioTemplatesQuery, ListManagedPortfoliosQuery,
+    ManagedPortfolioCollection, ManagedPortfolioProviderError, ManagedPortfolioSort,
+    PrepareManagedPortfolioEnrollmentRequest,
 };
+use stockfront_core::wallet_portfolio::WalletAddress;
 use thiserror::Error;
 use url::Url;
 
@@ -82,7 +87,7 @@ impl GliderClient {
             },
         )
         .await
-        .map_err(|error| map_provider_error(&error))
+        .map_err(|error| map_read_error(&error))
     }
 
     pub(super) async fn prepare_enrollment(
@@ -129,24 +134,45 @@ impl GliderClient {
         .await
         .map_err(|error| map_enrollment_error(&error))
     }
+
+    pub(super) async fn portfolios(
+        &self,
+        wallet: WalletAddress,
+        query: &ListManagedPortfoliosQuery,
+    ) -> Result<ListPortfoliosResponse, ManagedPortfolioProviderError> {
+        let limit =
+            i32::try_from(query.limit).map_err(|_| ManagedPortfolioProviderError::InvalidData)?;
+        portfolios_list(
+            &self.configuration,
+            PortfoliosListParams {
+                owner_account_id: Some(evm_owner_account_id(wallet)),
+                strategy_id: None,
+                status: None,
+                limit: Some(limit),
+                cursor: query.cursor.clone(),
+            },
+        )
+        .await
+        .map_err(|error| map_read_error(&error))
+    }
+
+    pub(super) async fn positions(
+        &self,
+        portfolio_id: &str,
+    ) -> Result<GetPortfolioPositionsResponse, ManagedPortfolioProviderError> {
+        portfolios_get_positions(
+            &self.configuration,
+            PortfoliosGetPositionsParams {
+                portfolio_id: portfolio_id.to_owned(),
+            },
+        )
+        .await
+        .map_err(|error| map_positions_error(&error))
+    }
 }
 
 fn evm_owner_account_id(wallet: stockfront_core::wallet_portfolio::WalletAddress) -> String {
     format!("eip155:0:{}", wallet.as_address())
-}
-
-fn map_provider_error(
-    error: &GliderApiError<DiscoveryStrategiesListError>,
-) -> ManagedPortfolioProviderError {
-    match error {
-        GliderApiError::Serde(_) | GliderApiError::SerdePathToError(_) => {
-            ManagedPortfolioProviderError::InvalidData
-        }
-        GliderApiError::Reqwest(_)
-        | GliderApiError::ReqwestMiddleware(_)
-        | GliderApiError::Io(_)
-        | GliderApiError::ResponseError(_) => ManagedPortfolioProviderError::Unavailable,
-    }
 }
 
 fn map_enrollment_error<E>(error: &GliderApiError<E>) -> ManagedPortfolioProviderError {
@@ -162,6 +188,29 @@ fn map_enrollment_error<E>(error: &GliderApiError<E>) -> ManagedPortfolioProvide
         GliderApiError::Reqwest(_)
         | GliderApiError::ReqwestMiddleware(_)
         | GliderApiError::Io(_) => ManagedPortfolioProviderError::Unavailable,
+    }
+}
+
+fn map_read_error<E>(error: &GliderApiError<E>) -> ManagedPortfolioProviderError {
+    match error {
+        GliderApiError::Serde(_) | GliderApiError::SerdePathToError(_) => {
+            ManagedPortfolioProviderError::InvalidData
+        }
+        GliderApiError::Reqwest(_)
+        | GliderApiError::ReqwestMiddleware(_)
+        | GliderApiError::Io(_)
+        | GliderApiError::ResponseError(_) => ManagedPortfolioProviderError::Unavailable,
+    }
+}
+
+fn map_positions_error(
+    error: &GliderApiError<PortfoliosGetPositionsError>,
+) -> ManagedPortfolioProviderError {
+    match error {
+        GliderApiError::ResponseError(response) if response.status.as_u16() == 404 => {
+            ManagedPortfolioProviderError::NotFound
+        }
+        _ => map_read_error(error),
     }
 }
 

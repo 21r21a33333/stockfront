@@ -2,10 +2,12 @@ use async_trait::async_trait;
 use thiserror::Error;
 
 use super::{
-    EnrollManagedPortfolioRequest, ListManagedPortfolioTemplatesQuery, ManagedPortfolioEnrollment,
+    EnrollManagedPortfolioRequest, ListManagedPortfolioTemplatesQuery, ListManagedPortfoliosQuery,
+    ManagedPortfolioEnrollment, ManagedPortfolioPage, ManagedPortfolioPositions,
     ManagedPortfolioTemplatePage, PrepareManagedPortfolioEnrollmentRequest,
     PreparedManagedPortfolioEnrollment,
 };
+use crate::wallet_portfolio::WalletAddress;
 
 #[derive(Clone, Copy, Debug, Error, Eq, PartialEq)]
 pub enum ManagedPortfolioProviderError {
@@ -17,6 +19,8 @@ pub enum ManagedPortfolioProviderError {
     Rejected,
     #[error("the managed portfolio enrollment conflicts with existing state")]
     Conflict,
+    #[error("the managed portfolio was not found")]
+    NotFound,
 }
 
 #[async_trait]
@@ -35,4 +39,15 @@ pub trait ManagedPortfolioGateway: Send + Sync {
         &self,
         request: &EnrollManagedPortfolioRequest,
     ) -> Result<ManagedPortfolioEnrollment, ManagedPortfolioProviderError>;
+
+    async fn portfolios(
+        &self,
+        wallet: WalletAddress,
+        query: &ListManagedPortfoliosQuery,
+    ) -> Result<ManagedPortfolioPage, ManagedPortfolioProviderError>;
+
+    async fn positions(
+        &self,
+        portfolio_id: &str,
+    ) -> Result<ManagedPortfolioPositions, ManagedPortfolioProviderError>;
 }

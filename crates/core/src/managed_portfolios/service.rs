@@ -1,10 +1,12 @@
 use std::sync::Arc;
 
 use super::{
-    EnrollManagedPortfolioRequest, ListManagedPortfolioTemplatesQuery, ManagedPortfolioEnrollment,
-    ManagedPortfolioGateway, ManagedPortfolioProviderError, ManagedPortfolioTemplatePage,
+    EnrollManagedPortfolioRequest, ListManagedPortfolioTemplatesQuery, ListManagedPortfoliosQuery,
+    ManagedPortfolioEnrollment, ManagedPortfolioGateway, ManagedPortfolioPage,
+    ManagedPortfolioPositions, ManagedPortfolioProviderError, ManagedPortfolioTemplatePage,
     PrepareManagedPortfolioEnrollmentRequest, PreparedManagedPortfolioEnrollment,
 };
+use crate::wallet_portfolio::WalletAddress;
 
 pub struct ManagedPortfolioService {
     gateway: Arc<dyn ManagedPortfolioGateway>,
@@ -52,5 +54,31 @@ impl ManagedPortfolioService {
         request: &EnrollManagedPortfolioRequest,
     ) -> Result<ManagedPortfolioEnrollment, ManagedPortfolioProviderError> {
         self.gateway.enroll(request).await
+    }
+
+    /// Returns one page of managed portfolios owned by a wallet.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ManagedPortfolioProviderError`] when the provider cannot serve the portfolio list.
+    pub async fn portfolios(
+        &self,
+        wallet: WalletAddress,
+        query: &ListManagedPortfoliosQuery,
+    ) -> Result<ManagedPortfolioPage, ManagedPortfolioProviderError> {
+        self.gateway.portfolios(wallet, query).await
+    }
+
+    /// Returns current BNB Chain positions for a managed portfolio.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ManagedPortfolioProviderError`] when the portfolio does not exist or the provider
+    /// cannot read its positions.
+    pub async fn positions(
+        &self,
+        portfolio_id: &str,
+    ) -> Result<ManagedPortfolioPositions, ManagedPortfolioProviderError> {
+        self.gateway.positions(portfolio_id).await
     }
 }

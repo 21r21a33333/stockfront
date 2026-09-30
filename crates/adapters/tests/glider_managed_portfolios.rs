@@ -11,8 +11,8 @@ use stockfront_core::{
     bstock_market::BNB_CHAIN_ID,
     managed_portfolios::{
         EnrollManagedPortfolioRequest, ListManagedPortfolioTemplatesQuery,
-        ManagedPortfolioCollection, ManagedPortfolioGateway, ManagedPortfolioSort,
-        PrepareManagedPortfolioEnrollmentRequest,
+        ListManagedPortfoliosQuery, ManagedPortfolioCollection, ManagedPortfolioGateway,
+        ManagedPortfolioSort, PrepareManagedPortfolioEnrollmentRequest,
     },
     wallet_portfolio::WalletAddress,
 };
@@ -189,6 +189,62 @@ async fn enrolls_live_bnb_managed_portfolio() -> Result<(), Box<dyn Error>> {
     assert_eq!(enrollment.template_id, template_id);
     assert_eq!(enrollment.smart_account.chain_id, BNB_CHAIN_ID);
     assert_ne!(enrollment.smart_account.address, Address::ZERO);
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires live Glider API credentials"]
+async fn lists_live_bnb_managed_portfolios_for_wallet() -> Result<(), Box<dyn Error>> {
+    let gateway = live_gateway()?;
+    let page = gateway
+        .portfolios(
+            test_wallet()?,
+            &ListManagedPortfoliosQuery::new(Some(50), None)?,
+        )
+        .await?;
+
+    assert!(!page.items.is_empty(), "wallet has no Glider portfolios");
+    for portfolio in page.items {
+        assert!(!portfolio.portfolio_id.is_empty());
+        assert!(!portfolio.template_id.is_empty());
+        assert!(!portfolio.template_name.is_empty());
+        assert_eq!(portfolio.smart_account.chain_id, BNB_CHAIN_ID);
+        assert_ne!(portfolio.smart_account.address, Address::ZERO);
+        assert!(
+            portfolio
+                .name
+                .as_ref()
+                .is_none_or(|name| !name.trim().is_empty())
+        );
+    }
+
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires live Glider API credentials"]
+async fn reads_live_bnb_managed_portfolio_positions() -> Result<(), Box<dyn Error>> {
+    let gateway = live_gateway()?;
+    let positions = gateway
+        .positions(&std::env::var("STOCKFRONT_GLIDER_PORTFOLIO_ID")?)
+        .await?;
+
+    assert!(!positions.portfolio_id.is_empty());
+    assert_eq!(positions.smart_account.chain_id, BNB_CHAIN_ID);
+    assert_ne!(positions.smart_account.address, Address::ZERO);
+    assert!(positions.total_value_usd >= Decimal::ZERO);
+    assert!(positions.observed_at_ms > 0);
+    for asset in positions.assets {
+        assert_ne!(asset.contract, Address::ZERO);
+        assert!(!asset.symbol.is_empty());
+        assert!(asset.amount >= Decimal::ZERO);
+        assert!(asset.price_usd >= Decimal::ZERO);
+        assert!(asset.value_usd >= Decimal::ZERO);
+    }
+    for warning in positions.warnings {
+        assert!(!warning.message.trim().is_empty());
+    }
+
     Ok(())
 }
 

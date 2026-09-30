@@ -10,4 +10,6 @@ pub(super) use borrowing::BorrowingMarketsRequest;
 pub(super) use bstocks::ListBstocksRequest;
 pub(super) use carry::CarryOpportunitiesRequest;
 pub(super) use liquidity::LiquidityOpportunitiesRequest;
-pub(super) use managed_portfolios::ListManagedPortfolioTemplatesRequest;
+pub(super) use managed_portfolios::{
+    ListManagedPortfolioTemplatesRequest, ListManagedPortfoliosRequest,
+};

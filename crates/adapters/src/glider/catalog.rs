@@ -2,17 +2,19 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use stockfront_core::managed_portfolios::{
-    EnrollManagedPortfolioRequest, ListManagedPortfolioTemplatesQuery, ManagedPortfolioEnrollment,
-    ManagedPortfolioGateway, ManagedPortfolioProviderError, ManagedPortfolioTemplate,
-    ManagedPortfolioTemplatePage, PrepareManagedPortfolioEnrollmentRequest,
-    PreparedManagedPortfolioEnrollment,
+    EnrollManagedPortfolioRequest, ListManagedPortfolioTemplatesQuery, ListManagedPortfoliosQuery,
+    ManagedPortfolioEnrollment, ManagedPortfolioGateway, ManagedPortfolioPage,
+    ManagedPortfolioPositions, ManagedPortfolioProviderError, ManagedPortfolioSummary,
+    ManagedPortfolioTemplate, ManagedPortfolioTemplatePage,
+    PrepareManagedPortfolioEnrollmentRequest, PreparedManagedPortfolioEnrollment,
 };
+use stockfront_core::wallet_portfolio::WalletAddress;
 
 use super::{
     client::{GliderClient, GliderConfigurationError},
     model::{
-        BnbManagedPortfolioEnrollment, BnbManagedPortfolioTemplate,
-        BnbPreparedManagedPortfolioEnrollment,
+        BnbManagedPortfolioEnrollment, BnbManagedPortfolioPositions, BnbManagedPortfolioSummary,
+        BnbManagedPortfolioTemplate, BnbPreparedManagedPortfolioEnrollment,
     },
 };
 
@@ -74,5 +76,33 @@ impl ManagedPortfolioGateway for GliderAdapter {
     ) -> Result<ManagedPortfolioEnrollment, ManagedPortfolioProviderError> {
         BnbManagedPortfolioEnrollment::try_from(*self.client.enroll(request).await?.data)
             .map(ManagedPortfolioEnrollment::from)
+    }
+
+    async fn portfolios(
+        &self,
+        wallet: WalletAddress,
+        query: &ListManagedPortfoliosQuery,
+    ) -> Result<ManagedPortfolioPage, ManagedPortfolioProviderError> {
+        let response = self.client.portfolios(wallet, query).await?;
+        let items = response
+            .data
+            .portfolios
+            .into_iter()
+            .filter_map(|portfolio| BnbManagedPortfolioSummary::try_from(portfolio).ok())
+            .map(ManagedPortfolioSummary::from)
+            .collect();
+
+        Ok(ManagedPortfolioPage {
+            items,
+            next_cursor: response.next_cursor,
+        })
+    }
+
+    async fn positions(
+        &self,
+        portfolio_id: &str,
+    ) -> Result<ManagedPortfolioPositions, ManagedPortfolioProviderError> {
+        BnbManagedPortfolioPositions::try_from(*self.client.positions(portfolio_id).await?.data)
+            .map(ManagedPortfolioPositions::from)
     }
 }
