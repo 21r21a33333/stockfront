@@ -30,6 +30,7 @@ impl BasketId {
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum BasketKind {
     IndexToken,
+    ManagedPortfolio,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]

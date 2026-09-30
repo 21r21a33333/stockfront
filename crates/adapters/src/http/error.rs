@@ -11,6 +11,9 @@ use stockfront_core::bstock_market::{BstockMarketError, CatalogError, QueryError
 use stockfront_core::bstock_trade::{TradeCatalogError, TradeError, TradeGatewayError};
 use stockfront_core::carry::{CarryServiceError, EarnProviderError};
 use stockfront_core::liquidity::{LiquidityProviderError, LiquidityServiceError};
+use stockfront_core::managed_portfolios::{
+    ListManagedPortfolioTemplatesQueryError, ManagedPortfolioProviderError,
+};
 use stockfront_core::wallet_portfolio::{
     BalanceReaderError, WalletAddressError, WalletPortfolioError,
 };
@@ -265,6 +268,11 @@ impl ApiError {
         "basket_provider_unavailable",
         "basket discovery is temporarily unavailable",
     );
+    const MANAGED_PORTFOLIO_PROVIDER_UNAVAILABLE: Self = Self::fixed(
+        StatusCode::SERVICE_UNAVAILABLE,
+        "managed_portfolio_provider_unavailable",
+        "managed portfolio discovery is temporarily unavailable",
+    );
     const fn fixed(status: StatusCode, code: &'static str, message: &'static str) -> Self {
         Self {
             status,
@@ -295,6 +303,23 @@ impl From<QueryError> for ApiError {
 impl From<ListBasketsQueryError> for ApiError {
     fn from(error: ListBasketsQueryError) -> Self {
         Self::dynamic(StatusCode::BAD_REQUEST, "invalid_query", error.to_string())
+    }
+}
+
+impl From<ListManagedPortfolioTemplatesQueryError> for ApiError {
+    fn from(error: ListManagedPortfolioTemplatesQueryError) -> Self {
+        Self::dynamic(StatusCode::BAD_REQUEST, "invalid_query", error.to_string())
+    }
+}
+
+impl From<ManagedPortfolioProviderError> for ApiError {
+    fn from(error: ManagedPortfolioProviderError) -> Self {
+        match error {
+            ManagedPortfolioProviderError::Unavailable => {
+                Self::MANAGED_PORTFOLIO_PROVIDER_UNAVAILABLE
+            }
+            ManagedPortfolioProviderError::InvalidData => Self::INVALID_PROVIDER_RESPONSE,
+        }
     }
 }
 

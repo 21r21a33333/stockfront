@@ -1,0 +1,398 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Glider V2 API",
+    "version": "2.0.0",
+    "description": "The Glider V2 API is a REST surface for integrator partners to create rebalance strategies, enroll end-users into them, and monitor or withdraw the resulting portfolios.\n\n**Mental model.** A *strategy* is a reusable template (allocation + schedule + swap preferences). A *portfolio* is one end-user's mirror of a strategy with one smart account per chain. Every portfolio enrolled in a strategy mirrors the same allocation; publishing a new strategy version causes enrolled portfolios to re-target on their next scheduled rebalance.\n\n**Rebalances.** Each portfolio runs on the strategy's schedule (`hourly`/`daily`/`weekly`/`monthly`). Integrators can also dispatch an out-of-band run with `POST /v2/portfolios/{id}/rebalance` — useful when an end-user wants to capture or hedge market volatility without waiting for the next tick. Runtime visibility (`nextDueAt`, `lastRebalanceAt`) lives on `GET /v2/portfolios/{id}` under `schedule`, not on the strategy.\n\n**Asset coverage.** Allocations accept any CAIP-19 asset Glider supports — ERC-20 tokens, SPL tokens, and tokenized real-world assets (equities, treasuries) sourced through Glider's upstream data providers. Token metadata, balances, and USD prices are returned uniformly via `GET /v2/portfolios/{id}/positions`.\n\n**Chain abstraction.** Glider's wallet infrastructure handles cross-chain deposit routing and asset migrations between supported chains. Integrators do not need to plan for client-side migrations when a chain is sunset or a strategy moves liquidity venues.\n\n**Conventions.** Authentication uses API keys (`x-api-key` header) with per-scope access. All identifiers are CAIP-10/CAIP-19 so the same shape works across EVM and non-EVM chains. All monetary values are decimal strings — never numbers — to preserve precision across JSON round-trips.\n\n**Terms.** Use of this API is governed by Glider's B2B API terms (see `termsOfService`). Integrators are responsible for surfacing applicable terms to their own end-users.",
+    "contact": {
+      "name": "Glider Engineering",
+      "url": "https://glider.fi",
+      "email": "developers@glider.fi"
+    },
+    "license": {
+      "name": "Proprietary"
+    },
+    "termsOfService": "https://glider.fi/terms"
+  },
+  "servers": [
+    {
+      "url": "https://api.glider.fi/v2",
+      "description": "Production"
+    }
+  ],
+  "security": [
+    {
+      "apiKey": []
+    }
+  ],
+  "paths": {
+    "/discovery/strategies": {
+      "get": {
+        "operationId": "discovery.strategies.list",
+        "tags": [
+          "Discovery"
+        ],
+        "summary": "List public, mirrorable strategies",
+        "description": "Returns Glider's public + mirrorable strategies for the chosen `collection` — `curated` (a hand-picked set, in editorial order) or `top_performing` (analytics-ranked). Both are keyset-paginated: follow `nextCursor` to page through results, keeping `collection` stable across pages. For `top_performing` the cursor encodes its `sort`, so `sort` need not be re-sent (if sent, it must match). Requires a valid API key; no scope.",
+        "security": [
+          {
+            "apiKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "curated",
+                "top_performing"
+              ],
+              "description": "Which catalog to return. `curated` = a hand-picked set of strategies in editorial order. `top_performing` = analytics-ranked (see `sort`).",
+              "example": "top_performing"
+            },
+            "required": true,
+            "description": "Which catalog to return. `curated` = a hand-picked set of strategies in editorial order. `top_performing` = analytics-ranked (see `sort`).",
+            "name": "collection",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "tvl.desc",
+                "inflows7d.desc",
+                "users.desc"
+              ],
+              "description": "Ranking for `top_performing`: `tvl.desc` (TVL), `inflows7d.desc` (7-day net inflows), `users.desc` (active users). Ignored for `curated`. Defaults to `tvl.desc`.",
+              "example": "tvl.desc"
+            },
+            "required": false,
+            "description": "Ranking for `top_performing`: `tvl.desc` (TVL), `inflows7d.desc` (7-day net inflows), `users.desc` (active users). Ignored for `curated`. Defaults to `tvl.desc`.",
+            "name": "sort",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 50,
+              "default": 50,
+              "description": "Max items per page (1–50) for both `curated` and `top_performing`. Follow `nextCursor` to page beyond the first set.",
+              "example": 50
+            },
+            "required": false,
+            "description": "Max items per page (1–50) for both `curated` and `top_performing`. Follow `nextCursor` to page beyond the first set.",
+            "name": "limit",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Opaque pagination cursor from a previous response. Pass the previous response's `nextCursor` verbatim."
+            },
+            "required": false,
+            "description": "Opaque pagination cursor from a previous response. Pass the previous response's `nextCursor` verbatim.",
+            "name": "cursor",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Public, mirrorable strategies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListDiscoveryStrategiesResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/V2ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid API key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/V2ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/V2ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "apiKey": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "x-api-key",
+        "description": "API key for authentication."
+      }
+    },
+    "schemas": {
+      "V2ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "error": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              },
+              "details": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": [
+              "code",
+              "message"
+            ]
+          }
+        },
+        "required": [
+          "success",
+          "error"
+        ]
+      },
+      "ListDiscoveryStrategiesResponse": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "strategies": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/DiscoveryStrategyItem"
+                }
+              }
+            },
+            "required": [
+              "strategies"
+            ]
+          },
+          "nextCursor": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Opaque cursor for the next page. Null when there are no more results."
+          }
+        },
+        "required": [
+          "success",
+          "data",
+          "nextCursor"
+        ]
+      },
+      "DiscoveryStrategyItem": {
+        "type": "object",
+        "properties": {
+          "strategyId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256,
+            "description": "Strategy identifier (ULID)",
+            "example": "01JWZEE2MF30KVRMRX53N88VA4"
+          },
+          "name": {
+            "type": "string",
+            "description": "Display name for the strategy.",
+            "example": "Balanced Growth"
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Strategy description. Null when none was provided.",
+            "example": "Multi-chain balanced allocation strategy"
+          },
+          "maxApy": {
+            "type": "string",
+            "description": "Advertised maximum APY as a decimal percentage string (e.g. \"10.00\" = 10%). Managed by Glider; not a computed return. Absent when no APY is advertised.",
+            "example": "10.00"
+          },
+          "allocation": {
+            "$ref": "#/components/schemas/StrategyAllocation"
+          },
+          "createdAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "ISO 8601 creation timestamp of the strategy. Null when unknown.",
+            "example": "2026-04-17T12:00:00.000Z"
+          },
+          "metrics": {
+            "$ref": "#/components/schemas/DiscoveryStrategyMetrics"
+          },
+          "canMirror": {
+            "type": "boolean",
+            "description": "Always true — only mirrorable strategies appear here. Use `strategyId` with the enroll flow to mirror.",
+            "example": true
+          }
+        },
+        "required": [
+          "strategyId",
+          "name",
+          "description",
+          "allocation",
+          "createdAt",
+          "metrics",
+          "canMirror"
+        ]
+      },
+      "StrategyAllocation": {
+        "type": "object",
+        "properties": {
+          "assets": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StrategyAllocationAsset"
+            },
+            "minItems": 1,
+            "maxItems": 50,
+            "description": "Target assets for the strategy. Weights must sum to 100."
+          }
+        },
+        "required": [
+          "assets"
+        ]
+      },
+      "StrategyAllocationAsset": {
+        "type": "object",
+        "properties": {
+          "assetId": {
+            "type": "string",
+            "minLength": 1,
+            "description": "CAIP-19 asset identifier",
+            "example": "eip155:1/erc20:0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48"
+          },
+          "weight": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^\\d+(\\.\\d{1,2})?$",
+            "description": "Allocation weight as a string percentage. Must be > 0, up to 2 decimal places. The allocation's weights must sum to 100.",
+            "example": "60"
+          }
+        },
+        "required": [
+          "assetId",
+          "weight"
+        ]
+      },
+      "DiscoveryStrategyMetrics": {
+        "type": "object",
+        "properties": {
+          "tvlUsd": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Total value locked across the strategy's active portfolios, as a USD decimal string rounded to 2 decimal places. Null when the value is temporarily unavailable — never conflated with a real \"0.00\".",
+            "example": "1250342.18"
+          },
+          "portfolioCount": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "Number of portfolios created from this strategy. Null when the value is temporarily unavailable — never conflated with a real 0.",
+            "example": 421
+          },
+          "performance": {
+            "$ref": "#/components/schemas/DiscoveryStrategyPerformance"
+          }
+        },
+        "required": [
+          "tvlUsd",
+          "portfolioCount",
+          "performance"
+        ]
+      },
+      "DiscoveryStrategyPerformance": {
+        "type": "object",
+        "properties": {
+          "summary": {
+            "$ref": "#/components/schemas/StrategyPerformanceSummary"
+          }
+        },
+        "required": [
+          "summary"
+        ]
+      },
+      "StrategyPerformanceSummary": {
+        "type": "object",
+        "properties": {
+          "windows": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "window": {
+                  "type": "string",
+                  "description": "Lookback window key. `all` spans the entire curve.",
+                  "example": "1w"
+                },
+                "percentChange": {
+                  "type": "string",
+                  "description": "Percent change from `since` to the last point using the response's `meta.method`. For `all` this is the curve's cumulative return.",
+                  "example": "1.7812"
+                },
+                "since": {
+                  "type": "string",
+                  "description": "UTC calendar date the return is anchored on. For `all` this is the curve's first point.",
+                  "example": "2026-04-23"
+                }
+              },
+              "required": [
+                "window",
+                "percentChange",
+                "since"
+              ]
+            },
+            "description": "Windowed lookbacks ordered shortest → longest, ending with `all`. Fixed windows that predate the curve are omitted."
+          }
+        },
+        "required": [
+          "windows"
+        ],
+        "description": "Target-allocation performance windows (1d…12m plus `all`), same shape as `GET /v2/strategies/{strategyId}/performance`. Fixed windows are omitted when price history is too short; `all` spans the curve."
+      }
+    }
+  }
+}

@@ -14,8 +14,17 @@ use axum::{
 use stockfront_core::{
     baskets::BasketService, bstock_borrowing::BorrowingService, bstock_market::BstockMarketService,
     bstock_trade::BstockTradeService, carry::CarryService, liquidity::LiquidityService,
-    wallet_portfolio::WalletPortfolioService,
+    managed_portfolios::ManagedPortfolioService, wallet_portfolio::WalletPortfolioService,
 };
+
+pub fn managed_portfolio_router(service: Arc<ManagedPortfolioService>) -> Router {
+    Router::new()
+        .route(
+            "/v1/managed-portfolios/templates",
+            get(handlers::managed_portfolios::templates),
+        )
+        .with_state(service)
+}
 
 pub fn basket_router(service: Arc<BasketService>) -> Router {
     Router::new()

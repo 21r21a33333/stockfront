@@ -6,6 +6,7 @@ pub mod bstock_market;
 pub mod bstock_trade;
 pub mod carry;
 pub mod liquidity;
+pub mod managed_portfolios;
 pub mod prepared_action;
 pub mod wallet_portfolio;
 

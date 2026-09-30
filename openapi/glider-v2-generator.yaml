@@ -1,0 +1,10 @@
+packageName: glider-api
+packageVersion: 0.1.0
+library: reqwest
+supportAsync: true
+supportMiddleware: true
+useSerdePathToError: true
+useSingleRequestParameter: true
+hideGenerationTimestamp: true
+reqwestDefaultFeatures: rustls
+packageAuthors: Stockfront contributors
