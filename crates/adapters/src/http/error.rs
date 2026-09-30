@@ -271,7 +271,17 @@ impl ApiError {
     const MANAGED_PORTFOLIO_PROVIDER_UNAVAILABLE: Self = Self::fixed(
         StatusCode::SERVICE_UNAVAILABLE,
         "managed_portfolio_provider_unavailable",
-        "managed portfolio discovery is temporarily unavailable",
+        "managed portfolio services are temporarily unavailable",
+    );
+    const MANAGED_PORTFOLIO_ENROLLMENT_REJECTED: Self = Self::fixed(
+        StatusCode::UNPROCESSABLE_ENTITY,
+        "managed_portfolio_enrollment_rejected",
+        "the managed portfolio provider rejected the enrollment",
+    );
+    const MANAGED_PORTFOLIO_ENROLLMENT_CONFLICT: Self = Self::fixed(
+        StatusCode::CONFLICT,
+        "managed_portfolio_enrollment_conflict",
+        "the wallet is already enrolled or the enrollment state has changed",
     );
     const fn fixed(status: StatusCode, code: &'static str, message: &'static str) -> Self {
         Self {
@@ -319,6 +329,8 @@ impl From<ManagedPortfolioProviderError> for ApiError {
                 Self::MANAGED_PORTFOLIO_PROVIDER_UNAVAILABLE
             }
             ManagedPortfolioProviderError::InvalidData => Self::INVALID_PROVIDER_RESPONSE,
+            ManagedPortfolioProviderError::Rejected => Self::MANAGED_PORTFOLIO_ENROLLMENT_REJECTED,
+            ManagedPortfolioProviderError::Conflict => Self::MANAGED_PORTFOLIO_ENROLLMENT_CONFLICT,
         }
     }
 }

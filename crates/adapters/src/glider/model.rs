@@ -1,22 +1,31 @@
 use std::str::FromStr;
 
-use alloy_primitives::Address;
-use glider_api::models::{DiscoveryStrategyItem, StrategyAllocationAsset};
+use alloy_primitives::{Address, B256};
+use glider_api::models::{
+    CreateEnrollData, CreateEnrollSignatureData, DiscoveryStrategyItem, StrategyAllocationAsset,
+};
 use rust_decimal::Decimal;
 use stockfront_core::{
     baskets::BasketKind,
     bstock_market::BNB_CHAIN_ID,
     managed_portfolios::{
-        ManagedPortfolioAllocation, ManagedPortfolioPerformance, ManagedPortfolioProviderError,
-        ManagedPortfolioTemplate, ManagedPortfolioTemplateMetrics,
+        ManagedPortfolioAccount, ManagedPortfolioAllocation, ManagedPortfolioEnrollment,
+        ManagedPortfolioEnrollmentAuthorization, ManagedPortfolioPerformance,
+        ManagedPortfolioProviderError, ManagedPortfolioTemplate, ManagedPortfolioTemplateMetrics,
+        PreparedManagedPortfolioEnrollment,
     },
 };
 
 const BNB_ERC20_PREFIX: &str = "eip155:56/erc20:";
+const BNB_ACCOUNT_PREFIX: &str = "eip155:56:";
 
 pub(super) struct BnbManagedPortfolioTemplate(ManagedPortfolioTemplate);
 
 struct BnbManagedPortfolioAllocation(ManagedPortfolioAllocation);
+
+pub(super) struct BnbPreparedManagedPortfolioEnrollment(PreparedManagedPortfolioEnrollment);
+
+pub(super) struct BnbManagedPortfolioEnrollment(ManagedPortfolioEnrollment);
 
 impl From<BnbManagedPortfolioTemplate> for ManagedPortfolioTemplate {
     fn from(value: BnbManagedPortfolioTemplate) -> Self {
@@ -26,6 +35,18 @@ impl From<BnbManagedPortfolioTemplate> for ManagedPortfolioTemplate {
 
 impl From<BnbManagedPortfolioAllocation> for ManagedPortfolioAllocation {
     fn from(value: BnbManagedPortfolioAllocation) -> Self {
+        value.0
+    }
+}
+
+impl From<BnbPreparedManagedPortfolioEnrollment> for PreparedManagedPortfolioEnrollment {
+    fn from(value: BnbPreparedManagedPortfolioEnrollment) -> Self {
+        value.0
+    }
+}
+
+impl From<BnbManagedPortfolioEnrollment> for ManagedPortfolioEnrollment {
+    fn from(value: BnbManagedPortfolioEnrollment) -> Self {
         value.0
     }
 }
@@ -99,6 +120,51 @@ impl TryFrom<StrategyAllocationAsset> for BnbManagedPortfolioAllocation {
             chain_id: BNB_CHAIN_ID,
             contract,
             weight_percent,
+        }))
+    }
+}
+
+impl TryFrom<CreateEnrollSignatureData> for BnbPreparedManagedPortfolioEnrollment {
+    type Error = ManagedPortfolioProviderError;
+
+    fn try_from(value: CreateEnrollSignatureData) -> Result<Self, Self::Error> {
+        let personal_sign_message = B256::from_str(&value.message.raw)
+            .map_err(|_| ManagedPortfolioProviderError::InvalidData)?;
+
+        Ok(Self(PreparedManagedPortfolioEnrollment {
+            authorization: ManagedPortfolioEnrollmentAuthorization {
+                flow_id: value.flow_id,
+                account_index: value.account_index,
+                agent_account_id: value.agent_account_id,
+            },
+            personal_sign_message,
+        }))
+    }
+}
+
+impl TryFrom<CreateEnrollData> for BnbManagedPortfolioEnrollment {
+    type Error = ManagedPortfolioProviderError;
+
+    fn try_from(value: CreateEnrollData) -> Result<Self, Self::Error> {
+        let [smart_account] = value
+            .smart_accounts
+            .try_into()
+            .map_err(|_| ManagedPortfolioProviderError::InvalidData)?;
+        let address = smart_account
+            .account_id
+            .strip_prefix(BNB_ACCOUNT_PREFIX)
+            .ok_or(ManagedPortfolioProviderError::InvalidData)?
+            .parse::<Address>()
+            .map_err(|_| ManagedPortfolioProviderError::InvalidData)?;
+
+        Ok(Self(ManagedPortfolioEnrollment {
+            portfolio_id: value.portfolio_id,
+            template_id: value.strategy_id,
+            name: value.portfolio_name,
+            smart_account: ManagedPortfolioAccount {
+                chain_id: BNB_CHAIN_ID,
+                address,
+            },
         }))
     }
 }
@@ -181,5 +247,55 @@ mod tests {
         .unwrap_or_else(|error| panic!("valid generated model rejected: {error}"));
 
         assert!(BnbManagedPortfolioTemplate::try_from(base_strategy).is_err());
+    }
+
+    #[test]
+    fn maps_bnb_enrollment_authorization_and_result() {
+        let prepared = serde_json::from_value::<CreateEnrollSignatureData>(serde_json::json!({
+            "message": {
+                "kind": "ecdsa",
+                "raw": "0x595dee26258ccd236c246fcb00aaec8698d33ca91be55f38d451d67baa99e564"
+            },
+            "agentAccountId": "eip155:0:0xa53835d3eb7a8a6666c4771c29bc4db546137b56",
+            "accountIndex": "70",
+            "accountType": "ECDSA",
+            "flowId": "01M3SFGSCT4BND50BVBKBV4YTZ"
+        }))
+        .unwrap_or_else(|error| panic!("valid generated model rejected: {error}"));
+        let prepared = PreparedManagedPortfolioEnrollment::from(
+            BnbPreparedManagedPortfolioEnrollment::try_from(prepared)
+                .unwrap_or_else(|error| panic!("valid enrollment authorization rejected: {error}")),
+        );
+
+        assert_eq!(prepared.authorization.account_index, "70");
+        assert_eq!(
+            prepared.personal_sign_message,
+            B256::from_str("0x595dee26258ccd236c246fcb00aaec8698d33ca91be55f38d451d67baa99e564")
+                .unwrap_or_else(|error| panic!("valid hash rejected: {error}"))
+        );
+
+        let enrollment = serde_json::from_value::<CreateEnrollData>(serde_json::json!({
+            "portfolioId": "portfolio-1",
+            "portfolioName": "Technology Portfolio",
+            "strategyId": "strategy-1",
+            "smartAccounts": [{
+                "accountId": "eip155:56:0x02Fca66C1D1aFB4E2A7884261eB00F63598a7436"
+            }]
+        }))
+        .unwrap_or_else(|error| panic!("valid generated model rejected: {error}"));
+        let enrollment = ManagedPortfolioEnrollment::from(
+            BnbManagedPortfolioEnrollment::try_from(enrollment)
+                .unwrap_or_else(|error| panic!("valid BNB enrollment rejected: {error}")),
+        );
+
+        assert_eq!(enrollment.portfolio_id, "portfolio-1");
+        assert_eq!(enrollment.template_id, "strategy-1");
+        assert_eq!(enrollment.smart_account.chain_id, BNB_CHAIN_ID);
+        assert_eq!(
+            enrollment.smart_account.address,
+            "0x02Fca66C1D1aFB4E2A7884261eB00F63598a7436"
+                .parse::<Address>()
+                .unwrap_or_else(|error| panic!("valid address rejected: {error}"))
+        );
     }
 }

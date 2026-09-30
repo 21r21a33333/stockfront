@@ -1,18 +1,19 @@
 use std::sync::Arc;
 
 use super::{
-    ListManagedPortfolioTemplatesQuery, ManagedPortfolioProviderError, ManagedPortfolioReader,
-    ManagedPortfolioTemplatePage,
+    EnrollManagedPortfolioRequest, ListManagedPortfolioTemplatesQuery, ManagedPortfolioEnrollment,
+    ManagedPortfolioGateway, ManagedPortfolioProviderError, ManagedPortfolioTemplatePage,
+    PrepareManagedPortfolioEnrollmentRequest, PreparedManagedPortfolioEnrollment,
 };
 
 pub struct ManagedPortfolioService {
-    reader: Arc<dyn ManagedPortfolioReader>,
+    gateway: Arc<dyn ManagedPortfolioGateway>,
 }
 
 impl ManagedPortfolioService {
     #[must_use]
-    pub fn new(reader: Arc<dyn ManagedPortfolioReader>) -> Self {
-        Self { reader }
+    pub fn new(gateway: Arc<dyn ManagedPortfolioGateway>) -> Self {
+        Self { gateway }
     }
 
     /// Returns one page of managed portfolio templates.
@@ -24,6 +25,32 @@ impl ManagedPortfolioService {
         &self,
         query: &ListManagedPortfolioTemplatesQuery,
     ) -> Result<ManagedPortfolioTemplatePage, ManagedPortfolioProviderError> {
-        self.reader.templates(query).await
+        self.gateway.templates(query).await
+    }
+
+    /// Prepares the wallet authorization required to enroll in a managed portfolio template.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ManagedPortfolioProviderError`] when the provider rejects or cannot prepare the
+    /// enrollment.
+    pub async fn prepare_enrollment(
+        &self,
+        request: &PrepareManagedPortfolioEnrollmentRequest,
+    ) -> Result<PreparedManagedPortfolioEnrollment, ManagedPortfolioProviderError> {
+        self.gateway.prepare_enrollment(request).await
+    }
+
+    /// Creates the managed portfolio after the wallet signs its enrollment authorization.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ManagedPortfolioProviderError`] when the authorization is rejected, conflicts
+    /// with existing state, or the provider is unavailable.
+    pub async fn enroll(
+        &self,
+        request: &EnrollManagedPortfolioRequest,
+    ) -> Result<ManagedPortfolioEnrollment, ManagedPortfolioProviderError> {
+        self.gateway.enroll(request).await
     }
 }

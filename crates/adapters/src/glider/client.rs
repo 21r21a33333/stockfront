@@ -7,13 +7,22 @@ use glider_api::{
         discovery_api::{
             DiscoveryStrategiesListError, DiscoveryStrategiesListParams, discovery_strategies_list,
         },
+        enrollment_api::{
+            EnrollmentCreateParams, EnrollmentPrepareSignatureParams, enrollment_create,
+            enrollment_prepare_signature,
+        },
     },
-    models::ListDiscoveryStrategiesResponse,
+    models::{
+        CreateEnrollRequest, CreateEnrollResponse, CreateEnrollSignatureRequest,
+        CreateEnrollSignatureResponse, ListDiscoveryStrategiesResponse,
+        create_enroll_request::AccountType as EnrollAccountType,
+        create_enroll_signature_request::AccountType as PrepareAccountType,
+    },
 };
 use reqwest_middleware::ClientBuilder;
 use stockfront_core::managed_portfolios::{
-    ListManagedPortfolioTemplatesQuery, ManagedPortfolioCollection, ManagedPortfolioProviderError,
-    ManagedPortfolioSort,
+    EnrollManagedPortfolioRequest, ListManagedPortfolioTemplatesQuery, ManagedPortfolioCollection,
+    ManagedPortfolioProviderError, ManagedPortfolioSort, PrepareManagedPortfolioEnrollmentRequest,
 };
 use thiserror::Error;
 use url::Url;
@@ -75,6 +84,55 @@ impl GliderClient {
         .await
         .map_err(|error| map_provider_error(&error))
     }
+
+    pub(super) async fn prepare_enrollment(
+        &self,
+        request: &PrepareManagedPortfolioEnrollmentRequest,
+    ) -> Result<CreateEnrollSignatureResponse, ManagedPortfolioProviderError> {
+        enrollment_prepare_signature(
+            &self.configuration,
+            EnrollmentPrepareSignatureParams {
+                create_enroll_signature_request: CreateEnrollSignatureRequest::new(
+                    evm_owner_account_id(request.wallet),
+                    request.template_id.clone(),
+                    vec![56],
+                    PrepareAccountType::Ecdsa,
+                ),
+            },
+        )
+        .await
+        .map_err(|error| map_enrollment_error(&error))
+    }
+
+    pub(super) async fn enroll(
+        &self,
+        request: &EnrollManagedPortfolioRequest,
+    ) -> Result<CreateEnrollResponse, ManagedPortfolioProviderError> {
+        let mut enrollment = CreateEnrollRequest::new(
+            evm_owner_account_id(request.wallet),
+            request.template_id.clone(),
+            vec![56],
+            EnrollAccountType::Ecdsa,
+            request.authorization.account_index.clone(),
+            request.authorization.agent_account_id.clone(),
+            request.signature.clone(),
+            request.authorization.flow_id.clone(),
+        );
+        enrollment.portfolio_name.clone_from(&request.name);
+
+        enrollment_create(
+            &self.configuration,
+            EnrollmentCreateParams {
+                create_enroll_request: enrollment,
+            },
+        )
+        .await
+        .map_err(|error| map_enrollment_error(&error))
+    }
+}
+
+fn evm_owner_account_id(wallet: stockfront_core::wallet_portfolio::WalletAddress) -> String {
+    format!("eip155:0:{}", wallet.as_address())
 }
 
 fn map_provider_error(
@@ -88,6 +146,22 @@ fn map_provider_error(
         | GliderApiError::ReqwestMiddleware(_)
         | GliderApiError::Io(_)
         | GliderApiError::ResponseError(_) => ManagedPortfolioProviderError::Unavailable,
+    }
+}
+
+fn map_enrollment_error<E>(error: &GliderApiError<E>) -> ManagedPortfolioProviderError {
+    match error {
+        GliderApiError::Serde(_) | GliderApiError::SerdePathToError(_) => {
+            ManagedPortfolioProviderError::InvalidData
+        }
+        GliderApiError::ResponseError(response) => match response.status.as_u16() {
+            400 => ManagedPortfolioProviderError::Rejected,
+            409 => ManagedPortfolioProviderError::Conflict,
+            _ => ManagedPortfolioProviderError::Unavailable,
+        },
+        GliderApiError::Reqwest(_)
+        | GliderApiError::ReqwestMiddleware(_)
+        | GliderApiError::Io(_) => ManagedPortfolioProviderError::Unavailable,
     }
 }
 

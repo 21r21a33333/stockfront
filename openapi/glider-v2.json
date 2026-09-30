@@ -139,6 +139,180 @@
           }
         }
       }
+    },
+    "/enroll/signature": {
+      "post": {
+        "operationId": "enrollment.prepareSignature",
+        "tags": [
+          "Enrollment"
+        ],
+        "summary": "Prepare user authorization for enrollment",
+        "description": "Stage 1 of the two-stage enroll flow. Validates that the calling tenant can enroll users in the `strategyId`, resolves or allocates an automation agent, and returns the wallet authorization payload. For EVM enrollment, stage 1 reads a candidate account index but does not reserve it; stage 2 commits the index only after signature verification. SVM enrollment uses `accountIndex: \"0\"` as a compatibility placeholder. The response's `flowId`, `accountIndex`, and `agentAccountId` must all be passed back verbatim to `POST /v2/enroll`.",
+        "security": [
+          {
+            "apiKey": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateEnrollSignatureRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Enrollment authorization issued",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreateEnrollSignatureResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request or unknown strategy",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/V2ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid API key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/V2ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Missing required scope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/V2ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/V2ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/enroll": {
+      "post": {
+        "operationId": "enrollment.create",
+        "tags": [
+          "Enrollment"
+        ],
+        "summary": "Create a portfolio for an enrolled user",
+        "description": "Stage 2 of the two-stage enroll flow. Consumes the `flowId` + `accountIndex` + `agentAccountId` returned by `POST /v2/enroll/signature` plus the user's `signature` over the session-key message. Verifies the signature, creates the mirror strategy instance, one smart account per chain, and a rebalance schedule row derived from the strategy's execution config — all inside a single transaction. The whole operation is idempotent on `(tenantId, apiKeyId, \"POST /v2/enroll\", flowId)` via the `v2_idempotency_keys` store; a replay with the same body returns the cached response, a replay with a different body returns 409.",
+        "security": [
+          {
+            "apiKey": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateEnrollRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Portfolio enrolled",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreateEnrollResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request, unknown strategy, expired flow, expired signed Solana transaction, or invalid signature",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/V2ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid API key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/V2ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Missing required scope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/V2ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Idempotency replay-in-progress, key-conflict, user already enrolled, or an active registration for the derived Solana sub-account",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/V2ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/V2ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Portfolio committed but indexing registration is temporarily unavailable; retry the exact same flowId",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/V2ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -392,6 +566,279 @@
           "windows"
         ],
         "description": "Target-allocation performance windows (1d…12m plus `all`), same shape as `GET /v2/strategies/{strategyId}/performance`. Fixed windows are omitted when price history is too short; `all` spans the curve."
+      },
+      "CreateEnrollSignatureRequest": {
+        "type": "object",
+        "properties": {
+          "ownerAccountId": {
+            "type": "string",
+            "description": "End-user wallet as a CAIP-10 identifier. EVM: `eip155:0:<addr>` (chain-agnostic per CAIP-10 §Abstract Account Addresses). Solana: `solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp:<base58>` (CAIP-2 mainnet reference).",
+            "example": "eip155:0:0xabcdef0000000000000000000000000000000001"
+          },
+          "strategyId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256,
+            "description": "Strategy identifier (ULID)",
+            "example": "01JWZEE2MF30KVRMRX53N88VA4"
+          },
+          "chainIds": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            },
+            "minItems": 1,
+            "maxItems": 20,
+            "description": "Numeric chain ids the user wants smart accounts on. Must be a subset of the chains this deployment has RPCs configured for.",
+            "example": [
+              1,
+              8453
+            ]
+          },
+          "accountType": {
+            "type": "string",
+            "enum": [
+              "ECDSA",
+              "ERC1271"
+            ],
+            "default": "ECDSA",
+            "description": "EVM Kernel owner/validator configuration. `ECDSA` uses the MultiChainECDSAValidator. `ERC1271` uses the Kernel SmartAccount validator and requires exactly one EVM chainId.",
+            "example": "ECDSA"
+          }
+        },
+        "required": [
+          "ownerAccountId",
+          "strategyId",
+          "chainIds",
+          "accountType"
+        ]
+      },
+      "CreateEnrollSignatureData": {
+        "type": "object",
+        "properties": {
+          "message": {
+            "$ref": "#/components/schemas/SessionKeyMessageEcdsa"
+          },
+          "agentAccountId": {
+            "type": "string",
+            "description": "Pooled KMS agent as a chain-agnostic CAIP-10 identifier (`eip155:0:<addr>`) that will operate the smart account post-enrollment. Must be round-tripped verbatim to `POST /v2/enroll`.",
+            "example": "eip155:0:0x1111111111111111111111111111111111111111"
+          },
+          "accountIndex": {
+            "type": "string",
+            "pattern": "^\\d+$",
+            "description": "Enrollment account index. For EVM, this is a candidate index that stage 1 does not reserve. For SVM, it is the compatibility placeholder `\"0\"`. Must be round-tripped to `POST /v2/enroll`.",
+            "example": "7"
+          },
+          "accountType": {
+            "type": "string",
+            "enum": [
+              "ECDSA",
+              "ERC1271"
+            ],
+            "description": "EVM Kernel owner/validator configuration used to build `message`. Round-trip this to `POST /v2/enroll` when present.",
+            "example": "ECDSA"
+          },
+          "flowId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256,
+            "description": "Opaque flow identifier valid for 24 hours. Must be round-tripped to `POST /v2/enroll` and also serves as the idempotency anchor there.",
+            "example": "flow_01JWZEE2MF30KVRMRX53N88VA4"
+          }
+        },
+        "required": [
+          "message",
+          "agentAccountId",
+          "accountIndex",
+          "flowId"
+        ]
+      },
+      "CreateEnrollSignatureResponse": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "data": {
+            "$ref": "#/components/schemas/CreateEnrollSignatureData"
+          }
+        },
+        "required": [
+          "success",
+          "data"
+        ]
+      },
+      "SessionKeyMessageEcdsa": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string"
+          },
+          "raw": {
+            "type": "string",
+            "pattern": "^0x[a-fA-F0-9]{64}$",
+            "description": "32-byte hex hash. The user signs this via EIP-191 personal_sign in their EVM wallet.",
+            "example": "0xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
+          }
+        },
+        "required": [
+          "kind",
+          "raw"
+        ]
+      },
+      "CreateEnrollRequest": {
+        "type": "object",
+        "properties": {
+          "ownerAccountId": {
+            "type": "string",
+            "description": "End-user wallet as a CAIP-10 identifier. EVM: `eip155:0:<addr>`. Solana: `solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp:<base58>`.",
+            "example": "eip155:0:0xabcdef0000000000000000000000000000000001"
+          },
+          "strategyId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256,
+            "description": "Strategy identifier (ULID)",
+            "example": "01JWZEE2MF30KVRMRX53N88VA4"
+          },
+          "chainIds": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            },
+            "minItems": 1,
+            "maxItems": 20,
+            "description": "Numeric chain ids the user wants smart accounts on. Must be a subset of the chains this deployment has RPCs configured for.",
+            "example": [
+              1,
+              8453
+            ]
+          },
+          "accountType": {
+            "type": "string",
+            "enum": [
+              "ECDSA",
+              "ERC1271"
+            ],
+            "default": "ECDSA",
+            "description": "EVM Kernel owner/validator configuration. Must match the value used for `POST /v2/enroll/signature`. `ERC1271` requires exactly one EVM chainId.",
+            "example": "ECDSA"
+          },
+          "accountIndex": {
+            "type": "string",
+            "pattern": "^\\d+$",
+            "description": "Enrollment account index as a decimal string. For EVM, stage 1 returns a candidate index that is committed only after stage 2 verifies the signature. SVM returns `\"0\"` as a compatibility placeholder. Must round-trip from `POST /v2/enroll/signature` into `POST /v2/enroll`.",
+            "example": "7"
+          },
+          "agentAccountId": {
+            "type": "string",
+            "description": "Pooled KMS agent CAIP-10 returned by `POST /v2/enroll/signature`. Must round-trip verbatim so the server can recompute the signable message. EVM (`eip155:0:<addr>`) or Solana (`solana:<ref>:<base58>`).",
+            "example": "eip155:0:0x1111111111111111111111111111111111111111"
+          },
+          "signature": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^(0x[0-9a-fA-F]+|[1-9A-HJ-NP-Za-km-z]+)$",
+            "description": "Signature over the stage-1 message. Hex (EVM ECDSA / SVM Model A) or base58. Required for every path EXCEPT the SVM B2B subaccount path, which instead returns `signedSolanaTransaction`.",
+            "example": "0x9412d70d539f889ecec2d3152b68af758d689a4325a43b07811ee708814527c72256fc749d7fd3745a07f0aaa84813955050c461392d9b9ee1f80e106fac39e01b"
+          },
+          "flowId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256,
+            "description": "Opaque flow identifier. Valid for 24h. Also the idempotency anchor for `POST /v2/enroll`.",
+            "example": "flow_01JWZEE2MF30KVRMRX53N88VA4"
+          },
+          "portfolioName": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64,
+            "pattern": "^[\\p{L}\\p{N} \\-_.':()&/]+$/u",
+            "description": "Integrator-provided display name for the portfolio. Trimmed server-side. Max 64 characters. Supports Unicode letters, digits, spaces, and - _ . ' : ( ) & /.",
+            "example": "Alice's Portfolio"
+          }
+        },
+        "required": [
+          "ownerAccountId",
+          "strategyId",
+          "chainIds",
+          "accountIndex",
+          "agentAccountId",
+          "flowId",
+          "accountType",
+          "signature"
+        ]
+      },
+      "CreateEnrollData": {
+        "type": "object",
+        "properties": {
+          "portfolioId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256,
+            "description": "Portfolio identifier",
+            "example": "a1b2c3d4"
+          },
+          "portfolioName": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Integrator-provided display name for the portfolio. Null when the portfolio was created without one.",
+            "example": "Alice's Portfolio"
+          },
+          "strategyId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256,
+            "description": "Strategy identifier (ULID)",
+            "example": "01JWZEE2MF30KVRMRX53N88VA4"
+          },
+          "smartAccounts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SmartAccount"
+            },
+            "description": "Canonical SmartAccount objects, one per requested chain. Deterministic CREATE2 addresses."
+          }
+        },
+        "required": [
+          "portfolioId",
+          "portfolioName",
+          "strategyId",
+          "smartAccounts"
+        ]
+      },
+      "CreateEnrollResponse": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "data": {
+            "$ref": "#/components/schemas/CreateEnrollData"
+          }
+        },
+        "required": [
+          "success",
+          "data"
+        ]
+      },
+      "SmartAccount": {
+        "type": "object",
+        "properties": {
+          "accountId": {
+            "type": "string",
+            "description": "CAIP-10 account identifier for the smart account (Kernel smart account). Always chain-bound — the same smart account address on a different chain is a different account.",
+            "example": "eip155:8453:0xe3a2d1f49aee887e42655b56371d4d76bbf58058"
+          }
+        },
+        "required": [
+          "accountId"
+        ]
       }
     }
   }

@@ -3,10 +3,12 @@ mod ports;
 mod service;
 
 pub use model::{
-    ListManagedPortfolioTemplatesQuery, ListManagedPortfolioTemplatesQueryError,
-    ManagedPortfolioAllocation, ManagedPortfolioCollection, ManagedPortfolioPerformance,
-    ManagedPortfolioSort, ManagedPortfolioTemplate, ManagedPortfolioTemplateMetrics,
-    ManagedPortfolioTemplatePage,
+    EnrollManagedPortfolioRequest, ListManagedPortfolioTemplatesQuery,
+    ListManagedPortfolioTemplatesQueryError, ManagedPortfolioAccount, ManagedPortfolioAllocation,
+    ManagedPortfolioCollection, ManagedPortfolioEnrollment,
+    ManagedPortfolioEnrollmentAuthorization, ManagedPortfolioPerformance, ManagedPortfolioSort,
+    ManagedPortfolioTemplate, ManagedPortfolioTemplateMetrics, ManagedPortfolioTemplatePage,
+    PrepareManagedPortfolioEnrollmentRequest, PreparedManagedPortfolioEnrollment,
 };
-pub use ports::{ManagedPortfolioProviderError, ManagedPortfolioReader};
+pub use ports::{ManagedPortfolioGateway, ManagedPortfolioProviderError};
 pub use service::ManagedPortfolioService;

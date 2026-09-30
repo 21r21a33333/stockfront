@@ -23,6 +23,14 @@ pub fn managed_portfolio_router(service: Arc<ManagedPortfolioService>) -> Router
             "/v1/managed-portfolios/templates",
             get(handlers::managed_portfolios::templates),
         )
+        .route(
+            "/v1/managed-portfolios/enrollments/prepare",
+            post(handlers::managed_portfolios::prepare_enrollment),
+        )
+        .route(
+            "/v1/managed-portfolios/enrollments",
+            post(handlers::managed_portfolios::enroll),
+        )
         .with_state(service)
 }
 

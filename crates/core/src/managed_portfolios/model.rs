@@ -1,9 +1,11 @@
-use alloy_primitives::Address;
+use alloy_primitives::{Address, B256};
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use crate::{baskets::BasketKind, serialization::serialize_as_string};
+use crate::{
+    baskets::BasketKind, serialization::serialize_as_string, wallet_portfolio::WalletAddress,
+};
 
 const DEFAULT_LIST_LIMIT: usize = 20;
 const MAX_LIST_LIMIT: usize = 50;
@@ -109,6 +111,57 @@ pub struct ManagedPortfolioTemplatePage {
     pub items: Vec<ManagedPortfolioTemplate>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub next_cursor: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PrepareManagedPortfolioEnrollmentRequest {
+    pub wallet: WalletAddress,
+    pub template_id: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ManagedPortfolioEnrollmentAuthorization {
+    pub flow_id: String,
+    pub account_index: String,
+    pub agent_account_id: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PreparedManagedPortfolioEnrollment {
+    pub authorization: ManagedPortfolioEnrollmentAuthorization,
+    #[serde(serialize_with = "serialize_as_string")]
+    pub personal_sign_message: B256,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EnrollManagedPortfolioRequest {
+    pub wallet: WalletAddress,
+    pub template_id: String,
+    pub authorization: ManagedPortfolioEnrollmentAuthorization,
+    pub signature: String,
+    pub name: Option<String>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ManagedPortfolioAccount {
+    pub chain_id: u64,
+    #[serde(serialize_with = "serialize_as_string")]
+    pub address: Address,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ManagedPortfolioEnrollment {
+    pub portfolio_id: String,
+    pub template_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    pub smart_account: ManagedPortfolioAccount,
 }
 
 #[derive(Clone, Copy, Debug, Error, Eq, PartialEq)]

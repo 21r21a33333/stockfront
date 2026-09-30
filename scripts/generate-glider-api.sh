@@ -19,7 +19,7 @@ docker run --rm \
   --config /workspace/openapi/glider-v2-generator.yaml \
   --output "/workspace/$generated_name" \
   --ignore-file-override /workspace/openapi/glider-v2.ignore \
-  --global-property apis=Discovery,models,supportingFiles,apiTests=false,modelTests=false,apiDocs=false,modelDocs=false \
+  --global-property apis=Discovery:Enrollment,models,supportingFiles,apiTests=false,modelTests=false,apiDocs=false,modelDocs=false \
   --skip-validate-spec
 
 # Generic publishing files are not part of Stockfront's vendored client.

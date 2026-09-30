@@ -1,7 +1,14 @@
 use std::sync::Arc;
 
-use axum::extract::{Query, State};
-use stockfront_core::managed_portfolios::{ManagedPortfolioService, ManagedPortfolioTemplatePage};
+use axum::{
+    Json,
+    extract::{Query, State, rejection::JsonRejection},
+};
+use stockfront_core::managed_portfolios::{
+    EnrollManagedPortfolioRequest, ManagedPortfolioEnrollment, ManagedPortfolioService,
+    ManagedPortfolioTemplatePage, PrepareManagedPortfolioEnrollmentRequest,
+    PreparedManagedPortfolioEnrollment,
+};
 
 use super::super::{
     primitives::{ApiResult, Response},
@@ -14,4 +21,20 @@ pub(in crate::http) async fn templates(
 ) -> ApiResult<ManagedPortfolioTemplatePage> {
     let query = request.try_into()?;
     Ok(Response::ok(service.templates(&query).await?))
+}
+
+pub(in crate::http) async fn prepare_enrollment(
+    State(service): State<Arc<ManagedPortfolioService>>,
+    request: Result<Json<PrepareManagedPortfolioEnrollmentRequest>, JsonRejection>,
+) -> ApiResult<PreparedManagedPortfolioEnrollment> {
+    let Json(request) = request?;
+    Ok(Response::ok(service.prepare_enrollment(&request).await?))
+}
+
+pub(in crate::http) async fn enroll(
+    State(service): State<Arc<ManagedPortfolioService>>,
+    request: Result<Json<EnrollManagedPortfolioRequest>, JsonRejection>,
+) -> ApiResult<ManagedPortfolioEnrollment> {
+    let Json(request) = request?;
+    Ok(Response::ok(service.enroll(&request).await?))
 }

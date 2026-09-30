@@ -2,13 +2,18 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use stockfront_core::managed_portfolios::{
-    ListManagedPortfolioTemplatesQuery, ManagedPortfolioProviderError, ManagedPortfolioReader,
-    ManagedPortfolioTemplate, ManagedPortfolioTemplatePage,
+    EnrollManagedPortfolioRequest, ListManagedPortfolioTemplatesQuery, ManagedPortfolioEnrollment,
+    ManagedPortfolioGateway, ManagedPortfolioProviderError, ManagedPortfolioTemplate,
+    ManagedPortfolioTemplatePage, PrepareManagedPortfolioEnrollmentRequest,
+    PreparedManagedPortfolioEnrollment,
 };
 
 use super::{
     client::{GliderClient, GliderConfigurationError},
-    model::BnbManagedPortfolioTemplate,
+    model::{
+        BnbManagedPortfolioEnrollment, BnbManagedPortfolioTemplate,
+        BnbPreparedManagedPortfolioEnrollment,
+    },
 };
 
 pub struct GliderAdapter {
@@ -33,7 +38,7 @@ impl GliderAdapter {
 }
 
 #[async_trait]
-impl ManagedPortfolioReader for GliderAdapter {
+impl ManagedPortfolioGateway for GliderAdapter {
     async fn templates(
         &self,
         query: &ListManagedPortfolioTemplatesQuery,
@@ -51,5 +56,23 @@ impl ManagedPortfolioReader for GliderAdapter {
             items,
             next_cursor: response.next_cursor,
         })
+    }
+
+    async fn prepare_enrollment(
+        &self,
+        request: &PrepareManagedPortfolioEnrollmentRequest,
+    ) -> Result<PreparedManagedPortfolioEnrollment, ManagedPortfolioProviderError> {
+        BnbPreparedManagedPortfolioEnrollment::try_from(
+            *self.client.prepare_enrollment(request).await?.data,
+        )
+        .map(PreparedManagedPortfolioEnrollment::from)
+    }
+
+    async fn enroll(
+        &self,
+        request: &EnrollManagedPortfolioRequest,
+    ) -> Result<ManagedPortfolioEnrollment, ManagedPortfolioProviderError> {
+        BnbManagedPortfolioEnrollment::try_from(*self.client.enroll(request).await?.data)
+            .map(ManagedPortfolioEnrollment::from)
     }
 }
