@@ -27,7 +27,7 @@ pub enum TradeGatewayError {
 }
 
 #[async_trait]
-pub trait BstockTradeGateway: Send + Sync {
+pub trait TradeGateway: Send + Sync {
     async fn quotes(
         &self,
         request: &TradeQuoteRequest,

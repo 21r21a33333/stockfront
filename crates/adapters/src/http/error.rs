@@ -8,7 +8,7 @@ use axum::{
 use stockfront_core::baskets::{BasketProviderError, ListBasketsQueryError};
 use stockfront_core::bstock_borrowing::{BorrowingProviderError, BorrowingServiceError};
 use stockfront_core::bstock_market::{BstockMarketError, CatalogError, QueryError};
-use stockfront_core::bstock_trade::{BstockTradeError, TradeGatewayError};
+use stockfront_core::bstock_trade::{TradeCatalogError, TradeError, TradeGatewayError};
 use stockfront_core::carry::{CarryServiceError, EarnProviderError};
 use stockfront_core::liquidity::{LiquidityProviderError, LiquidityServiceError};
 use stockfront_core::wallet_portfolio::{
@@ -370,14 +370,17 @@ impl From<BalanceReaderError> for ApiError {
     }
 }
 
-impl From<BstockTradeError> for ApiError {
-    fn from(error: BstockTradeError) -> Self {
+impl From<TradeError> for ApiError {
+    fn from(error: TradeError) -> Self {
         match error {
-            BstockTradeError::Gateway(error) => error.into(),
-            BstockTradeError::Catalog(error) => error.into(),
-            BstockTradeError::NoSupportedQuote => Self::NO_EXECUTABLE_QUOTE,
-            BstockTradeError::UnsupportedTradePair => Self::UNSUPPORTED_TRADE_PAIR,
-            BstockTradeError::InvalidAmount => Self::INVALID_TRADE_AMOUNT,
+            TradeError::Gateway(error) => error.into(),
+            TradeError::Catalog(error) => match error {
+                TradeCatalogError::Unavailable => Self::MARKET_DATA_UNAVAILABLE,
+                TradeCatalogError::InvalidData => Self::INVALID_MARKET_DATA,
+            },
+            TradeError::NoSupportedQuote => Self::NO_EXECUTABLE_QUOTE,
+            TradeError::UnsupportedTradePair => Self::UNSUPPORTED_TRADE_PAIR,
+            TradeError::InvalidAmount => Self::INVALID_TRADE_AMOUNT,
         }
     }
 }

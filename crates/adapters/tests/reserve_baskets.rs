@@ -1,7 +1,7 @@
 use std::{error::Error, time::Duration};
 
 use rust_decimal::Decimal;
-use stockfront_adapters::reserve::ReserveBasketCatalog;
+use stockfront_adapters::reserve::ReserveAdapter;
 use stockfront_core::{
     baskets::{BasketCatalog, BasketKind},
     bstock_market::BNB_CHAIN_ID,
@@ -12,7 +12,7 @@ use stockfront_core::{
 async fn lists_live_active_bnb_index_baskets() -> Result<(), Box<dyn Error>> {
     let base_url = std::env::var("RESERVE_API_BASE_URL")
         .unwrap_or_else(|_| "https://api.reserve.org".to_owned());
-    let catalog = ReserveBasketCatalog::new(&base_url, Duration::from_secs(10))?;
+    let catalog = ReserveAdapter::new(&base_url, Duration::from_secs(10), 50)?;
 
     let baskets = catalog.list_baskets().await?;
 

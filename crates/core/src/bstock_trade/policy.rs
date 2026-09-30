@@ -16,6 +16,7 @@ pub enum TradePolicyError {
     InvalidSettlementToken,
 }
 
+#[derive(Clone)]
 pub struct TradePolicy {
     pub(super) settlement_tokens: HashSet<Address>,
     max_price_impact_percent: Decimal,
@@ -23,7 +24,7 @@ pub struct TradePolicy {
 }
 
 impl TradePolicy {
-    /// Creates the policy enforced for every bStock trade.
+    /// Creates the policy enforced for every supported asset trade.
     ///
     /// # Errors
     ///
@@ -54,11 +55,15 @@ impl TradePolicy {
         })
     }
 
-    pub(super) fn accepts_price_impact(&self, price_impact_percent: Decimal) -> bool {
+    pub(crate) fn accepts_price_impact(&self, price_impact_percent: Decimal) -> bool {
         price_impact_percent.abs() <= self.max_price_impact_percent
     }
 
-    pub(super) fn bstock_for_pair(
+    pub(crate) fn slippage_percent(&self) -> Decimal {
+        self.slippage_percent
+    }
+
+    pub(crate) fn asset_for_pair(
         &self,
         sell_token: Address,
         buy_token: Address,
@@ -97,18 +102,18 @@ mod tests {
             .unwrap_or_else(|error| panic!("valid policy rejected: {error}"));
 
         assert_eq!(
-            policy.bstock_for_pair(settlement_token, bstock),
+            policy.asset_for_pair(settlement_token, bstock),
             Some(bstock)
         );
         assert_eq!(
-            policy.bstock_for_pair(bstock, settlement_token),
+            policy.asset_for_pair(bstock, settlement_token),
             Some(bstock)
         );
         assert_eq!(
-            policy.bstock_for_pair(settlement_token, other_settlement_token),
+            policy.asset_for_pair(settlement_token, other_settlement_token),
             None
         );
-        assert_eq!(policy.bstock_for_pair(bstock, other_asset), None);
-        assert_eq!(policy.bstock_for_pair(bstock, bstock), None);
+        assert_eq!(policy.asset_for_pair(bstock, other_asset), None);
+        assert_eq!(policy.asset_for_pair(bstock, bstock), None);
     }
 }

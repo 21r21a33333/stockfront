@@ -10,5 +10,6 @@ pub use model::{
     TradeTransactionState, TradeTransactionStatus,
 };
 pub use policy::{TradePolicy, TradePolicyError};
-pub use ports::{BstockTradeGateway, TradeGatewayError};
-pub use service::{BstockTradeError, BstockTradeService};
+pub use ports::{TradeGateway, TradeGatewayError};
+pub(crate) use service::select_quotes;
+pub use service::{BstockTradeService, TradeCatalogError, TradeError};

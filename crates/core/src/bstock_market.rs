@@ -162,7 +162,7 @@ pub struct BstockDetails {
     pub price_updated_at_ms: Option<i64>,
 }
 
-#[derive(Debug, Error, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Error, Eq, PartialEq)]
 pub enum CatalogError {
     #[error("the market data provider is unavailable")]
     Unavailable,

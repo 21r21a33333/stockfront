@@ -1,15 +1,30 @@
 use std::sync::Arc;
 
 use super::{BasketCatalog, BasketProviderError, BasketSummary, ListBasketsQuery};
+use crate::bstock_trade::{
+    ApprovalRequest, PrepareTradeRequest, PreparedApproval, PreparedTrade, SubmitOrderRequest,
+    SubmittedOrder, TradeCatalogError, TradeError, TradeGateway, TradeOrderStatus, TradePolicy,
+    TradeQuote, TradeQuoteRequest, select_quotes,
+};
 
 pub struct BasketService {
     catalog: Arc<dyn BasketCatalog>,
+    gateway: Arc<dyn TradeGateway>,
+    policy: TradePolicy,
 }
 
 impl BasketService {
     #[must_use]
-    pub fn new(catalog: Arc<dyn BasketCatalog>) -> Self {
-        Self { catalog }
+    pub fn new(
+        catalog: Arc<dyn BasketCatalog>,
+        gateway: Arc<dyn TradeGateway>,
+        policy: TradePolicy,
+    ) -> Self {
+        Self {
+            catalog,
+            gateway,
+            policy,
+        }
     }
 
     /// Returns active BNB basket products matching the requested filters.
@@ -21,27 +36,127 @@ impl BasketService {
         &self,
         query: &ListBasketsQuery,
     ) -> Result<Vec<BasketSummary>, BasketProviderError> {
-        let mut baskets = self.catalog.list_baskets().await?;
-        if let Some(search) = query.search.as_deref() {
-            let search = search.to_lowercase();
-            baskets.retain(|basket| matches_search(basket, &search));
-        }
-        if let Some(category) = query.category.as_deref() {
-            baskets.retain(|basket| {
-                basket
-                    .categories
-                    .iter()
-                    .any(|candidate| candidate.eq_ignore_ascii_case(category))
-            });
-        }
-        baskets.sort_by(|left, right| {
-            left.name
-                .cmp(&right.name)
-                .then_with(|| left.symbol.cmp(&right.symbol))
-        });
-        baskets.truncate(query.limit);
-        Ok(baskets)
+        Ok(filter_baskets(self.catalog.list_baskets().await?, query))
     }
+
+    /// Returns executable quotes for a supported BNB basket.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`TradeError`] when the pair is unsupported or the provider cannot quote it.
+    pub async fn quotes(&self, request: &TradeQuoteRequest) -> Result<Vec<TradeQuote>, TradeError> {
+        self.validate_trade(request).await?;
+        select_quotes(self.gateway.quotes(request).await?, &self.policy)
+    }
+
+    /// Returns the exact approval transaction for a basket trade.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`TradeError`] when the amount is zero or the provider rejects the request.
+    pub async fn prepare_approval(
+        &self,
+        request: &ApprovalRequest,
+    ) -> Result<PreparedApproval, TradeError> {
+        if request.amount.is_zero() {
+            return Err(TradeError::InvalidAmount);
+        }
+        self.gateway
+            .prepare_approval(request)
+            .await
+            .map_err(Into::into)
+    }
+
+    /// Returns the fresh EIP-712 payload for a basket trade.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`TradeError`] when the pair is unsupported or the provider rejects the quote.
+    pub async fn prepare_trade(
+        &self,
+        request: &PrepareTradeRequest,
+    ) -> Result<PreparedTrade, TradeError> {
+        self.validate_trade(&request.trade).await?;
+        self.gateway
+            .prepare_trade(request, self.policy.slippage_percent())
+            .await
+            .map_err(Into::into)
+    }
+
+    /// Relays a signed basket RFQ order.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`TradeError`] when the provider rejects the order.
+    pub async fn submit_order(
+        &self,
+        request: &SubmitOrderRequest,
+    ) -> Result<SubmittedOrder, TradeError> {
+        self.gateway.submit_order(request).await.map_err(Into::into)
+    }
+
+    /// Returns the current basket RFQ order state.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`TradeError`] when the provider is unavailable or the order is unknown.
+    pub async fn order_status(&self, order_id: &str) -> Result<TradeOrderStatus, TradeError> {
+        self.gateway
+            .order_status(order_id)
+            .await
+            .map_err(Into::into)
+    }
+
+    async fn validate_trade(&self, request: &TradeQuoteRequest) -> Result<(), TradeError> {
+        if request.sell_amount.is_zero() {
+            return Err(TradeError::InvalidAmount);
+        }
+        let contract = self
+            .policy
+            .asset_for_pair(request.sell_token, request.buy_token)
+            .ok_or(TradeError::UnsupportedTradePair)?;
+        let supported = self
+            .catalog
+            .list_baskets()
+            .await
+            .map_err(map_basket_catalog_error)?
+            .iter()
+            .any(|basket| basket.id.contract == contract);
+        if supported {
+            Ok(())
+        } else {
+            Err(TradeError::UnsupportedTradePair)
+        }
+    }
+}
+
+fn map_basket_catalog_error(error: BasketProviderError) -> TradeCatalogError {
+    match error {
+        BasketProviderError::Unavailable => TradeCatalogError::Unavailable,
+        BasketProviderError::InvalidData => TradeCatalogError::InvalidData,
+    }
+}
+
+fn filter_baskets(mut baskets: Vec<BasketSummary>, query: &ListBasketsQuery) -> Vec<BasketSummary> {
+    if let Some(search) = query.search.as_deref() {
+        let search = search.to_lowercase();
+        baskets.retain(|basket| matches_search(basket, &search));
+    }
+    if let Some(category) = query.category.as_deref() {
+        baskets.retain(|basket| {
+            basket
+                .categories
+                .iter()
+                .any(|candidate| candidate.eq_ignore_ascii_case(category))
+        });
+    }
+    baskets.sort_by(|left, right| {
+        left.name
+            .cmp(&right.name)
+            .then_with(|| left.symbol.cmp(&right.symbol))
+    });
+    baskets.truncate(query.limit);
+    baskets
 }
 
 fn matches_search(basket: &BasketSummary, search: &str) -> bool {
@@ -60,36 +175,22 @@ fn matches_search(basket: &BasketSummary, search: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use alloy_primitives::Address;
-    use async_trait::async_trait;
     use rust_decimal::Decimal;
 
     use super::*;
     use crate::baskets::{BasketAssetAllocation, BasketId, BasketKind};
 
-    struct FixedCatalog(Vec<BasketSummary>);
-
-    #[async_trait]
-    impl BasketCatalog for FixedCatalog {
-        async fn list_baskets(&self) -> Result<Vec<BasketSummary>, BasketProviderError> {
-            Ok(self.0.clone())
-        }
-    }
-
-    #[tokio::test]
-    async fn list_filters_search_category_and_limit_deterministically() {
-        let service = BasketService::new(Arc::new(FixedCatalog(vec![
-            basket(2, "Robotics", "ROBOTS", "AI", "ISRG"),
-            basket(1, "AI Infrastructure", "BUILDOUT", "AI", "NVDA"),
-            basket(3, "Crypto Index", "CMC20", "Majors", "BTCB"),
-        ])));
-        let query =
-            ListBasketsQuery::new(Some("nvidia".to_owned()), Some("ai".to_owned()), Some(1))
-                .unwrap_or_else(|error| panic!("valid query rejected: {error}"));
-
-        let baskets = service
-            .list(&query)
-            .await
-            .unwrap_or_else(|error| panic!("basket list failed: {error}"));
+    #[test]
+    fn list_filters_search_category_and_limit_deterministically() {
+        let baskets = filter_baskets(
+            vec![
+                basket(2, "Robotics", "ROBOTS", "AI", "ISRG"),
+                basket(1, "AI Infrastructure", "BUILDOUT", "AI", "NVDA"),
+                basket(3, "Crypto Index", "CMC20", "Majors", "BTCB"),
+            ],
+            &ListBasketsQuery::new(Some("nvidia".to_owned()), Some("ai".to_owned()), Some(1))
+                .unwrap_or_else(|error| panic!("valid query rejected: {error}")),
+        );
 
         assert_eq!(baskets.len(), 1);
         assert_eq!(baskets[0].symbol, "BUILDOUT");

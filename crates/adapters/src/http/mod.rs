@@ -20,6 +20,23 @@ use stockfront_core::{
 pub fn basket_router(service: Arc<BasketService>) -> Router {
     Router::new()
         .route("/v1/baskets", get(handlers::baskets::list_baskets))
+        .route("/v1/baskets/trades/quotes", post(handlers::baskets::quotes))
+        .route(
+            "/v1/baskets/trades/approval",
+            post(handlers::baskets::prepare_approval),
+        )
+        .route(
+            "/v1/baskets/trades/prepare",
+            post(handlers::baskets::prepare_trade),
+        )
+        .route(
+            "/v1/baskets/trades/orders",
+            post(handlers::baskets::submit_order),
+        )
+        .route(
+            "/v1/baskets/trades/orders/{order_id}",
+            get(handlers::baskets::order_status),
+        )
         .with_state(service)
 }
 

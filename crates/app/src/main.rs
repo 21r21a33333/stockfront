@@ -9,7 +9,7 @@ use stockfront_adapters::{
         basket_router, borrowing_router, bstock_router, carry_router, liquidity_router,
         trade_router, wallet_router,
     },
-    reserve::ReserveBasketCatalog,
+    reserve::ReserveAdapter,
     venus::VenusBorrowingAdapter,
 };
 use stockfront_core::{
@@ -65,7 +65,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let bstock_trade = Arc::new(BstockTradeService::new(
         binance.clone(),
         binance.clone(),
-        trade_policy,
+        trade_policy.clone(),
     ));
     let venus = Arc::new(
         VenusBorrowingAdapter::new(
@@ -95,11 +95,12 @@ async fn main() -> Result<(), Box<dyn Error>> {
         binance,
         CarryPolicy::new(carry_investment_ids, min_carry_spread_bps),
     ));
-    let reserve = Arc::new(ReserveBasketCatalog::new(
+    let reserve = Arc::new(ReserveAdapter::new(
         &reserve_api_base_url,
         Duration::from_secs(10),
+        trade_slippage_bps,
     )?);
-    let baskets = Arc::new(BasketService::new(reserve));
+    let baskets = Arc::new(BasketService::new(reserve.clone(), reserve, trade_policy));
     let app = bstock_router(bstock_market)
         .merge(wallet_router(wallet_portfolio))
         .merge(trade_router(bstock_trade))

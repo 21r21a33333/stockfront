@@ -9,12 +9,13 @@ use super::{
     model::ReserveDtf,
 };
 
-pub struct ReserveBasketCatalog {
-    client: ReserveClient,
+pub struct ReserveAdapter {
+    pub(super) client: ReserveClient,
+    pub(super) slippage_denominator: rust_decimal::Decimal,
 }
 
-impl ReserveBasketCatalog {
-    /// Creates a Reserve catalog backed by the current Reserve discovery API.
+impl ReserveAdapter {
+    /// Creates a Reserve adapter backed by the current discovery and 1inch Fusion APIs.
     ///
     /// # Errors
     ///
@@ -22,15 +23,21 @@ impl ReserveBasketCatalog {
     pub fn new(
         base_url: &str,
         timeout: std::time::Duration,
+        trade_slippage_bps: u32,
     ) -> Result<Self, ReserveConfigurationError> {
+        if !(1..=10_000).contains(&trade_slippage_bps) {
+            return Err(ReserveConfigurationError::InvalidSlippage);
+        }
         Ok(Self {
             client: ReserveClient::new(base_url, timeout)?,
+            slippage_denominator: rust_decimal::Decimal::from(10_000_u32)
+                / rust_decimal::Decimal::from(trade_slippage_bps),
         })
     }
 }
 
 #[async_trait]
-impl BasketCatalog for ReserveBasketCatalog {
+impl BasketCatalog for ReserveAdapter {
     async fn list_baskets(&self) -> Result<Vec<BasketSummary>, BasketProviderError> {
         self.client
             .discover()
