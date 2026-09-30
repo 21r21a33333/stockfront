@@ -6,12 +6,14 @@ use setting::Settings;
 use stockfront_adapters::{
     binance_web3::BinanceWeb3Client,
     http::{
-        borrowing_router, bstock_router, carry_router, liquidity_router, trade_router,
-        wallet_router,
+        basket_router, borrowing_router, bstock_router, carry_router, liquidity_router,
+        trade_router, wallet_router,
     },
+    reserve::ReserveBasketCatalog,
     venus::VenusBorrowingAdapter,
 };
 use stockfront_core::{
+    baskets::BasketService,
     bstock_borrowing::{BorrowingPolicy, BorrowingService},
     bstock_market::BstockMarketService,
     bstock_trade::{BstockTradeService, TradePolicy},
@@ -38,6 +40,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         min_carry_spread_bps,
         liquidity_investment_ids,
         liquidity_slippage_bps,
+        reserve_api_base_url,
     } = Settings::from_env()?;
 
     let binance = BinanceWeb3Client::new(
@@ -92,12 +95,18 @@ async fn main() -> Result<(), Box<dyn Error>> {
         binance,
         CarryPolicy::new(carry_investment_ids, min_carry_spread_bps),
     ));
+    let reserve = Arc::new(ReserveBasketCatalog::new(
+        &reserve_api_base_url,
+        Duration::from_secs(10),
+    )?);
+    let baskets = Arc::new(BasketService::new(reserve));
     let app = bstock_router(bstock_market)
         .merge(wallet_router(wallet_portfolio))
         .merge(trade_router(bstock_trade))
         .merge(borrowing_router(borrowing))
         .merge(carry_router(carry))
-        .merge(liquidity_router(liquidity));
+        .merge(liquidity_router(liquidity))
+        .merge(basket_router(baskets));
     let listener = tokio::net::TcpListener::bind(bind_address).await?;
 
     axum::serve(listener, app)

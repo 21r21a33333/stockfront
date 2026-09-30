@@ -5,6 +5,7 @@ use axum::{
     http::StatusCode,
     response::{IntoResponse, Response as AxumResponse},
 };
+use stockfront_core::baskets::{BasketProviderError, ListBasketsQueryError};
 use stockfront_core::bstock_borrowing::{BorrowingProviderError, BorrowingServiceError};
 use stockfront_core::bstock_market::{BstockMarketError, CatalogError, QueryError};
 use stockfront_core::bstock_trade::{BstockTradeError, TradeGatewayError};
@@ -259,6 +260,11 @@ impl ApiError {
         "liquidity_request_rejected",
         "the liquidity provider rejected the request",
     );
+    const BASKET_PROVIDER_UNAVAILABLE: Self = Self::fixed(
+        StatusCode::SERVICE_UNAVAILABLE,
+        "basket_provider_unavailable",
+        "basket discovery is temporarily unavailable",
+    );
     const fn fixed(status: StatusCode, code: &'static str, message: &'static str) -> Self {
         Self {
             status,
@@ -283,6 +289,21 @@ impl ApiError {
 impl From<QueryError> for ApiError {
     fn from(error: QueryError) -> Self {
         Self::dynamic(StatusCode::BAD_REQUEST, "invalid_query", error.to_string())
+    }
+}
+
+impl From<ListBasketsQueryError> for ApiError {
+    fn from(error: ListBasketsQueryError) -> Self {
+        Self::dynamic(StatusCode::BAD_REQUEST, "invalid_query", error.to_string())
+    }
+}
+
+impl From<BasketProviderError> for ApiError {
+    fn from(error: BasketProviderError) -> Self {
+        match error {
+            BasketProviderError::Unavailable => Self::BASKET_PROVIDER_UNAVAILABLE,
+            BasketProviderError::InvalidData => Self::INVALID_PROVIDER_RESPONSE,
+        }
     }
 }
 

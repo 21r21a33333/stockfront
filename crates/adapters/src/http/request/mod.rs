@@ -1,8 +1,10 @@
+mod baskets;
 mod borrowing;
 mod bstocks;
 mod carry;
 mod liquidity;
 
+pub(super) use baskets::ListBasketsRequest;
 pub(super) use borrowing::BorrowingMarketsRequest;
 pub(super) use bstocks::ListBstocksRequest;
 pub(super) use carry::CarryOpportunitiesRequest;

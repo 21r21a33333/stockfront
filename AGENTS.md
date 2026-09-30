@@ -35,8 +35,10 @@ Never write scaffolding, generated clients, production code or tests before the 
 
 ## Boundaries and integration types
 
-- Reuse domain read models directly inside the shared API `Response` and `List` envelopes when their meaning and public shape match. Do not add field-for-field response DTO copies; add a response DTO only for material redaction, versioning or shape differences.
-- Reuse domain commands as HTTP request bodies when their meaning and public shape match. Add transport request DTOs only for a material shape, versioning or trust-boundary difference.
+- Before adding a transport or provider DTO, compare it with the existing domain type. Reuse the domain type only when meaning, field shape, representation and validation already match without adding transport- or provider-specific Serde rules to the domain. Otherwise keep a small boundary DTO and convert it explicitly; do not force reuse merely to reduce the type count.
+- Reuse domain read models directly inside the shared API `Response` and `List` envelopes when their meaning and public shape match cleanly. Do not add field-for-field response DTO copies; add a response DTO only for material redaction, versioning, representation or shape differences.
+- Reuse domain commands as HTTP request bodies when their meaning, public shape and validation match cleanly. Add transport request DTOs when direct reuse would move HTTP parsing or boundary concerns into the domain.
+- For manually written provider clients, deserialize directly into domain types when the provider payload is already the domain representation. When provider nesting, names, optionality, identity fields or representations differ, keep the minimum adapter-local response model and use `From` or `TryFrom`. Generated OpenAPI clients keep their generated models at the adapter boundary.
 - Trace every public request field to a downstream provider parameter or an explicit Stockfront rule before adding it. A status or lookup endpoint takes its identifier only; never require callers to replay wallet, asset, chain or settlement context solely to revalidate the provider response.
 - Define endpoint-specific commands instead of flattening a broad context object into requests that use only part of it. Use the same field name and representation whenever the same domain value crosses multiple endpoints.
 - Return only data needed for the current result or the next client action. Do not echo request fields, embed a previously returned quote, fabricate expiry metadata or expose provider fields that the client does not use.

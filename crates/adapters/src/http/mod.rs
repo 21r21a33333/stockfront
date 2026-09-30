@@ -12,10 +12,16 @@ use axum::{
     routing::{get, post},
 };
 use stockfront_core::{
-    bstock_borrowing::BorrowingService, bstock_market::BstockMarketService,
+    baskets::BasketService, bstock_borrowing::BorrowingService, bstock_market::BstockMarketService,
     bstock_trade::BstockTradeService, carry::CarryService, liquidity::LiquidityService,
     wallet_portfolio::WalletPortfolioService,
 };
+
+pub fn basket_router(service: Arc<BasketService>) -> Router {
+    Router::new()
+        .route("/v1/baskets", get(handlers::baskets::list_baskets))
+        .with_state(service)
+}
 
 pub fn bstock_router(service: Arc<BstockMarketService>) -> Router {
     Router::new()
