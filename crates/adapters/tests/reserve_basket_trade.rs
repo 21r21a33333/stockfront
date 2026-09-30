@@ -35,6 +35,7 @@ const DEFAULT_ROUND_TRIP_USDT: &str = "1000000000000000000";
 const FUSION_PREPARE_ATTEMPTS: usize = 3;
 const FUSION_SETTLEMENT_ATTEMPTS: usize = 120;
 const FUSION_SETTLEMENT_INTERVAL: Duration = Duration::from_secs(2);
+const PORTFOLIO_INDEX_ATTEMPTS: usize = 60;
 
 struct LiveBasketContext {
     evm: LiveEvmContext,
@@ -76,6 +77,7 @@ async fn buys_and_sells_reserve_basket_on_bsc() -> Result<(), Box<dyn Error>> {
         .checked_sub(starting_basket)
         .filter(|amount| !amount.is_zero())
         .ok_or_else(|| io::Error::other("basket purchase did not increase the PHOTON balance"))?;
+    wait_for_photon_position(&context.service, wallet, true).await?;
 
     let sale = execute_fusion_trade(&context, PHOTON, USDT, purchased_basket).await?;
     assert_filled(&sale, "basket sale")?;
@@ -86,6 +88,9 @@ async fn buys_and_sells_reserve_basket_on_bsc() -> Result<(), Box<dyn Error>> {
     }
     if final_basket != starting_basket {
         return Err(io::Error::other("round trip left an unexpected PHOTON balance").into());
+    }
+    if starting_basket.is_zero() {
+        wait_for_photon_position(&context.service, wallet, false).await?;
     }
     Ok(())
 }
@@ -315,6 +320,38 @@ async fn wait_for_fusion_order(
         }
     }
     Err(io::Error::other("Reserve Fusion order settlement timed out").into())
+}
+
+async fn wait_for_photon_position(
+    service: &BasketService,
+    wallet: WalletAddress,
+    expected_present: bool,
+) -> Result<(), Box<dyn Error>> {
+    for _ in 0..PORTFOLIO_INDEX_ATTEMPTS {
+        let account = service.positions(wallet).await?;
+        let position = account
+            .positions
+            .iter()
+            .find(|position| position.id.contract == PHOTON);
+        let matches = if expected_present {
+            position.is_some_and(|position| {
+                !position.token_amount.is_zero() && position.value_usd > rust_decimal::Decimal::ZERO
+            })
+        } else {
+            position.is_none()
+        };
+        if matches {
+            return Ok(());
+        }
+        tokio::time::sleep(FUSION_SETTLEMENT_INTERVAL).await;
+    }
+
+    Err(io::Error::other(if expected_present {
+        "Reserve portfolio did not index the purchased PHOTON position"
+    } else {
+        "Reserve portfolio did not remove the sold PHOTON position"
+    })
+    .into())
 }
 
 fn assert_filled(status: &TradeOrderStatus, action: &str) -> Result<(), Box<dyn Error>> {

@@ -1,7 +1,8 @@
 use async_trait::async_trait;
 use thiserror::Error;
 
-use super::BasketSummary;
+use super::{BasketAccount, BasketSummary};
+use crate::wallet_portfolio::WalletAddress;
 
 #[derive(Clone, Copy, Debug, Error, Eq, PartialEq)]
 pub enum BasketProviderError {
@@ -12,6 +13,7 @@ pub enum BasketProviderError {
 }
 
 #[async_trait]
-pub trait BasketCatalog: Send + Sync {
+pub trait BasketReader: Send + Sync {
     async fn list_baskets(&self) -> Result<Vec<BasketSummary>, BasketProviderError>;
+    async fn positions(&self, wallet: WalletAddress) -> Result<BasketAccount, BasketProviderError>;
 }

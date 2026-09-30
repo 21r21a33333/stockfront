@@ -5,7 +5,7 @@ use axum::{
     extract::{Path, Query, State, rejection::JsonRejection},
 };
 use stockfront_core::{
-    baskets::{BasketService, BasketSummary},
+    baskets::{BasketAccount, BasketService, BasketSummary},
     bstock_trade::{
         ApprovalRequest, PrepareTradeRequest, PreparedApproval, PreparedTrade, SubmitOrderRequest,
         SubmittedOrder, TradeOrderStatus, TradeQuote, TradeQuoteRequest,
@@ -16,6 +16,7 @@ use super::super::{
     primitives::{ApiResult, List, Response},
     request::ListBasketsRequest,
 };
+use super::parse_wallet;
 
 pub(in crate::http) async fn list_baskets(
     State(service): State<Arc<BasketService>>,
@@ -24,6 +25,15 @@ pub(in crate::http) async fn list_baskets(
     let query = request.try_into()?;
     let baskets = service.list(&query).await?;
     Ok(Response::ok(List::all(baskets)))
+}
+
+pub(in crate::http) async fn positions(
+    State(service): State<Arc<BasketService>>,
+    Path(address): Path<String>,
+) -> ApiResult<BasketAccount> {
+    Ok(Response::ok(
+        service.positions(parse_wallet(&address)?).await?,
+    ))
 }
 
 pub(in crate::http) async fn quotes(

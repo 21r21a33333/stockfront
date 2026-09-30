@@ -2,10 +2,11 @@ use std::time::Duration;
 
 use reqwest::{Client, RequestBuilder};
 use stockfront_core::baskets::BasketProviderError;
+use stockfront_core::wallet_portfolio::WalletAddress;
 use thiserror::Error;
 use url::Url;
 
-use super::model::ReserveDtf;
+use super::model::{ReserveDtf, ReservePortfolio};
 
 pub struct ReserveClient {
     pub(super) client: Client,
@@ -36,6 +37,28 @@ impl ReserveClient {
                 ("performance", "false"),
                 ("limit", "100"),
             ])
+            .send()
+            .await
+            .map_err(|_| BasketProviderError::Unavailable)?
+            .error_for_status()
+            .map_err(|_| BasketProviderError::Unavailable)?;
+        response
+            .json()
+            .await
+            .map_err(|_| BasketProviderError::InvalidData)
+    }
+
+    pub(super) async fn portfolio(
+        &self,
+        wallet: WalletAddress,
+    ) -> Result<ReservePortfolio, BasketProviderError> {
+        let path = format!(
+            "v1/portfolio/{}",
+            wallet.as_address().to_string().to_lowercase()
+        );
+        let response = self
+            .get(&path)
+            .map_err(|_| BasketProviderError::InvalidData)?
             .send()
             .await
             .map_err(|_| BasketProviderError::Unavailable)?

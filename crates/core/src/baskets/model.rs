@@ -66,6 +66,29 @@ pub struct BasketSummary {
     pub image_url: Option<String>,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BasketPosition {
+    #[serde(flatten)]
+    pub id: BasketId,
+    pub kind: BasketKind,
+    pub provider_id: String,
+    pub provider_name: String,
+    pub name: String,
+    pub symbol: String,
+    pub token_amount: Decimal,
+    pub value_usd: Decimal,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BasketAccount {
+    pub chain_id: u64,
+    pub positions: Vec<BasketPosition>,
+    pub total_value_usd: Decimal,
+    pub observed_at_ms: i64,
+}
+
 #[derive(Debug, Eq, PartialEq)]
 pub struct ListBasketsQuery {
     pub search: Option<String>,

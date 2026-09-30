@@ -1,7 +1,8 @@
 use async_trait::async_trait;
 use stockfront_core::{
-    baskets::{BasketCatalog, BasketProviderError, BasketSummary},
+    baskets::{BasketAccount, BasketProviderError, BasketReader, BasketSummary},
     bstock_market::BNB_CHAIN_ID,
+    wallet_portfolio::WalletAddress,
 };
 
 use super::{
@@ -37,7 +38,7 @@ impl ReserveAdapter {
 }
 
 #[async_trait]
-impl BasketCatalog for ReserveAdapter {
+impl BasketReader for ReserveAdapter {
     async fn list_baskets(&self) -> Result<Vec<BasketSummary>, BasketProviderError> {
         self.client
             .discover()
@@ -46,6 +47,13 @@ impl BasketCatalog for ReserveAdapter {
             .filter(is_active_bnb_index)
             .map(TryInto::try_into)
             .collect()
+    }
+
+    async fn positions(&self, wallet: WalletAddress) -> Result<BasketAccount, BasketProviderError> {
+        self.client
+            .portfolio(wallet)
+            .await?
+            .into_account(chrono::Utc::now().timestamp_millis())
     }
 }
 

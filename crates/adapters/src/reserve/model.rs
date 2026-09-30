@@ -1,8 +1,10 @@
 use rust_decimal::Decimal;
 use serde::Deserialize;
 use stockfront_core::baskets::{
-    BasketAssetAllocation, BasketId, BasketKind, BasketProviderError, BasketSummary,
+    BasketAccount, BasketAssetAllocation, BasketId, BasketKind, BasketPosition,
+    BasketProviderError, BasketSummary,
 };
+use stockfront_core::bstock_market::BNB_CHAIN_ID;
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -36,6 +38,87 @@ pub(super) struct ReserveBrand {
     #[serde(default)]
     pub(super) tags: Vec<String>,
     pub(super) about: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub(super) struct ReservePortfolio {
+    #[serde(rename = "indexDTFs", default)]
+    pub(super) index_dtfs: Vec<ReservePortfolioPosition>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct ReservePortfolioPosition {
+    pub(super) address: String,
+    pub(super) chain_id: u64,
+    pub(super) name: String,
+    pub(super) symbol: String,
+    pub(super) amount: String,
+    pub(super) value: Decimal,
+}
+
+impl ReservePortfolio {
+    pub(super) fn into_account(
+        self,
+        observed_at_ms: i64,
+    ) -> Result<BasketAccount, BasketProviderError> {
+        let mut positions = self
+            .index_dtfs
+            .into_iter()
+            .filter(|position| position.chain_id == BNB_CHAIN_ID)
+            .map(TryInto::try_into)
+            .collect::<Result<Vec<BasketPosition>, _>>()?;
+        positions.retain(|position| !position.token_amount.is_zero());
+        positions.sort_by(|left, right| {
+            left.name
+                .cmp(&right.name)
+                .then_with(|| left.symbol.cmp(&right.symbol))
+        });
+        let total_value_usd = positions
+            .iter()
+            .try_fold(Decimal::ZERO, |total, position| {
+                total
+                    .checked_add(position.value_usd)
+                    .ok_or(BasketProviderError::InvalidData)
+            })?;
+
+        Ok(BasketAccount {
+            chain_id: BNB_CHAIN_ID,
+            positions,
+            total_value_usd,
+            observed_at_ms,
+        })
+    }
+}
+
+impl TryFrom<ReservePortfolioPosition> for BasketPosition {
+    type Error = BasketProviderError;
+
+    fn try_from(value: ReservePortfolioPosition) -> Result<Self, Self::Error> {
+        let token_amount = value
+            .amount
+            .parse::<Decimal>()
+            .map_err(|_| BasketProviderError::InvalidData)?;
+        if token_amount.is_sign_negative() || value.value.is_sign_negative() {
+            return Err(BasketProviderError::InvalidData);
+        }
+
+        Ok(Self {
+            id: BasketId::bnb(
+                value
+                    .address
+                    .parse()
+                    .map_err(|_| BasketProviderError::InvalidData)?,
+            ),
+            kind: BasketKind::IndexToken,
+            provider_id: "reserve".to_owned(),
+            provider_name: "Reserve".to_owned(),
+            name: value.name,
+            symbol: value.symbol,
+            token_amount,
+            value_usd: value.value,
+        })
+    }
 }
 
 impl TryFrom<ReserveDtf> for BasketSummary {
@@ -105,8 +188,6 @@ fn non_empty(value: Option<&str>) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use stockfront_core::bstock_market::BNB_CHAIN_ID;
-
     use super::*;
 
     #[test]
@@ -140,5 +221,68 @@ mod tests {
         assert_eq!(basket.categories, ["AI", "RWA"]);
         assert_eq!(basket.description, None);
         assert_eq!(basket.image_url, None);
+    }
+
+    #[test]
+    fn maps_bnb_positions_with_exact_values_and_deterministic_order() {
+        let account = ReservePortfolio {
+            index_dtfs: vec![
+                portfolio_position(BNB_CHAIN_ID, 2, "Robotics", "ROBOTS", "2.25", "9.75"),
+                portfolio_position(8453, 3, "Base Basket", "BASE", "4", "20"),
+                portfolio_position(BNB_CHAIN_ID, 4, "Zero", "ZERO", "0", "0"),
+                portfolio_position(BNB_CHAIN_ID, 1, "AI", "AI", "1.5", "10.25"),
+            ],
+        }
+        .into_account(1_234)
+        .unwrap_or_else(|error| panic!("valid Reserve portfolio rejected: {error}"));
+
+        assert_eq!(account.chain_id, BNB_CHAIN_ID);
+        assert_eq!(account.observed_at_ms, 1_234);
+        assert_eq!(account.positions.len(), 2);
+        assert_eq!(account.positions[0].symbol, "AI");
+        assert_eq!(account.positions[0].token_amount, Decimal::new(15, 1));
+        assert_eq!(account.positions[1].symbol, "ROBOTS");
+        assert_eq!(account.total_value_usd, Decimal::new(20, 0));
+    }
+
+    #[test]
+    fn rejects_malformed_or_negative_bnb_positions() {
+        for position in [
+            ReservePortfolioPosition {
+                address: "not-an-address".to_owned(),
+                ..portfolio_position(BNB_CHAIN_ID, 1, "AI", "AI", "1", "1")
+            },
+            portfolio_position(BNB_CHAIN_ID, 1, "AI", "AI", "not-a-number", "1"),
+            portfolio_position(BNB_CHAIN_ID, 1, "AI", "AI", "-1", "1"),
+            portfolio_position(BNB_CHAIN_ID, 1, "AI", "AI", "1", "-1"),
+        ] {
+            assert_eq!(
+                ReservePortfolio {
+                    index_dtfs: vec![position]
+                }
+                .into_account(1),
+                Err(BasketProviderError::InvalidData)
+            );
+        }
+    }
+
+    fn portfolio_position(
+        chain_id: u64,
+        address_last_byte: u8,
+        name: &str,
+        symbol: &str,
+        amount: &str,
+        value: &str,
+    ) -> ReservePortfolioPosition {
+        ReservePortfolioPosition {
+            address: alloy_primitives::Address::with_last_byte(address_last_byte).to_string(),
+            chain_id,
+            name: name.to_owned(),
+            symbol: symbol.to_owned(),
+            amount: amount.to_owned(),
+            value: value
+                .parse()
+                .unwrap_or_else(|error| panic!("invalid test decimal: {error}")),
+        }
     }
 }

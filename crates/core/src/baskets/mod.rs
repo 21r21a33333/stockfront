@@ -3,8 +3,8 @@ mod ports;
 mod service;
 
 pub use model::{
-    BasketAssetAllocation, BasketId, BasketKind, BasketSummary, ListBasketsQuery,
-    ListBasketsQueryError,
+    BasketAccount, BasketAssetAllocation, BasketId, BasketKind, BasketPosition, BasketSummary,
+    ListBasketsQuery, ListBasketsQueryError,
 };
-pub use ports::{BasketCatalog, BasketProviderError};
+pub use ports::{BasketProviderError, BasketReader};
 pub use service::BasketService;

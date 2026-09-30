@@ -1,14 +1,15 @@
 use std::sync::Arc;
 
-use super::{BasketCatalog, BasketProviderError, BasketSummary, ListBasketsQuery};
+use super::{BasketAccount, BasketProviderError, BasketReader, BasketSummary, ListBasketsQuery};
 use crate::bstock_trade::{
     ApprovalRequest, PrepareTradeRequest, PreparedApproval, PreparedTrade, SubmitOrderRequest,
     SubmittedOrder, TradeCatalogError, TradeError, TradeGateway, TradeOrderStatus, TradePolicy,
     TradeQuote, TradeQuoteRequest, select_quotes,
 };
+use crate::wallet_portfolio::WalletAddress;
 
 pub struct BasketService {
-    catalog: Arc<dyn BasketCatalog>,
+    reader: Arc<dyn BasketReader>,
     gateway: Arc<dyn TradeGateway>,
     policy: TradePolicy,
 }
@@ -16,12 +17,12 @@ pub struct BasketService {
 impl BasketService {
     #[must_use]
     pub fn new(
-        catalog: Arc<dyn BasketCatalog>,
+        reader: Arc<dyn BasketReader>,
         gateway: Arc<dyn TradeGateway>,
         policy: TradePolicy,
     ) -> Self {
         Self {
-            catalog,
+            reader,
             gateway,
             policy,
         }
@@ -36,7 +37,19 @@ impl BasketService {
         &self,
         query: &ListBasketsQuery,
     ) -> Result<Vec<BasketSummary>, BasketProviderError> {
-        Ok(filter_baskets(self.catalog.list_baskets().await?, query))
+        Ok(filter_baskets(self.reader.list_baskets().await?, query))
+    }
+
+    /// Returns the wallet's BNB basket-token holdings and their current provider valuation.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`BasketProviderError`] when the portfolio cannot be read.
+    pub async fn positions(
+        &self,
+        wallet: WalletAddress,
+    ) -> Result<BasketAccount, BasketProviderError> {
+        self.reader.positions(wallet).await
     }
 
     /// Returns executable quotes for a supported BNB basket.
@@ -116,7 +129,7 @@ impl BasketService {
             .asset_for_pair(request.sell_token, request.buy_token)
             .ok_or(TradeError::UnsupportedTradePair)?;
         let supported = self
-            .catalog
+            .reader
             .list_baskets()
             .await
             .map_err(map_basket_catalog_error)?
