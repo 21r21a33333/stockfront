@@ -9,6 +9,7 @@ use thiserror::Error;
 
 const BINANCE_WEB3_API_KEY: &str = "#ENV:BINANCE_WEB3_API_KEY";
 const BINANCE_WEB3_API_SECRET: &str = "#ENV:BINANCE_WEB3_API_SECRET";
+const GLIDER_API_KEY: &str = "#ENV:GLIDER_API_KEY";
 const DEFAULT_BINANCE_WEB3_BASE_URL: &str = "https://web3.binance.com/build";
 const DEFAULT_BIND_ADDRESS: &str = "127.0.0.1:3000";
 const DEFAULT_TRADE_SETTLEMENT_TOKENS: &str =
@@ -23,6 +24,8 @@ const DEFAULT_CARRY_INVESTMENT_IDS: &str = "";
 const DEFAULT_MIN_CARRY_SPREAD_BPS: &str = "100";
 const DEFAULT_LIQUIDITY_INVESTMENT_IDS: &str = "";
 const DEFAULT_LIQUIDITY_SLIPPAGE_BPS: &str = "100";
+const DEFAULT_RESERVE_API_BASE_URL: &str = "https://api.reserve.org";
+const DEFAULT_GLIDER_API_BASE_URL: &str = "https://api.glider.fi/v2";
 
 #[derive(Deserialize)]
 pub(super) struct Settings {
@@ -52,6 +55,10 @@ pub(super) struct Settings {
     pub(super) liquidity_investment_ids: Vec<String>,
     #[serde(deserialize_with = "deserialize_from_str")]
     pub(super) liquidity_slippage_bps: u32,
+    pub(super) reserve_api_base_url: String,
+    #[serde(deserialize_with = "deserialize_env_field")]
+    pub(super) glider_api_key: String,
+    pub(super) glider_api_base_url: String,
 }
 
 impl Settings {
@@ -82,6 +89,10 @@ impl Settings {
             .unwrap_or_else(|_| DEFAULT_LIQUIDITY_INVESTMENT_IDS.to_owned());
         let liquidity_slippage_bps = env::var("STOCKFRONT_LIQUIDITY_SLIPPAGE_BPS")
             .unwrap_or_else(|_| DEFAULT_LIQUIDITY_SLIPPAGE_BPS.to_owned());
+        let reserve_api_base_url = env::var("RESERVE_API_BASE_URL")
+            .unwrap_or_else(|_| DEFAULT_RESERVE_API_BASE_URL.to_owned());
+        let glider_api_base_url = env::var("GLIDER_API_BASE_URL")
+            .unwrap_or_else(|_| DEFAULT_GLIDER_API_BASE_URL.to_owned());
         let fields = [
             ("binance_web3_api_key", BINANCE_WEB3_API_KEY),
             ("binance_web3_api_secret", BINANCE_WEB3_API_SECRET),
@@ -104,6 +115,9 @@ impl Settings {
                 liquidity_investment_ids.as_str(),
             ),
             ("liquidity_slippage_bps", liquidity_slippage_bps.as_str()),
+            ("reserve_api_base_url", reserve_api_base_url.as_str()),
+            ("glider_api_key", GLIDER_API_KEY),
+            ("glider_api_base_url", glider_api_base_url.as_str()),
         ];
         let values = fields
             .into_iter()

@@ -5,11 +5,16 @@ use axum::{
     http::StatusCode,
     response::{IntoResponse, Response as AxumResponse},
 };
+use stockfront_core::baskets::{BasketProviderError, ListBasketsQueryError};
 use stockfront_core::bstock_borrowing::{BorrowingProviderError, BorrowingServiceError};
 use stockfront_core::bstock_market::{BstockMarketError, CatalogError, QueryError};
-use stockfront_core::bstock_trade::{BstockTradeError, TradeGatewayError};
+use stockfront_core::bstock_trade::{TradeCatalogError, TradeError, TradeGatewayError};
 use stockfront_core::carry::{CarryServiceError, EarnProviderError};
 use stockfront_core::liquidity::{LiquidityProviderError, LiquidityServiceError};
+use stockfront_core::managed_portfolios::{
+    ListManagedPortfolioTemplatesQueryError, ListManagedPortfoliosQueryError,
+    ManagedPortfolioProviderError, ManagedPortfolioServiceError,
+};
 use stockfront_core::wallet_portfolio::{
     BalanceReaderError, WalletAddressError, WalletPortfolioError,
 };
@@ -259,6 +264,41 @@ impl ApiError {
         "liquidity_request_rejected",
         "the liquidity provider rejected the request",
     );
+    const BASKET_PROVIDER_UNAVAILABLE: Self = Self::fixed(
+        StatusCode::SERVICE_UNAVAILABLE,
+        "basket_provider_unavailable",
+        "basket discovery is temporarily unavailable",
+    );
+    const MANAGED_PORTFOLIO_PROVIDER_UNAVAILABLE: Self = Self::fixed(
+        StatusCode::SERVICE_UNAVAILABLE,
+        "managed_portfolio_provider_unavailable",
+        "managed portfolio services are temporarily unavailable",
+    );
+    const MANAGED_PORTFOLIO_REQUEST_REJECTED: Self = Self::fixed(
+        StatusCode::UNPROCESSABLE_ENTITY,
+        "managed_portfolio_request_rejected",
+        "the managed portfolio provider rejected the request",
+    );
+    const MANAGED_PORTFOLIO_CONFLICT: Self = Self::fixed(
+        StatusCode::CONFLICT,
+        "managed_portfolio_conflict",
+        "the managed portfolio state has changed; retry with a fresh authorization",
+    );
+    const MANAGED_PORTFOLIO_NOT_FOUND: Self = Self::fixed(
+        StatusCode::NOT_FOUND,
+        "managed_portfolio_not_found",
+        "the managed portfolio was not found",
+    );
+    const INVALID_MANAGED_PORTFOLIO_DEPOSIT_AMOUNT: Self = Self::fixed(
+        StatusCode::BAD_REQUEST,
+        "invalid_managed_portfolio_deposit_amount",
+        "managed portfolio deposit amount must be greater than zero",
+    );
+    const INVALID_MANAGED_PORTFOLIO_WITHDRAWAL_ASSETS: Self = Self::fixed(
+        StatusCode::BAD_REQUEST,
+        "invalid_managed_portfolio_withdrawal_assets",
+        "in-kind withdrawal assets and amounts must be greater than zero",
+    );
     const fn fixed(status: StatusCode, code: &'static str, message: &'static str) -> Self {
         Self {
             status,
@@ -283,6 +323,61 @@ impl ApiError {
 impl From<QueryError> for ApiError {
     fn from(error: QueryError) -> Self {
         Self::dynamic(StatusCode::BAD_REQUEST, "invalid_query", error.to_string())
+    }
+}
+
+impl From<ListBasketsQueryError> for ApiError {
+    fn from(error: ListBasketsQueryError) -> Self {
+        Self::dynamic(StatusCode::BAD_REQUEST, "invalid_query", error.to_string())
+    }
+}
+
+impl From<ListManagedPortfolioTemplatesQueryError> for ApiError {
+    fn from(error: ListManagedPortfolioTemplatesQueryError) -> Self {
+        Self::dynamic(StatusCode::BAD_REQUEST, "invalid_query", error.to_string())
+    }
+}
+
+impl From<ListManagedPortfoliosQueryError> for ApiError {
+    fn from(error: ListManagedPortfoliosQueryError) -> Self {
+        Self::dynamic(StatusCode::BAD_REQUEST, "invalid_query", error.to_string())
+    }
+}
+
+impl From<ManagedPortfolioProviderError> for ApiError {
+    fn from(error: ManagedPortfolioProviderError) -> Self {
+        match error {
+            ManagedPortfolioProviderError::Unavailable => {
+                Self::MANAGED_PORTFOLIO_PROVIDER_UNAVAILABLE
+            }
+            ManagedPortfolioProviderError::InvalidData => Self::INVALID_PROVIDER_RESPONSE,
+            ManagedPortfolioProviderError::Rejected => Self::MANAGED_PORTFOLIO_REQUEST_REJECTED,
+            ManagedPortfolioProviderError::Conflict => Self::MANAGED_PORTFOLIO_CONFLICT,
+            ManagedPortfolioProviderError::NotFound => Self::MANAGED_PORTFOLIO_NOT_FOUND,
+        }
+    }
+}
+
+impl From<ManagedPortfolioServiceError> for ApiError {
+    fn from(error: ManagedPortfolioServiceError) -> Self {
+        match error {
+            ManagedPortfolioServiceError::Provider(error) => error.into(),
+            ManagedPortfolioServiceError::InvalidDepositAmount => {
+                Self::INVALID_MANAGED_PORTFOLIO_DEPOSIT_AMOUNT
+            }
+            ManagedPortfolioServiceError::InvalidWithdrawalAssets => {
+                Self::INVALID_MANAGED_PORTFOLIO_WITHDRAWAL_ASSETS
+            }
+        }
+    }
+}
+
+impl From<BasketProviderError> for ApiError {
+    fn from(error: BasketProviderError) -> Self {
+        match error {
+            BasketProviderError::Unavailable => Self::BASKET_PROVIDER_UNAVAILABLE,
+            BasketProviderError::InvalidData => Self::INVALID_PROVIDER_RESPONSE,
+        }
     }
 }
 
@@ -349,14 +444,17 @@ impl From<BalanceReaderError> for ApiError {
     }
 }
 
-impl From<BstockTradeError> for ApiError {
-    fn from(error: BstockTradeError) -> Self {
+impl From<TradeError> for ApiError {
+    fn from(error: TradeError) -> Self {
         match error {
-            BstockTradeError::Gateway(error) => error.into(),
-            BstockTradeError::Catalog(error) => error.into(),
-            BstockTradeError::NoSupportedQuote => Self::NO_EXECUTABLE_QUOTE,
-            BstockTradeError::UnsupportedTradePair => Self::UNSUPPORTED_TRADE_PAIR,
-            BstockTradeError::InvalidAmount => Self::INVALID_TRADE_AMOUNT,
+            TradeError::Gateway(error) => error.into(),
+            TradeError::Catalog(error) => match error {
+                TradeCatalogError::Unavailable => Self::MARKET_DATA_UNAVAILABLE,
+                TradeCatalogError::InvalidData => Self::INVALID_MARKET_DATA,
+            },
+            TradeError::NoSupportedQuote => Self::NO_EXECUTABLE_QUOTE,
+            TradeError::UnsupportedTradePair => Self::UNSUPPORTED_TRADE_PAIR,
+            TradeError::InvalidAmount => Self::INVALID_TRADE_AMOUNT,
         }
     }
 }

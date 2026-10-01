@@ -92,7 +92,8 @@ pub struct TradeQuote {
     pub execution_mode: TradeExecutionMode,
     pub sell: TokenAmount,
     pub buy: TokenAmount,
-    pub price_impact_percent: Decimal,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub price_impact_percent: Option<Decimal>,
     #[serde(
         skip_serializing_if = "Option::is_none",
         serialize_with = "serialize_optional_as_string"
@@ -109,10 +110,16 @@ pub struct PreparedApproval {
     pub spender: Address,
     #[serde(serialize_with = "serialize_bytes")]
     pub data: Bytes,
-    #[serde(serialize_with = "serialize_as_string")]
-    pub gas_limit: U256,
-    #[serde(serialize_with = "serialize_as_string")]
-    pub gas_price: U256,
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        serialize_with = "serialize_optional_as_string"
+    )]
+    pub gas_limit: Option<U256>,
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        serialize_with = "serialize_optional_as_string"
+    )]
+    pub gas_price: Option<U256>,
 }
 
 #[derive(Debug, Serialize)]
@@ -193,7 +200,8 @@ pub struct TradeOrderStatus {
         serialize_with = "serialize_optional_as_string"
     )]
     pub filled_buy_amount: Option<U256>,
-    pub created_at_ms: i64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub created_at_ms: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub filled_at_ms: Option<i64>,
 }

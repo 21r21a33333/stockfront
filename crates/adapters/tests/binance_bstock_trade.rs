@@ -10,8 +10,8 @@ use alloy_primitives::{Address, B256, U256, address};
 use rust_decimal::Decimal;
 use stockfront_adapters::binance_web3::BinanceWeb3Client;
 use stockfront_core::bstock_trade::{
-    ApprovalRequest, BstockTradeError, BstockTradeGateway, BstockTradeService, PrepareTradeRequest,
-    PreparedTrade, TradeExecutionMode, TradeGatewayError, TradePolicy, TradeQuoteRequest,
+    ApprovalRequest, BstockTradeService, PrepareTradeRequest, PreparedTrade, TradeError,
+    TradeExecutionMode, TradeGateway, TradeGatewayError, TradePolicy, TradeQuoteRequest,
     TradeTransactionState,
 };
 
@@ -53,7 +53,7 @@ async fn rejects_zero_trade_amount_before_calling_binance() -> Result<(), Box<dy
         .await
         .expect_err("zero-amount trade unexpectedly reached Binance");
 
-    assert!(matches!(error, BstockTradeError::InvalidAmount));
+    assert!(matches!(error, TradeError::InvalidAmount));
     Ok(())
 }
 
@@ -71,7 +71,7 @@ async fn rejects_unsupported_trade_pair_before_calling_binance() -> Result<(), B
         .await
         .expect_err("unsupported trade pair unexpectedly reached Binance");
 
-    assert!(matches!(error, BstockTradeError::UnsupportedTradePair));
+    assert!(matches!(error, TradeError::UnsupportedTradePair));
     Ok(())
 }
 
@@ -179,7 +179,7 @@ async fn rejects_expired_live_bstock_quote() -> Result<(), Box<dyn Error>> {
         .expect_err("Binance unexpectedly accepted an expired quote");
     assert!(matches!(
         error,
-        BstockTradeError::Gateway(TradeGatewayError::QuoteExpired)
+        TradeError::Gateway(TradeGatewayError::QuoteExpired)
     ));
 
     Ok(())
@@ -216,7 +216,7 @@ async fn rejects_mismatched_live_bstock_quote() -> Result<(), Box<dyn Error>> {
         .expect_err("Binance unexpectedly accepted a modified quote amount");
     assert!(matches!(
         error,
-        BstockTradeError::Gateway(TradeGatewayError::QuoteMismatch)
+        TradeError::Gateway(TradeGatewayError::QuoteMismatch)
     ));
 
     Ok(())

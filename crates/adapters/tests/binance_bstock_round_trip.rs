@@ -15,7 +15,7 @@ use alloy::{
 use rust_decimal::Decimal;
 use stockfront_core::{
     bstock_trade::{
-        ApprovalRequest, BstockTradeError, BstockTradeService, PrepareTradeRequest, PreparedTrade,
+        ApprovalRequest, BstockTradeService, PrepareTradeRequest, PreparedTrade, TradeError,
         TradeExecutionMode, TradeGatewayError, TradeQuote, TradeQuoteRequest,
         TradeTransactionState, TradeTransactionStatus,
     },
@@ -267,7 +267,7 @@ async fn wait_for_settlement(
                 return Err(io::Error::other(reason).into());
             }
             Ok(_)
-            | Err(BstockTradeError::Gateway(
+            | Err(TradeError::Gateway(
                 TradeGatewayError::TransactionNotFound | TradeGatewayError::Unavailable,
             )) => tokio::time::sleep(SETTLEMENT_POLL_INTERVAL).await,
             Err(error) => return Err(error.into()),

@@ -9,16 +9,24 @@ use super::{
         SubmittedOrder, TradeOrderStatus, TradeQuote, TradeQuoteRequest, TradeTransactionStatus,
     },
     policy::TradePolicy,
-    ports::{BstockTradeGateway, TradeGatewayError},
+    ports::{TradeGateway, TradeGatewayError},
 };
 use crate::bstock_market::{BNB_CHAIN_ID, BstockCatalog, BstockId, CatalogError};
 
+#[derive(Clone, Copy, Debug, Error, Eq, PartialEq)]
+pub enum TradeCatalogError {
+    #[error("the trade asset catalog is temporarily unavailable")]
+    Unavailable,
+    #[error("the trade asset catalog returned invalid data")]
+    InvalidData,
+}
+
 #[derive(Debug, Error)]
-pub enum BstockTradeError {
+pub enum TradeError {
     #[error(transparent)]
     Gateway(#[from] TradeGatewayError),
     #[error(transparent)]
-    Catalog(#[from] CatalogError),
+    Catalog(#[from] TradeCatalogError),
     #[error("trade amount must be greater than zero")]
     InvalidAmount,
     #[error("the trade pair is not supported")]
@@ -28,7 +36,7 @@ pub enum BstockTradeError {
 }
 
 pub struct BstockTradeService {
-    gateway: Arc<dyn BstockTradeGateway>,
+    gateway: Arc<dyn TradeGateway>,
     catalog: Arc<dyn BstockCatalog>,
     policy: TradePolicy,
 }
@@ -36,7 +44,7 @@ pub struct BstockTradeService {
 impl BstockTradeService {
     #[must_use]
     pub fn new(
-        gateway: Arc<dyn BstockTradeGateway>,
+        gateway: Arc<dyn TradeGateway>,
         catalog: Arc<dyn BstockCatalog>,
         policy: TradePolicy,
     ) -> Self {
@@ -47,38 +55,27 @@ impl BstockTradeService {
         }
     }
 
-    /// Returns Binance quotes that satisfy Stockfront's price-impact policy.
+    /// Returns quotes that satisfy Stockfront's price-impact policy.
     ///
     /// # Errors
     ///
-    /// Returns [`BstockTradeError`] when the request violates local policy or Binance is
-    /// unavailable.
-    pub async fn quotes(
-        &self,
-        request: &TradeQuoteRequest,
-    ) -> Result<Vec<TradeQuote>, BstockTradeError> {
+    /// Returns [`TradeError`] when the request violates local policy or the provider is unavailable.
+    pub async fn quotes(&self, request: &TradeQuoteRequest) -> Result<Vec<TradeQuote>, TradeError> {
         self.validate_trade(request).await?;
-        let mut quotes = self.gateway.quotes(request).await?;
-        quotes.retain(|quote| self.policy.accepts_price_impact(quote.price_impact_percent));
-        if quotes.is_empty() {
-            return Err(BstockTradeError::NoSupportedQuote);
-        }
-        quotes.sort_by_key(|quote| std::cmp::Reverse(quote.buy.amount));
-        Ok(quotes)
+        select_quotes(self.gateway.quotes(request).await?, &self.policy)
     }
 
-    /// Returns Binance's exact approval transaction for the requested venue.
+    /// Returns the provider's exact approval transaction for the requested venue.
     ///
     /// # Errors
     ///
-    /// Returns [`BstockTradeError`] when the request violates local policy or Binance is
-    /// unavailable.
+    /// Returns [`TradeError`] when the request violates local policy or the provider is unavailable.
     pub async fn prepare_approval(
         &self,
         request: &ApprovalRequest,
-    ) -> Result<PreparedApproval, BstockTradeError> {
+    ) -> Result<PreparedApproval, TradeError> {
         if request.amount.is_zero() {
-            return Err(BstockTradeError::InvalidAmount);
+            return Err(TradeError::InvalidAmount);
         }
         self.gateway
             .prepare_approval(request)
@@ -86,16 +83,16 @@ impl BstockTradeService {
             .map_err(Into::into)
     }
 
-    /// Returns Binance's wallet transaction or EIP-712 payload for the selected quote.
+    /// Returns a wallet transaction or EIP-712 payload for the selected quote.
     ///
     /// # Errors
     ///
-    /// Returns [`BstockTradeError`] when the request violates local policy or Binance rejects the
+    /// Returns [`TradeError`] when the request violates local policy or the provider rejects the
     /// quote.
     pub async fn prepare_trade(
         &self,
         request: &PrepareTradeRequest,
-    ) -> Result<PreparedTrade, BstockTradeError> {
+    ) -> Result<PreparedTrade, TradeError> {
         self.validate_trade(&request.trade).await?;
         self.gateway
             .prepare_trade(request, self.policy.slippage_percent)
@@ -103,53 +100,53 @@ impl BstockTradeService {
             .map_err(Into::into)
     }
 
-    /// Submits a wallet-signed RFQ order to Binance.
+    /// Submits a wallet-signed RFQ order.
     ///
     /// # Errors
     ///
-    /// Returns [`BstockTradeError`] when Binance rejects the order.
+    /// Returns [`TradeError`] when the provider rejects the order.
     pub async fn submit_order(
         &self,
         request: &SubmitOrderRequest,
-    ) -> Result<SubmittedOrder, BstockTradeError> {
+    ) -> Result<SubmittedOrder, TradeError> {
         self.gateway.submit_order(request).await.map_err(Into::into)
     }
 
-    /// Returns Binance's current RFQ order state.
+    /// Returns the provider's current RFQ order state.
     ///
     /// # Errors
     ///
-    /// Returns [`BstockTradeError`] when Binance is unavailable.
-    pub async fn order_status(&self, order_id: &str) -> Result<TradeOrderStatus, BstockTradeError> {
+    /// Returns [`TradeError`] when the provider is unavailable.
+    pub async fn order_status(&self, order_id: &str) -> Result<TradeOrderStatus, TradeError> {
         self.gateway
             .order_status(order_id)
             .await
             .map_err(Into::into)
     }
 
-    /// Returns Binance's current on-chain transaction state.
+    /// Returns the provider's current on-chain transaction state.
     ///
     /// # Errors
     ///
-    /// Returns [`BstockTradeError`] when Binance is unavailable or the transaction is unknown.
+    /// Returns [`TradeError`] when the provider is unavailable or the transaction is unknown.
     pub async fn transaction_status(
         &self,
         transaction_hash: B256,
-    ) -> Result<TradeTransactionStatus, BstockTradeError> {
+    ) -> Result<TradeTransactionStatus, TradeError> {
         self.gateway
             .transaction_status(transaction_hash)
             .await
             .map_err(Into::into)
     }
 
-    async fn validate_trade(&self, request: &TradeQuoteRequest) -> Result<(), BstockTradeError> {
+    async fn validate_trade(&self, request: &TradeQuoteRequest) -> Result<(), TradeError> {
         if request.sell_amount.is_zero() {
-            return Err(BstockTradeError::InvalidAmount);
+            return Err(TradeError::InvalidAmount);
         }
         let contract = self
             .policy
-            .bstock_for_pair(request.sell_token, request.buy_token)
-            .ok_or(BstockTradeError::UnsupportedTradePair)?;
+            .asset_for_pair(request.sell_token, request.buy_token)
+            .ok_or(TradeError::UnsupportedTradePair)?;
         let bstock = BstockId {
             chain_id: BNB_CHAIN_ID,
             contract,
@@ -157,13 +154,37 @@ impl BstockTradeService {
         let supported = self
             .catalog
             .list_bstocks()
-            .await?
+            .await
+            .map_err(map_bstock_catalog_error)?
             .iter()
             .any(|asset| asset.id == bstock);
         if supported {
             Ok(())
         } else {
-            Err(BstockTradeError::UnsupportedTradePair)
+            Err(TradeError::UnsupportedTradePair)
         }
     }
+}
+
+fn map_bstock_catalog_error(error: CatalogError) -> TradeCatalogError {
+    match error {
+        CatalogError::Unavailable => TradeCatalogError::Unavailable,
+        CatalogError::InvalidData { .. } => TradeCatalogError::InvalidData,
+    }
+}
+
+pub(crate) fn select_quotes(
+    mut quotes: Vec<TradeQuote>,
+    policy: &TradePolicy,
+) -> Result<Vec<TradeQuote>, TradeError> {
+    quotes.retain(|quote| {
+        quote
+            .price_impact_percent
+            .is_none_or(|impact| policy.accepts_price_impact(impact))
+    });
+    if quotes.is_empty() {
+        return Err(TradeError::NoSupportedQuote);
+    }
+    quotes.sort_by_key(|quote| std::cmp::Reverse(quote.buy.amount));
+    Ok(quotes)
 }

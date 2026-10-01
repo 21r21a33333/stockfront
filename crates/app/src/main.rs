@@ -5,18 +5,22 @@ use std::{error::Error, sync::Arc, time::Duration};
 use setting::Settings;
 use stockfront_adapters::{
     binance_web3::BinanceWeb3Client,
+    glider::GliderAdapter,
     http::{
-        borrowing_router, bstock_router, carry_router, liquidity_router, trade_router,
-        wallet_router,
+        basket_router, borrowing_router, bstock_router, carry_router, liquidity_router,
+        managed_portfolio_router, trade_router, wallet_router,
     },
+    reserve::ReserveAdapter,
     venus::VenusBorrowingAdapter,
 };
 use stockfront_core::{
+    baskets::BasketService,
     bstock_borrowing::{BorrowingPolicy, BorrowingService},
     bstock_market::BstockMarketService,
     bstock_trade::{BstockTradeService, TradePolicy},
     carry::{CarryPolicy, CarryService},
     liquidity::{LiquidityPolicy, LiquidityService},
+    managed_portfolios::ManagedPortfolioService,
     wallet_portfolio::WalletPortfolioService,
 };
 
@@ -38,6 +42,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
         min_carry_spread_bps,
         liquidity_investment_ids,
         liquidity_slippage_bps,
+        reserve_api_base_url,
+        glider_api_key,
+        glider_api_base_url,
     } = Settings::from_env()?;
 
     let binance = BinanceWeb3Client::new(
@@ -62,7 +69,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let bstock_trade = Arc::new(BstockTradeService::new(
         binance.clone(),
         binance.clone(),
-        trade_policy,
+        trade_policy.clone(),
     ));
     let venus = Arc::new(
         VenusBorrowingAdapter::new(
@@ -92,12 +99,26 @@ async fn main() -> Result<(), Box<dyn Error>> {
         binance,
         CarryPolicy::new(carry_investment_ids, min_carry_spread_bps),
     ));
+    let reserve = Arc::new(ReserveAdapter::new(
+        &reserve_api_base_url,
+        Duration::from_secs(10),
+        trade_slippage_bps,
+    )?);
+    let baskets = Arc::new(BasketService::new(reserve.clone(), reserve, trade_policy));
+    let glider = Arc::new(GliderAdapter::new(
+        &glider_api_base_url,
+        glider_api_key,
+        Duration::from_secs(10),
+    )?);
+    let managed_portfolios = Arc::new(ManagedPortfolioService::new(glider));
     let app = bstock_router(bstock_market)
         .merge(wallet_router(wallet_portfolio))
         .merge(trade_router(bstock_trade))
         .merge(borrowing_router(borrowing))
         .merge(carry_router(carry))
-        .merge(liquidity_router(liquidity));
+        .merge(liquidity_router(liquidity))
+        .merge(basket_router(baskets))
+        .merge(managed_portfolio_router(managed_portfolios));
     let listener = tokio::net::TcpListener::bind(bind_address).await?;
 
     axum::serve(listener, app)

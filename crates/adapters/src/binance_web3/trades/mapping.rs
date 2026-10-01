@@ -38,7 +38,7 @@ impl TryFrom<ProviderQuote<'_>> for TradeQuote {
                 token: value.request.buy_token,
                 amount: parse(&buy_amount)?,
             },
-            price_impact_percent: parse(&price_impact_percent)?,
+            price_impact_percent: Some(parse(&price_impact_percent)?),
             approval_target: parse_optional(
                 quote.approve_target.as_ref().and_then(Option::as_deref),
             )?,
@@ -59,8 +59,8 @@ impl TryFrom<ProviderApproval> for PreparedApproval {
             to: value.token,
             spender: parse(&value.value.dex_contract_address)?,
             data: parse(&value.value.data)?,
-            gas_limit: parse(&value.value.gas_limit)?,
-            gas_price: parse(&value.value.gas_price)?,
+            gas_limit: Some(parse(&value.value.gas_limit)?),
+            gas_price: Some(parse(&value.value.gas_price)?),
         })
     }
 }
@@ -134,7 +134,7 @@ impl TryFrom<ProviderOrderStatus> for TradeOrderStatus {
             filled_buy_amount: parse_optional(
                 status.to_amount.as_ref().and_then(Option::as_deref),
             )?,
-            created_at_ms: status.created_at,
+            created_at_ms: Some(status.created_at),
             filled_at_ms: status.filled_at.flatten(),
         })
     }

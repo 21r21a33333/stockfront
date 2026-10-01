@@ -12,10 +12,78 @@ use axum::{
     routing::{get, post},
 };
 use stockfront_core::{
-    bstock_borrowing::BorrowingService, bstock_market::BstockMarketService,
+    baskets::BasketService, bstock_borrowing::BorrowingService, bstock_market::BstockMarketService,
     bstock_trade::BstockTradeService, carry::CarryService, liquidity::LiquidityService,
-    wallet_portfolio::WalletPortfolioService,
+    managed_portfolios::ManagedPortfolioService, wallet_portfolio::WalletPortfolioService,
 };
+
+pub fn managed_portfolio_router(service: Arc<ManagedPortfolioService>) -> Router {
+    Router::new()
+        .route(
+            "/v1/managed-portfolios/templates",
+            get(handlers::managed_portfolios::templates),
+        )
+        .route(
+            "/v1/managed-portfolios/enrollments/prepare",
+            post(handlers::managed_portfolios::prepare_enrollment),
+        )
+        .route(
+            "/v1/managed-portfolios/enrollments",
+            post(handlers::managed_portfolios::enroll),
+        )
+        .route(
+            "/v1/wallets/{address}/managed-portfolios",
+            get(handlers::managed_portfolios::portfolios),
+        )
+        .route(
+            "/v1/managed-portfolios/{portfolio_id}/positions",
+            get(handlers::managed_portfolios::positions),
+        )
+        .route(
+            "/v1/managed-portfolios/{portfolio_id}/deposits/prepare",
+            post(handlers::managed_portfolios::prepare_deposit),
+        )
+        .route(
+            "/v1/managed-portfolios/{portfolio_id}/withdrawals/prepare",
+            post(handlers::managed_portfolios::prepare_withdrawal),
+        )
+        .route(
+            "/v1/managed-portfolios/{portfolio_id}/withdrawals",
+            post(handlers::managed_portfolios::submit_withdrawal),
+        )
+        .route(
+            "/v1/managed-portfolios/{portfolio_id}/operations/{operation_id}",
+            get(handlers::managed_portfolios::operation),
+        )
+        .with_state(service)
+}
+
+pub fn basket_router(service: Arc<BasketService>) -> Router {
+    Router::new()
+        .route("/v1/baskets", get(handlers::baskets::list_baskets))
+        .route(
+            "/v1/wallets/{address}/basket-positions",
+            get(handlers::baskets::positions),
+        )
+        .route("/v1/baskets/trades/quotes", post(handlers::baskets::quotes))
+        .route(
+            "/v1/baskets/trades/approval",
+            post(handlers::baskets::prepare_approval),
+        )
+        .route(
+            "/v1/baskets/trades/prepare",
+            post(handlers::baskets::prepare_trade),
+        )
+        .route(
+            "/v1/baskets/trades/orders",
+            post(handlers::baskets::submit_order),
+        )
+        .route(
+            "/v1/baskets/trades/orders/{order_id}",
+            get(handlers::baskets::order_status),
+        )
+        .with_state(service)
+}
 
 pub fn bstock_router(service: Arc<BstockMarketService>) -> Router {
     Router::new()

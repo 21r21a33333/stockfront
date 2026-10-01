@@ -13,8 +13,8 @@ use rust_decimal::Decimal;
 use stockfront_core::{
     bstock_market::BNB_CHAIN_ID,
     bstock_trade::{
-        ApprovalRequest, BstockTradeGateway, PrepareTradeRequest, PreparedApproval, PreparedTrade,
-        SubmitOrderRequest, SubmittedOrder, TradeGatewayError, TradeOrderStatus, TradeQuote,
+        ApprovalRequest, PrepareTradeRequest, PreparedApproval, PreparedTrade, SubmitOrderRequest,
+        SubmittedOrder, TradeGateway, TradeGatewayError, TradeOrderStatus, TradeQuote,
         TradeQuoteRequest, TradeTransactionStatus,
     },
 };
@@ -31,7 +31,7 @@ use super::{
 };
 
 #[async_trait]
-impl BstockTradeGateway for BinanceWeb3Client {
+impl TradeGateway for BinanceWeb3Client {
     async fn quotes(
         &self,
         request: &TradeQuoteRequest,
