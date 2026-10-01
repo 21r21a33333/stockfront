@@ -4,7 +4,10 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use crate::{
-    baskets::BasketKind, serialization::serialize_as_string, wallet_portfolio::WalletAddress,
+    baskets::BasketKind,
+    prepared_action::{ActionPreview, PreparedTransaction},
+    serialization::{deserialize_from_string, serialize_as_string},
+    wallet_portfolio::WalletAddress,
 };
 
 const DEFAULT_LIST_LIMIT: usize = 20;
@@ -283,6 +286,158 @@ pub struct ManagedPortfolioPositions {
     pub assets: Vec<ManagedPortfolioAssetPosition>,
     pub warnings: Vec<ManagedPortfolioWarning>,
     pub observed_at_ms: i64,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct PrepareManagedPortfolioDepositRequest {
+    #[serde(deserialize_with = "deserialize_from_string")]
+    pub token: Address,
+    #[serde(deserialize_with = "deserialize_from_string")]
+    pub raw_amount: U256,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum ManagedPortfolioTransactionKind {
+    Deposit,
+}
+
+pub type PreparedManagedPortfolioTransaction = PreparedTransaction<ManagedPortfolioTransactionKind>;
+
+#[derive(Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PreparedManagedPortfolioDeposit {
+    pub transactions: Vec<PreparedManagedPortfolioTransaction>,
+    pub preview: ActionPreview,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
+#[serde(tag = "mode", rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum PrepareManagedPortfolioWithdrawalRequest {
+    InKind {
+        recipient: WalletAddress,
+        assets: Vec<ManagedPortfolioWithdrawalAsset>,
+    },
+    FullToUsdt {
+        recipient: WalletAddress,
+    },
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ManagedPortfolioWithdrawalAsset {
+    #[serde(
+        deserialize_with = "deserialize_from_string",
+        serialize_with = "serialize_as_string"
+    )]
+    pub token: Address,
+    #[serde(
+        deserialize_with = "deserialize_from_string",
+        serialize_with = "serialize_as_string"
+    )]
+    pub raw_amount: U256,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ManagedPortfolioWithdrawalEip712Field {
+    pub name: String,
+    #[serde(rename = "type")]
+    pub field_type: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct ManagedPortfolioWithdrawalEip712Types {
+    #[serde(rename = "Withdrawal")]
+    pub withdrawal: Vec<ManagedPortfolioWithdrawalEip712Field>,
+    #[serde(rename = "WithdrawalAsset")]
+    pub withdrawal_asset: Vec<ManagedPortfolioWithdrawalEip712Field>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ManagedPortfolioWithdrawalEip712Domain {
+    pub name: String,
+    pub version: String,
+    pub chain_id: i32,
+    pub verifying_contract: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ManagedPortfolioWithdrawalMessageAsset {
+    pub asset_id: String,
+    pub amount_raw: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ManagedPortfolioWithdrawalMessage {
+    pub portfolio_id: String,
+    pub recipient_account_id: String,
+    pub assets: Vec<ManagedPortfolioWithdrawalMessageAsset>,
+    pub nonce: String,
+    pub expires_at: i32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub liquidate: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub settlement_asset_id: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ManagedPortfolioWithdrawalTypedData {
+    pub primary_type: String,
+    pub domain: ManagedPortfolioWithdrawalEip712Domain,
+    pub types: ManagedPortfolioWithdrawalEip712Types,
+    pub message: ManagedPortfolioWithdrawalMessage,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PreparedManagedPortfolioWithdrawal {
+    pub authorization_id: String,
+    pub expires_at_ms: i64,
+    pub typed_data: ManagedPortfolioWithdrawalTypedData,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct SubmitManagedPortfolioWithdrawalRequest {
+    pub message: ManagedPortfolioWithdrawalMessage,
+    pub signature: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SubmittedManagedPortfolioWithdrawal {
+    pub operation_id: String,
+    pub submitted_at_ms: i64,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum ManagedPortfolioOperationState {
+    Accepted,
+    Running,
+    Retrying,
+    AwaitingUser,
+    Completed,
+    Failed,
+    Cancelled,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ManagedPortfolioOperation {
+    pub operation_id: String,
+    pub state: ManagedPortfolioOperationState,
+    pub updated_at_ms: i64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub finished_at_ms: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug, Error, Eq, PartialEq)]

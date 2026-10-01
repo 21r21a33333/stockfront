@@ -537,6 +537,641 @@
           }
         }
       }
+    },
+    "/portfolios/{portfolioId}": {
+      "get": {
+        "operationId": "portfolios.get",
+        "tags": [
+          "Portfolios"
+        ],
+        "summary": "Get portfolio detail",
+        "description": "Returns a single portfolio owned by the authenticated tenant. DB-only projection — identity, strategy, smart accounts, and schedule state. The `schedule` block is the canonical source for runtime rebalance visibility: `status` (active vs paused), `frequency`/`intervalMs` (cadence), `nextDueAt` (when the next automated rebalance will fire), and `lastRebalanceAt` (when the most recent run completed). Cross-tenant access returns 404 (no existence leak). For live balances call `GET /v2/portfolios/{portfolioId}/positions`.",
+        "security": [
+          {
+            "apiKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256,
+              "description": "Portfolio identifier",
+              "example": "a1b2c3d4"
+            },
+            "required": true,
+            "description": "Portfolio identifier",
+            "name": "portfolioId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Portfolio detail",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GetPortfolioResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/V2ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid API key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/V2ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Missing required scope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/V2ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Portfolio not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/V2ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/V2ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/portfolios/{portfolioId}/withdraw/signature": {
+      "post": {
+        "operationId": "portfolios.prepareWithdrawal",
+        "tags": [
+          "Portfolios"
+        ],
+        "summary": "Prepare a withdrawal authorization for user signing",
+        "description": "Stage 1 of the two-stage withdraw flow. Stateless — the server validates the request, checks live onchain balances, generates a nonce + 10-minute expiry, and returns a signable authorization for the portfolio owner's wallet. EVM withdrawals receive an EIP-712 typed-data object under `data.typedData`; Solana withdrawals receive an off-chain authorization under `data.authorization` (`kind: \"ecdsa\"` — EVM-rooted Model A, signed via EIP-191; or `kind: \"solana-message\"` — Solana-rooted Model B, signed via ed25519). Stage 2 (`POST /v2/portfolios/{portfolioId}/withdraw`) accepts the inner `message` echoed back under `body.message` plus the user's signature and dispatches the onchain transfer.",
+        "security": [
+          {
+            "apiKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256,
+              "description": "Portfolio identifier",
+              "example": "a1b2c3d4"
+            },
+            "required": true,
+            "description": "Portfolio identifier",
+            "name": "portfolioId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WithdrawSignatureRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Authorization prepared; user must sign the returned typed data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WithdrawSignatureResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error: invalid recipient, duplicate assets, chain mismatch, insufficient balance, portfolio has no smart account on the recipient's chain, or an unsupported liquidation settlement asset",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/V2ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid API key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/V2ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Missing required scope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/V2ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Portfolio not found or not owned by tenant",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/V2ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/V2ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/portfolios/{portfolioId}/withdraw": {
+      "post": {
+        "operationId": "portfolios.submitWithdrawal",
+        "tags": [
+          "Portfolios"
+        ],
+        "summary": "Submit a signed withdrawal authorization",
+        "description": "Stage 2 of the two-stage withdraw flow. Accepts the inner `message` echoed verbatim from stage 1 (`typedData.message` for EVM, `authorization.message` for Solana) and the user's `signature`. Verifies ownership, re-checks live balances, validates the signature was produced by the portfolio owner, and dispatches the onchain withdrawal — EVM via Inngest, Solana via a direct paymaster-sponsored transfer. Idempotent on `message.nonce` — retries with the same message + signature replay the cached 202 response. Returns immediately with an `operationId` that integrators can poll for onchain confirmation.",
+        "security": [
+          {
+            "apiKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256,
+              "description": "Portfolio identifier",
+              "example": "a1b2c3d4"
+            },
+            "required": true,
+            "description": "Portfolio identifier",
+            "name": "portfolioId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WithdrawRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Withdrawal accepted and dispatched. Onchain confirmation is async.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WithdrawResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error: expired authorization, portfolio-id mismatch, invalid signature, insufficient balance, an unsupported settlement asset, or malformed message",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/V2ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid API key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/V2ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Missing required scope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/V2ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Portfolio not found or not owned by tenant",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/V2ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Idempotency replay-in-progress or key-conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/V2ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/V2ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Signature verifier is temporarily unavailable — retry",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/V2ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/portfolios/{portfolioId}/liquidate-all/signature": {
+      "post": {
+        "operationId": "portfolios.prepareLiquidateAll",
+        "tags": [
+          "Portfolios"
+        ],
+        "summary": "Prepare a full-portfolio liquidation for user signing",
+        "description": "Stage 1 of the two-stage liquidate-all flow. Enumerates every holding on the recipient's chain whose value is above the tenant swap threshold, then returns a signable authorization that swaps them all to the `settlementAssetId` settlement asset (USDC by default; USDT also allowed on EVM) and delivers it to the recipient. Sub-threshold/illiquid dust is left in the vault (best-effort empty). EVM liquidations receive an EIP-712 typed-data object under `data.typedData`; Solana liquidations receive an off-chain authorization under `data.authorization` (`kind: \"ecdsa\"` — EVM-rooted Model A, signed via EIP-191; or `kind: \"solana-message\"` — Solana-rooted Model B, signed via ed25519). Stage 2 (`POST /v2/portfolios/{portfolioId}/liquidate-all`) accepts the echoed `message` plus the owner's signature.",
+        "security": [
+          {
+            "apiKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256,
+              "description": "Portfolio identifier",
+              "example": "a1b2c3d4"
+            },
+            "required": true,
+            "description": "Portfolio identifier",
+            "name": "portfolioId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LiquidateAllSignatureRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Liquidation authorization prepared; user must sign the returned typed data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WithdrawSignatureResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error: invalid recipient, USDC unsupported on the chain, an unsupported settlement asset, portfolio has no smart account on the chain, insufficient live balance, or nothing above the liquidation threshold",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/V2ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid API key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/V2ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Missing required scope, or the Solana B2B API is not enabled for this tenant",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/V2ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Portfolio not found or not owned by tenant",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/V2ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/V2ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/portfolios/{portfolioId}/liquidate-all": {
+      "post": {
+        "operationId": "portfolios.submitLiquidateAll",
+        "tags": [
+          "Portfolios"
+        ],
+        "summary": "Submit a signed full-portfolio liquidation",
+        "description": "Stage 2 of the two-stage liquidate-all flow. Accepts the `message` echoed verbatim from `POST /v2/portfolios/{portfolioId}/liquidate-all/signature` plus the owner's `signature`, verifies ownership, re-checks live balances, and dispatches the same-chain swap to the signed `settlementAssetId` settlement asset (configured USDC or USDT on EVM; USDC on Solana) + delivery to the same-chain recipient. Cross-chain delivery and bridging are not supported. Idempotent on `message.nonce`. Returns an `operationId` to poll. Functionally identical to `POST /v2/portfolios/{portfolioId}/withdraw` with a `liquidate: true` authorization.",
+        "security": [
+          {
+            "apiKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256,
+              "description": "Portfolio identifier",
+              "example": "a1b2c3d4"
+            },
+            "required": true,
+            "description": "Portfolio identifier",
+            "name": "portfolioId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WithdrawRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Liquidation accepted and dispatched. Onchain confirmation is async.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WithdrawResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error: expired authorization, portfolio-id mismatch, invalid signature, insufficient balance, USDC unsupported on the chain, an unsupported settlement asset, or malformed message",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/V2ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid API key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/V2ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Missing required scope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/V2ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Portfolio not found or not owned by tenant",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/V2ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Idempotency replay-in-progress or key-conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/V2ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/V2ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Signature verifier is temporarily unavailable — retry",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/V2ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/portfolios/{portfolioId}/operations/{operationId}": {
+      "get": {
+        "operationId": "portfolios.getOperation",
+        "tags": [
+          "Portfolios"
+        ],
+        "summary": "Get the status of an async operation on a portfolio",
+        "description": "Polls the execution state of an operation dispatched via a write endpoint (`/withdraw`, `/trigger`, etc.). Operations transition through `accepted → running → completed | failed | cancelled`; poll at 2–5s intervals until a terminal state.",
+        "security": [
+          {
+            "apiKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256,
+              "description": "Portfolio identifier",
+              "example": "a1b2c3d4"
+            },
+            "required": true,
+            "description": "Portfolio identifier",
+            "name": "portfolioId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256,
+              "description": "Operation identifier returned by write endpoints such as `POST /v2/portfolios/:id/withdraw`. Used to poll execution state.",
+              "example": "op_01JWZEE2MF30KVRMRX53N88VA4"
+            },
+            "required": true,
+            "description": "Operation identifier returned by write endpoints such as `POST /v2/portfolios/:id/withdraw`. Used to poll execution state.",
+            "name": "operationId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Current operation status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GetOperationResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid API key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/V2ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Missing required scope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/V2ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Portfolio or operation not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/V2ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/V2ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -1058,6 +1693,16 @@
             "type": "string",
             "description": "CAIP-10 account identifier for the smart account (Kernel smart account). Always chain-bound — the same smart account address on a different chain is a different account.",
             "example": "eip155:8453:0xe3a2d1f49aee887e42655b56371d4d76bbf58058"
+          },
+          "depositAccountId": {
+            "type": "string",
+            "description": "SVM B2B only: CAIP-10 of the Swig sub-account the user sends funds to (the deposit address). On the SVM subaccount path this equals `accountId` — the canonical smart-account address IS the fundable sub-account. Omitted for EVM and SVM create-only accounts.",
+            "example": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp:5tzFkiKscXHK5ZXCGbXZxdw7gTjjD1mBwuoFbhUvuAi9"
+          },
+          "swigRoleId": {
+            "type": "integer",
+            "description": "SVM B2B only: the Swig role id that owns the sub-account (1 for the first vault of a tenant+user, higher for subsequent reused-Swig vaults). Omitted for EVM and SVM create-only accounts.",
+            "example": 1
           }
         },
         "required": [
@@ -1444,6 +2089,549 @@
         "required": [
           "kind",
           "message"
+        ]
+      },
+      "PortfolioDetail": {
+        "type": "object",
+        "properties": {
+          "smartAccounts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SmartAccount"
+            },
+            "description": "Per-chain smart accounts owned by this portfolio."
+          }
+        },
+        "required": [
+          "smartAccounts"
+        ]
+      },
+      "GetPortfolioResponse": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "data": {
+            "$ref": "#/components/schemas/PortfolioDetail"
+          }
+        },
+        "required": [
+          "success",
+          "data"
+        ]
+      },
+      "WithdrawSignatureResponse": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "data": {
+            "$ref": "#/components/schemas/WithdrawSignatureData"
+          }
+        },
+        "required": [
+          "success",
+          "data"
+        ]
+      },
+      "WithdrawSignatureData": {
+        "type": "object",
+        "properties": {
+          "authorizationId": {
+            "type": "string",
+            "pattern": "^0x[0-9a-fA-F]{64}$",
+            "description": "Opaque 32-byte hex nonce. Use as the idempotency anchor for stage 2 retries of the same signed authorization.",
+            "example": "0xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
+          },
+          "expiresAt": {
+            "type": "string",
+            "description": "ISO 8601 timestamp after which the authorization cannot be submitted. Matches the signed `expiresAt` (Unix seconds).",
+            "example": "2026-04-17T12:10:00.000Z"
+          },
+          "typedData": {
+            "$ref": "#/components/schemas/WithdrawEip712TypedData"
+          }
+        },
+        "required": [
+          "authorizationId",
+          "expiresAt"
+        ]
+      },
+      "WithdrawEip712TypedData": {
+        "type": "object",
+        "properties": {
+          "primaryType": {
+            "type": "string",
+            "enum": [
+              "Withdrawal"
+            ],
+            "description": "EIP-712 primary type."
+          },
+          "domain": {
+            "$ref": "#/components/schemas/WithdrawEip712Domain"
+          },
+          "types": {
+            "$ref": "#/components/schemas/WithdrawEip712Types"
+          },
+          "message": {
+            "$ref": "#/components/schemas/WithdrawEip712MessageBody"
+          }
+        },
+        "required": [
+          "primaryType",
+          "domain",
+          "types",
+          "message"
+        ],
+        "description": "EVM portfolios only. Full EIP-712 typed-data object. Pass directly to `signTypedData(...)` in the user's wallet; echo `typedData.message` back as `body.message` on `POST /v2/portfolios/{portfolioId}/withdraw`."
+      },
+      "WithdrawEip712Domain": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "enum": [
+              "Glider Withdrawal Authorization"
+            ],
+            "description": "Glider withdrawal domain name."
+          },
+          "version": {
+            "type": "string",
+            "enum": [
+              "1",
+              "2"
+            ],
+            "description": "Glider withdrawal authorization version."
+          },
+          "chainId": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "description": "The EVM chain id the recipient + assets live on. Required by ERC-1271 smart-wallet verifiers that re-hash typed-data using the wallet's own chainId.",
+            "example": 1
+          },
+          "verifyingContract": {
+            "type": "string",
+            "pattern": "^0x[0-9a-fA-F]{40}$",
+            "description": "The smart account address being debited (bare EVM address, not a CAIP-10). Binds the signature to this specific smart account deployment. Documented exception to the `*AccountId` rule — dictated by EIP-712.",
+            "example": "0x2222222222222222222222222222222222222222"
+          }
+        },
+        "required": [
+          "name",
+          "version",
+          "chainId",
+          "verifyingContract"
+        ]
+      },
+      "WithdrawEip712Types": {
+        "type": "object",
+        "properties": {
+          "Withdrawal": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WithdrawEip712Field"
+            }
+          },
+          "WithdrawalAsset": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WithdrawEip712Field"
+            }
+          }
+        },
+        "required": [
+          "Withdrawal",
+          "WithdrawalAsset"
+        ]
+      },
+      "WithdrawEip712Field": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "type"
+        ]
+      },
+      "WithdrawEip712MessageBody": {
+        "type": "object",
+        "properties": {
+          "portfolioId": {
+            "type": "string"
+          },
+          "recipientAccountId": {
+            "type": "string"
+          },
+          "assets": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WithdrawEip712Asset"
+            }
+          },
+          "nonce": {
+            "type": "string",
+            "pattern": "^0x[0-9a-fA-F]{64}$",
+            "description": "32-byte `0x`-prefixed hex string",
+            "example": "0xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
+          },
+          "expiresAt": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "description": "Expiry as Unix seconds. Used only inside EIP-712 signed payloads — outside that boundary v2 uses ISO-8601 strings.",
+            "example": 1776384600
+          },
+          "liquidate": {
+            "type": "boolean",
+            "description": "Present (and `true`) only on a liquidation (version-\"2\" message); the `assets` are swapped to `settlementAssetId` and delivered to the recipient. Omitted for plain transfers. Echoed verbatim from stage 1.",
+            "example": true
+          },
+          "settlementAssetId": {
+            "type": "string",
+            "minLength": 1,
+            "description": "CAIP-19 settlement asset on the same chain as the recipient and assets: configured USDC or USDT for an EVM liquidation, or USDC for a Solana liquidation. Cross-chain settlement is not supported. Present only on a liquidation (version-\"2\" message), omitted for plain transfers. Echoed verbatim from stage 1.",
+            "example": "eip155:1/erc20:0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48"
+          }
+        },
+        "required": [
+          "portfolioId",
+          "recipientAccountId",
+          "assets",
+          "nonce",
+          "expiresAt"
+        ]
+      },
+      "WithdrawEip712Asset": {
+        "type": "object",
+        "properties": {
+          "assetId": {
+            "type": "string",
+            "minLength": 1,
+            "description": "CAIP-19 asset identifier",
+            "example": "eip155:1/erc20:0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48"
+          },
+          "amountRaw": {
+            "type": "string",
+            "pattern": "^[1-9]\\d*$",
+            "description": "Atomic (raw) units to withdraw as a decimal string. Positive integer, no leading zeros.",
+            "example": "1000500000"
+          }
+        },
+        "required": [
+          "assetId",
+          "amountRaw"
+        ]
+      },
+      "WithdrawSignatureRequest": {
+        "type": "object",
+        "properties": {
+          "recipientAccountId": {
+            "type": "string",
+            "description": "CAIP-10 recipient on the withdrawal chain. Every `assets[].assetId` and, when `liquidate` is true, `settlementAssetId` must reference this same chain. Cross-chain delivery and bridging are not supported. EVM: `eip155:<chainId>:<addr>`. Solana: `solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp:<base58>`. One request authorizes one recipient on one chain; multi-chain withdrawals require separate authorizations.",
+            "example": "eip155:8453:0x4444444444444444444444444444444444444444"
+          },
+          "assets": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WithdrawalAsset"
+            },
+            "minItems": 1,
+            "maxItems": 10,
+            "description": "Assets to withdraw. All entries must be on the same chain as `recipientAccountId`."
+          },
+          "liquidate": {
+            "type": "boolean",
+            "default": false,
+            "description": "When true, the listed `assets` are swapped to the `settlementAssetId` settlement asset (USDC by default) and delivered to `recipientAccountId`. Assets whose value is below the tenant swap threshold are skipped and stay in the vault. When false (default), each asset is transferred as-is.",
+            "example": false
+          },
+          "settlementAssetId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256,
+            "description": "Liquidation only (`liquidate: true`). CAIP-19 settlement asset on the same chain as `recipientAccountId` and every `assets[].assetId`. For an EVM withdrawal, use configured USDC or USDT on that EVM chain. For a Solana withdrawal, use Solana USDC. Omit to default to USDC on the withdrawal chain. This field does not select a different destination chain or enable bridging. Rejected when `liquidate` is false.",
+            "example": "eip155:56/erc20:0x55d398326f99059fF775485246999027B3197955"
+          }
+        },
+        "required": [
+          "recipientAccountId",
+          "assets"
+        ]
+      },
+      "WithdrawalAsset": {
+        "type": "object",
+        "properties": {
+          "assetId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256,
+            "description": "CAIP-19 asset identifier. Chain is derived from the `eip155:<chainId>` prefix.",
+            "example": "eip155:1/erc20:0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48"
+          },
+          "amountRaw": {
+            "type": "string",
+            "pattern": "^[1-9]\\d*$",
+            "description": "Atomic (raw) units as a decimal string. Read the live balance from `GET /v2/portfolios/{portfolioId}/positions` and echo `balanceRaw` for a full withdrawal. Must be a positive integer (no leading zeros).",
+            "example": "1000500000"
+          }
+        },
+        "required": [
+          "assetId",
+          "amountRaw"
+        ]
+      },
+      "WithdrawResponse": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "data": {
+            "$ref": "#/components/schemas/WithdrawData"
+          }
+        },
+        "required": [
+          "success",
+          "data"
+        ]
+      },
+      "WithdrawData": {
+        "type": "object",
+        "properties": {
+          "operationId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256,
+            "description": "Operation identifier to poll with `GET /v2/portfolios/{portfolioId}/operations/{operationId}` for onchain confirmation.",
+            "example": "op_01JWZEE2MF30KVRMRX53N88VA4"
+          },
+          "submittedAt": {
+            "type": "string",
+            "description": "ISO 8601 timestamp when the withdrawal was dispatched",
+            "example": "2026-04-17T12:05:00.000Z"
+          }
+        },
+        "required": [
+          "operationId",
+          "submittedAt"
+        ]
+      },
+      "WithdrawRequest": {
+        "type": "object",
+        "properties": {
+          "message": {
+            "$ref": "#/components/schemas/WithdrawMessage"
+          },
+          "signature": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^(0x[0-9a-fA-F]+|[1-9A-HJ-NP-Za-km-z]+)$",
+            "description": "User's signature over the stage-1 authorization. EVM = `0x`-hex EIP-712/EIP-191 (ECDSA EOA or ERC-1271). Solana Model A (EVM-rooted) = `0x`-hex EIP-191; Model B (Solana-rooted) = base58 ed25519.",
+            "example": "0x9412d70d539f889ecec2d3152b68af758d689a4325a43b07811ee708814527c72256fc749d7fd3745a07f0aaa84813955050c461392d9b9ee1f80e106fac39e01b"
+          }
+        },
+        "required": [
+          "message",
+          "signature"
+        ]
+      },
+      "WithdrawMessage": {
+        "type": "object",
+        "properties": {
+          "portfolioId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "recipientAccountId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "assets": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "assetId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256
+                },
+                "amountRaw": {
+                  "type": "string",
+                  "pattern": "^[1-9]\\d*$",
+                  "description": "Atomic (raw) unit amount as a decimal string. Positive integer, no leading zeros.",
+                  "example": "1500500000"
+                }
+              },
+              "required": [
+                "assetId",
+                "amountRaw"
+              ]
+            },
+            "minItems": 1,
+            "maxItems": 10
+          },
+          "nonce": {
+            "type": "string",
+            "pattern": "^0x[0-9a-fA-F]{64}$",
+            "description": "32-byte `0x`-prefixed hex string",
+            "example": "0xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
+          },
+          "expiresAt": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "description": "Expiry as Unix seconds. Used only inside EIP-712 signed payloads — outside that boundary v2 uses ISO-8601 strings.",
+            "example": 1776384600
+          },
+          "liquidate": {
+            "type": "boolean",
+            "default": false,
+            "description": "Echoed verbatim from stage 1. When true, the authorization swaps `assets` to `settlementAssetId` and delivers it to the recipient. Defaults to false if omitted.",
+            "example": false
+          },
+          "settlementAssetId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256,
+            "description": "Echoed verbatim from stage 1. CAIP-19 settlement asset on the same chain as `recipientAccountId` and every `assets[].assetId`: configured USDC or USDT for an EVM withdrawal, or USDC for a Solana withdrawal. It does not enable cross-chain delivery or bridging. Omitted for plain transfers.",
+            "example": "eip155:1/erc20:0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48"
+          }
+        },
+        "required": [
+          "portfolioId",
+          "recipientAccountId",
+          "assets",
+          "nonce",
+          "expiresAt"
+        ],
+        "description": "The inner `message` body from the stage-1 response, echoed verbatim — `typedData.message` (EVM) or `authorization.message` (Solana). The server reconstructs the signed payload and verifies the signature against the portfolio owner."
+      },
+      "LiquidateAllSignatureRequest": {
+        "type": "object",
+        "properties": {
+          "recipientAccountId": {
+            "type": "string",
+            "description": "CAIP-10 recipient on the chain to liquidate — EVM (`eip155:<chainId>:<addr>`) or Solana (`solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp:<base58>`). Every holding on that chain above the tenant swap threshold is swapped to the `settlementAssetId` settlement asset (USDC by default) and delivered here. Holdings on other chains are untouched — liquidate each chain separately. `settlementAssetId` must use this same chain; cross-chain delivery and bridging are not supported.",
+            "example": "eip155:8453:0x4444444444444444444444444444444444444444"
+          },
+          "settlementAssetId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256,
+            "description": "CAIP-19 settlement asset on the same chain as `recipientAccountId`. For an EVM liquidation, use configured USDC or USDT on that EVM chain. For a Solana liquidation, use Solana USDC. Omit to default to USDC on the liquidation chain. This field does not select a different destination chain or enable bridging.",
+            "example": "eip155:56/erc20:0x55d398326f99059fF775485246999027B3197955"
+          }
+        },
+        "required": [
+          "recipientAccountId"
+        ]
+      },
+      "GetOperationResponse": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "data": {
+            "$ref": "#/components/schemas/Operation"
+          }
+        },
+        "required": [
+          "success",
+          "data"
+        ]
+      },
+      "Operation": {
+        "type": "object",
+        "properties": {
+          "operationId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256,
+            "description": "Async operation identifier",
+            "example": "op_01JWZEE2MF30KVRMRX53N88VA4"
+          },
+          "portfolioId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256,
+            "description": "Portfolio identifier",
+            "example": "a1b2c3d4"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "withdraw",
+              "rebalance",
+              "bridge",
+              "swap",
+              "deposit",
+              "transfer",
+              "execution",
+              "converge"
+            ],
+            "description": "Kind of async operation. Values are emitted by v2 portfolio writes, execution streams, and internal rebalance/swap/bridge flows.",
+            "example": "withdraw"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "accepted",
+              "running",
+              "retrying",
+              "awaiting_user",
+              "completed",
+              "failed",
+              "cancelled"
+            ],
+            "description": "Current execution state. Terminal states: `completed`, `failed`, `cancelled`.",
+            "example": "running"
+          },
+          "createdAt": {
+            "type": "string",
+            "description": "ISO 8601 creation timestamp",
+            "example": "2026-04-17T12:00:00.000Z"
+          },
+          "updatedAt": {
+            "type": "string",
+            "description": "ISO 8601 last-update timestamp",
+            "example": "2026-04-17T12:05:00.000Z"
+          },
+          "finishedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "ISO 8601 timestamp at which the operation reached a terminal state. Null while in-flight.",
+            "example": "2026-04-17T12:05:00.000Z"
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Free-form error message. Populated only when the operation reaches `failed` or `cancelled`.",
+            "example": null
+          }
+        },
+        "required": [
+          "operationId",
+          "portfolioId",
+          "kind",
+          "state",
+          "createdAt",
+          "updatedAt",
+          "finishedAt",
+          "error"
         ]
       }
     }

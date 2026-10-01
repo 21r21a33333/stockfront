@@ -13,6 +13,22 @@ use crate::{apis::ResponseContent, models};
 use reqwest;
 use serde::{de::Error as _, Deserialize, Serialize};
 
+/// struct for passing parameters to the method [`portfolios_get`]
+#[derive(Clone, Debug)]
+pub struct PortfoliosGetParams {
+    /// Portfolio identifier
+    pub portfolio_id: String,
+}
+
+/// struct for passing parameters to the method [`portfolios_get_operation`]
+#[derive(Clone, Debug)]
+pub struct PortfoliosGetOperationParams {
+    /// Portfolio identifier
+    pub portfolio_id: String,
+    /// Operation identifier returned by write endpoints such as `POST /v2/portfolios/:id/withdraw`. Used to poll execution state.
+    pub operation_id: String,
+}
+
 /// struct for passing parameters to the method [`portfolios_get_positions`]
 #[derive(Clone, Debug)]
 pub struct PortfoliosGetPositionsParams {
@@ -33,6 +49,61 @@ pub struct PortfoliosListParams {
     pub limit: Option<i32>,
     /// Opaque pagination cursor from a previous response. Pass the previous response's `nextCursor` verbatim.
     pub cursor: Option<String>,
+}
+
+/// struct for passing parameters to the method [`portfolios_prepare_liquidate_all`]
+#[derive(Clone, Debug)]
+pub struct PortfoliosPrepareLiquidateAllParams {
+    /// Portfolio identifier
+    pub portfolio_id: String,
+    pub liquidate_all_signature_request: models::LiquidateAllSignatureRequest,
+}
+
+/// struct for passing parameters to the method [`portfolios_prepare_withdrawal`]
+#[derive(Clone, Debug)]
+pub struct PortfoliosPrepareWithdrawalParams {
+    /// Portfolio identifier
+    pub portfolio_id: String,
+    pub withdraw_signature_request: models::WithdrawSignatureRequest,
+}
+
+/// struct for passing parameters to the method [`portfolios_submit_liquidate_all`]
+#[derive(Clone, Debug)]
+pub struct PortfoliosSubmitLiquidateAllParams {
+    /// Portfolio identifier
+    pub portfolio_id: String,
+    pub withdraw_request: models::WithdrawRequest,
+}
+
+/// struct for passing parameters to the method [`portfolios_submit_withdrawal`]
+#[derive(Clone, Debug)]
+pub struct PortfoliosSubmitWithdrawalParams {
+    /// Portfolio identifier
+    pub portfolio_id: String,
+    pub withdraw_request: models::WithdrawRequest,
+}
+
+/// struct for typed errors of method [`portfolios_get`]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum PortfoliosGetError {
+    Status400(models::V2ErrorResponse),
+    Status401(models::V2ErrorResponse),
+    Status403(models::V2ErrorResponse),
+    Status404(models::V2ErrorResponse),
+    Status500(models::V2ErrorResponse),
+    UnknownValue(serde_json::Value),
+}
+
+/// struct for typed errors of method [`portfolios_get_operation`]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum PortfoliosGetOperationError {
+    Status401(models::V2ErrorResponse),
+    Status403(models::V2ErrorResponse),
+    Status404(models::V2ErrorResponse),
+    Status500(models::V2ErrorResponse),
+    UnknownValue(serde_json::Value),
 }
 
 /// struct for typed errors of method [`portfolios_get_positions`]
@@ -56,6 +127,165 @@ pub enum PortfoliosListError {
     Status403(models::V2ErrorResponse),
     Status500(models::V2ErrorResponse),
     UnknownValue(serde_json::Value),
+}
+
+/// struct for typed errors of method [`portfolios_prepare_liquidate_all`]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum PortfoliosPrepareLiquidateAllError {
+    Status400(models::V2ErrorResponse),
+    Status401(models::V2ErrorResponse),
+    Status403(models::V2ErrorResponse),
+    Status404(models::V2ErrorResponse),
+    Status500(models::V2ErrorResponse),
+    UnknownValue(serde_json::Value),
+}
+
+/// struct for typed errors of method [`portfolios_prepare_withdrawal`]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum PortfoliosPrepareWithdrawalError {
+    Status400(models::V2ErrorResponse),
+    Status401(models::V2ErrorResponse),
+    Status403(models::V2ErrorResponse),
+    Status404(models::V2ErrorResponse),
+    Status500(models::V2ErrorResponse),
+    UnknownValue(serde_json::Value),
+}
+
+/// struct for typed errors of method [`portfolios_submit_liquidate_all`]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum PortfoliosSubmitLiquidateAllError {
+    Status400(models::V2ErrorResponse),
+    Status401(models::V2ErrorResponse),
+    Status403(models::V2ErrorResponse),
+    Status404(models::V2ErrorResponse),
+    Status409(models::V2ErrorResponse),
+    Status500(models::V2ErrorResponse),
+    Status503(models::V2ErrorResponse),
+    UnknownValue(serde_json::Value),
+}
+
+/// struct for typed errors of method [`portfolios_submit_withdrawal`]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum PortfoliosSubmitWithdrawalError {
+    Status400(models::V2ErrorResponse),
+    Status401(models::V2ErrorResponse),
+    Status403(models::V2ErrorResponse),
+    Status404(models::V2ErrorResponse),
+    Status409(models::V2ErrorResponse),
+    Status500(models::V2ErrorResponse),
+    Status503(models::V2ErrorResponse),
+    UnknownValue(serde_json::Value),
+}
+
+/// Returns a single portfolio owned by the authenticated tenant. DB-only projection — identity, strategy, smart accounts, and schedule state. The `schedule` block is the canonical source for runtime rebalance visibility: `status` (active vs paused), `frequency`/`intervalMs` (cadence), `nextDueAt` (when the next automated rebalance will fire), and `lastRebalanceAt` (when the most recent run completed). Cross-tenant access returns 404 (no existence leak). For live balances call `GET /v2/portfolios/{portfolioId}/positions`.
+pub async fn portfolios_get(
+    configuration: &configuration::Configuration,
+    params: PortfoliosGetParams,
+) -> Result<models::GetPortfolioResponse, Error<PortfoliosGetError>> {
+    let uri_str = format!(
+        "{}/portfolios/{portfolioId}",
+        configuration.base_path,
+        portfolioId = crate::apis::urlencode(params.portfolio_id)
+    );
+    let mut req_builder = configuration.client.request(reqwest::Method::GET, &uri_str);
+
+    if let Some(ref user_agent) = configuration.user_agent {
+        req_builder = req_builder.header(reqwest::header::USER_AGENT, user_agent.clone());
+    }
+    if let Some(ref apikey) = configuration.api_key {
+        let key = apikey.key.clone();
+        let value = match apikey.prefix {
+            Some(ref prefix) => format!("{} {}", prefix, key),
+            None => key,
+        };
+        req_builder = req_builder.header("x-api-key", value);
+    };
+
+    let req = req_builder.build()?;
+    let resp = configuration.client.execute(req).await?;
+
+    let status = resp.status();
+    let content_type = resp
+        .headers()
+        .get("content-type")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("application/octet-stream");
+    let content_type = super::ContentType::from(content_type);
+
+    if !status.is_client_error() && !status.is_server_error() {
+        let content = resp.text().await?;
+        match content_type {
+            ContentType::Json => serde_path_to_error::deserialize(&mut serde_json::Deserializer::from_str(&content)).map_err(Error::from),
+            ContentType::Text => Err(Error::from(serde_json::Error::custom("Received `text/plain` content type response that cannot be converted to `models::GetPortfolioResponse`"))),
+            ContentType::Unsupported(unknown_type) => Err(Error::from(serde_json::Error::custom(format!("Received `{unknown_type}` content type response that cannot be converted to `models::GetPortfolioResponse`")))),
+        }
+    } else {
+        let content = resp.text().await?;
+        let entity: Option<PortfoliosGetError> = serde_json::from_str(&content).ok();
+        Err(Error::ResponseError(ResponseContent {
+            status,
+            content,
+            entity,
+        }))
+    }
+}
+
+/// Polls the execution state of an operation dispatched via a write endpoint (`/withdraw`, `/trigger`, etc.). Operations transition through `accepted → running → completed | failed | cancelled`; poll at 2–5s intervals until a terminal state.
+pub async fn portfolios_get_operation(
+    configuration: &configuration::Configuration,
+    params: PortfoliosGetOperationParams,
+) -> Result<models::GetOperationResponse, Error<PortfoliosGetOperationError>> {
+    let uri_str = format!(
+        "{}/portfolios/{portfolioId}/operations/{operationId}",
+        configuration.base_path,
+        portfolioId = crate::apis::urlencode(params.portfolio_id),
+        operationId = crate::apis::urlencode(params.operation_id)
+    );
+    let mut req_builder = configuration.client.request(reqwest::Method::GET, &uri_str);
+
+    if let Some(ref user_agent) = configuration.user_agent {
+        req_builder = req_builder.header(reqwest::header::USER_AGENT, user_agent.clone());
+    }
+    if let Some(ref apikey) = configuration.api_key {
+        let key = apikey.key.clone();
+        let value = match apikey.prefix {
+            Some(ref prefix) => format!("{} {}", prefix, key),
+            None => key,
+        };
+        req_builder = req_builder.header("x-api-key", value);
+    };
+
+    let req = req_builder.build()?;
+    let resp = configuration.client.execute(req).await?;
+
+    let status = resp.status();
+    let content_type = resp
+        .headers()
+        .get("content-type")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("application/octet-stream");
+    let content_type = super::ContentType::from(content_type);
+
+    if !status.is_client_error() && !status.is_server_error() {
+        let content = resp.text().await?;
+        match content_type {
+            ContentType::Json => serde_path_to_error::deserialize(&mut serde_json::Deserializer::from_str(&content)).map_err(Error::from),
+            ContentType::Text => Err(Error::from(serde_json::Error::custom("Received `text/plain` content type response that cannot be converted to `models::GetOperationResponse`"))),
+            ContentType::Unsupported(unknown_type) => Err(Error::from(serde_json::Error::custom(format!("Received `{unknown_type}` content type response that cannot be converted to `models::GetOperationResponse`")))),
+        }
+    } else {
+        let content = resp.text().await?;
+        let entity: Option<PortfoliosGetOperationError> = serde_json::from_str(&content).ok();
+        Err(Error::ResponseError(ResponseContent {
+            status,
+            content,
+            entity,
+        }))
+    }
 }
 
 /// Returns real-time per-asset balances and USD values for a portfolio. The `assets[]` array spans every asset class the underlying allocation supports — ERC-20 tokens, SPL tokens, and tokenized real-world assets (equities, treasuries) — using one uniform shape (`assetId`, `symbol`, `decimals`, `balance`, `balanceRaw`, `priceUsd`, `valueUsd`). Token metadata and prices are sourced from Glider's upstream data providers and passed through unchanged. Results may be cached for up to 30 seconds. Partial failures are surfaced in `warnings[]` and do not fail the request — the endpoint returns 200 with whatever loaded. For schedule/status polling (including `nextDueAt` and `lastRebalanceAt`) without live balances, use `GET /v2/portfolios/{portfolioId}` instead.
@@ -167,6 +397,231 @@ pub async fn portfolios_list(
     } else {
         let content = resp.text().await?;
         let entity: Option<PortfoliosListError> = serde_json::from_str(&content).ok();
+        Err(Error::ResponseError(ResponseContent {
+            status,
+            content,
+            entity,
+        }))
+    }
+}
+
+/// Stage 1 of the two-stage liquidate-all flow. Enumerates every holding on the recipient's chain whose value is above the tenant swap threshold, then returns a signable authorization that swaps them all to the `settlementAssetId` settlement asset (USDC by default; USDT also allowed on EVM) and delivers it to the recipient. Sub-threshold/illiquid dust is left in the vault (best-effort empty). EVM liquidations receive an EIP-712 typed-data object under `data.typedData`; Solana liquidations receive an off-chain authorization under `data.authorization` (`kind: \"ecdsa\"` — EVM-rooted Model A, signed via EIP-191; or `kind: \"solana-message\"` — Solana-rooted Model B, signed via ed25519). Stage 2 (`POST /v2/portfolios/{portfolioId}/liquidate-all`) accepts the echoed `message` plus the owner's signature.
+pub async fn portfolios_prepare_liquidate_all(
+    configuration: &configuration::Configuration,
+    params: PortfoliosPrepareLiquidateAllParams,
+) -> Result<models::WithdrawSignatureResponse, Error<PortfoliosPrepareLiquidateAllError>> {
+    let uri_str = format!(
+        "{}/portfolios/{portfolioId}/liquidate-all/signature",
+        configuration.base_path,
+        portfolioId = crate::apis::urlencode(params.portfolio_id)
+    );
+    let mut req_builder = configuration
+        .client
+        .request(reqwest::Method::POST, &uri_str);
+
+    if let Some(ref user_agent) = configuration.user_agent {
+        req_builder = req_builder.header(reqwest::header::USER_AGENT, user_agent.clone());
+    }
+    if let Some(ref apikey) = configuration.api_key {
+        let key = apikey.key.clone();
+        let value = match apikey.prefix {
+            Some(ref prefix) => format!("{} {}", prefix, key),
+            None => key,
+        };
+        req_builder = req_builder.header("x-api-key", value);
+    };
+    req_builder = req_builder.json(&params.liquidate_all_signature_request);
+
+    let req = req_builder.build()?;
+    let resp = configuration.client.execute(req).await?;
+
+    let status = resp.status();
+    let content_type = resp
+        .headers()
+        .get("content-type")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("application/octet-stream");
+    let content_type = super::ContentType::from(content_type);
+
+    if !status.is_client_error() && !status.is_server_error() {
+        let content = resp.text().await?;
+        match content_type {
+            ContentType::Json => serde_path_to_error::deserialize(&mut serde_json::Deserializer::from_str(&content)).map_err(Error::from),
+            ContentType::Text => Err(Error::from(serde_json::Error::custom("Received `text/plain` content type response that cannot be converted to `models::WithdrawSignatureResponse`"))),
+            ContentType::Unsupported(unknown_type) => Err(Error::from(serde_json::Error::custom(format!("Received `{unknown_type}` content type response that cannot be converted to `models::WithdrawSignatureResponse`")))),
+        }
+    } else {
+        let content = resp.text().await?;
+        let entity: Option<PortfoliosPrepareLiquidateAllError> =
+            serde_json::from_str(&content).ok();
+        Err(Error::ResponseError(ResponseContent {
+            status,
+            content,
+            entity,
+        }))
+    }
+}
+
+/// Stage 1 of the two-stage withdraw flow. Stateless — the server validates the request, checks live onchain balances, generates a nonce + 10-minute expiry, and returns a signable authorization for the portfolio owner's wallet. EVM withdrawals receive an EIP-712 typed-data object under `data.typedData`; Solana withdrawals receive an off-chain authorization under `data.authorization` (`kind: \"ecdsa\"` — EVM-rooted Model A, signed via EIP-191; or `kind: \"solana-message\"` — Solana-rooted Model B, signed via ed25519). Stage 2 (`POST /v2/portfolios/{portfolioId}/withdraw`) accepts the inner `message` echoed back under `body.message` plus the user's signature and dispatches the onchain transfer.
+pub async fn portfolios_prepare_withdrawal(
+    configuration: &configuration::Configuration,
+    params: PortfoliosPrepareWithdrawalParams,
+) -> Result<models::WithdrawSignatureResponse, Error<PortfoliosPrepareWithdrawalError>> {
+    let uri_str = format!(
+        "{}/portfolios/{portfolioId}/withdraw/signature",
+        configuration.base_path,
+        portfolioId = crate::apis::urlencode(params.portfolio_id)
+    );
+    let mut req_builder = configuration
+        .client
+        .request(reqwest::Method::POST, &uri_str);
+
+    if let Some(ref user_agent) = configuration.user_agent {
+        req_builder = req_builder.header(reqwest::header::USER_AGENT, user_agent.clone());
+    }
+    if let Some(ref apikey) = configuration.api_key {
+        let key = apikey.key.clone();
+        let value = match apikey.prefix {
+            Some(ref prefix) => format!("{} {}", prefix, key),
+            None => key,
+        };
+        req_builder = req_builder.header("x-api-key", value);
+    };
+    req_builder = req_builder.json(&params.withdraw_signature_request);
+
+    let req = req_builder.build()?;
+    let resp = configuration.client.execute(req).await?;
+
+    let status = resp.status();
+    let content_type = resp
+        .headers()
+        .get("content-type")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("application/octet-stream");
+    let content_type = super::ContentType::from(content_type);
+
+    if !status.is_client_error() && !status.is_server_error() {
+        let content = resp.text().await?;
+        match content_type {
+            ContentType::Json => serde_path_to_error::deserialize(&mut serde_json::Deserializer::from_str(&content)).map_err(Error::from),
+            ContentType::Text => Err(Error::from(serde_json::Error::custom("Received `text/plain` content type response that cannot be converted to `models::WithdrawSignatureResponse`"))),
+            ContentType::Unsupported(unknown_type) => Err(Error::from(serde_json::Error::custom(format!("Received `{unknown_type}` content type response that cannot be converted to `models::WithdrawSignatureResponse`")))),
+        }
+    } else {
+        let content = resp.text().await?;
+        let entity: Option<PortfoliosPrepareWithdrawalError> = serde_json::from_str(&content).ok();
+        Err(Error::ResponseError(ResponseContent {
+            status,
+            content,
+            entity,
+        }))
+    }
+}
+
+/// Stage 2 of the two-stage liquidate-all flow. Accepts the `message` echoed verbatim from `POST /v2/portfolios/{portfolioId}/liquidate-all/signature` plus the owner's `signature`, verifies ownership, re-checks live balances, and dispatches the same-chain swap to the signed `settlementAssetId` settlement asset (configured USDC or USDT on EVM; USDC on Solana) + delivery to the same-chain recipient. Cross-chain delivery and bridging are not supported. Idempotent on `message.nonce`. Returns an `operationId` to poll. Functionally identical to `POST /v2/portfolios/{portfolioId}/withdraw` with a `liquidate: true` authorization.
+pub async fn portfolios_submit_liquidate_all(
+    configuration: &configuration::Configuration,
+    params: PortfoliosSubmitLiquidateAllParams,
+) -> Result<models::WithdrawResponse, Error<PortfoliosSubmitLiquidateAllError>> {
+    let uri_str = format!(
+        "{}/portfolios/{portfolioId}/liquidate-all",
+        configuration.base_path,
+        portfolioId = crate::apis::urlencode(params.portfolio_id)
+    );
+    let mut req_builder = configuration
+        .client
+        .request(reqwest::Method::POST, &uri_str);
+
+    if let Some(ref user_agent) = configuration.user_agent {
+        req_builder = req_builder.header(reqwest::header::USER_AGENT, user_agent.clone());
+    }
+    if let Some(ref apikey) = configuration.api_key {
+        let key = apikey.key.clone();
+        let value = match apikey.prefix {
+            Some(ref prefix) => format!("{} {}", prefix, key),
+            None => key,
+        };
+        req_builder = req_builder.header("x-api-key", value);
+    };
+    req_builder = req_builder.json(&params.withdraw_request);
+
+    let req = req_builder.build()?;
+    let resp = configuration.client.execute(req).await?;
+
+    let status = resp.status();
+    let content_type = resp
+        .headers()
+        .get("content-type")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("application/octet-stream");
+    let content_type = super::ContentType::from(content_type);
+
+    if !status.is_client_error() && !status.is_server_error() {
+        let content = resp.text().await?;
+        match content_type {
+            ContentType::Json => serde_path_to_error::deserialize(&mut serde_json::Deserializer::from_str(&content)).map_err(Error::from),
+            ContentType::Text => Err(Error::from(serde_json::Error::custom("Received `text/plain` content type response that cannot be converted to `models::WithdrawResponse`"))),
+            ContentType::Unsupported(unknown_type) => Err(Error::from(serde_json::Error::custom(format!("Received `{unknown_type}` content type response that cannot be converted to `models::WithdrawResponse`")))),
+        }
+    } else {
+        let content = resp.text().await?;
+        let entity: Option<PortfoliosSubmitLiquidateAllError> = serde_json::from_str(&content).ok();
+        Err(Error::ResponseError(ResponseContent {
+            status,
+            content,
+            entity,
+        }))
+    }
+}
+
+/// Stage 2 of the two-stage withdraw flow. Accepts the inner `message` echoed verbatim from stage 1 (`typedData.message` for EVM, `authorization.message` for Solana) and the user's `signature`. Verifies ownership, re-checks live balances, validates the signature was produced by the portfolio owner, and dispatches the onchain withdrawal — EVM via Inngest, Solana via a direct paymaster-sponsored transfer. Idempotent on `message.nonce` — retries with the same message + signature replay the cached 202 response. Returns immediately with an `operationId` that integrators can poll for onchain confirmation.
+pub async fn portfolios_submit_withdrawal(
+    configuration: &configuration::Configuration,
+    params: PortfoliosSubmitWithdrawalParams,
+) -> Result<models::WithdrawResponse, Error<PortfoliosSubmitWithdrawalError>> {
+    let uri_str = format!(
+        "{}/portfolios/{portfolioId}/withdraw",
+        configuration.base_path,
+        portfolioId = crate::apis::urlencode(params.portfolio_id)
+    );
+    let mut req_builder = configuration
+        .client
+        .request(reqwest::Method::POST, &uri_str);
+
+    if let Some(ref user_agent) = configuration.user_agent {
+        req_builder = req_builder.header(reqwest::header::USER_AGENT, user_agent.clone());
+    }
+    if let Some(ref apikey) = configuration.api_key {
+        let key = apikey.key.clone();
+        let value = match apikey.prefix {
+            Some(ref prefix) => format!("{} {}", prefix, key),
+            None => key,
+        };
+        req_builder = req_builder.header("x-api-key", value);
+    };
+    req_builder = req_builder.json(&params.withdraw_request);
+
+    let req = req_builder.build()?;
+    let resp = configuration.client.execute(req).await?;
+
+    let status = resp.status();
+    let content_type = resp
+        .headers()
+        .get("content-type")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("application/octet-stream");
+    let content_type = super::ContentType::from(content_type);
+
+    if !status.is_client_error() && !status.is_server_error() {
+        let content = resp.text().await?;
+        match content_type {
+            ContentType::Json => serde_path_to_error::deserialize(&mut serde_json::Deserializer::from_str(&content)).map_err(Error::from),
+            ContentType::Text => Err(Error::from(serde_json::Error::custom("Received `text/plain` content type response that cannot be converted to `models::WithdrawResponse`"))),
+            ContentType::Unsupported(unknown_type) => Err(Error::from(serde_json::Error::custom(format!("Received `{unknown_type}` content type response that cannot be converted to `models::WithdrawResponse`")))),
+        }
+    } else {
+        let content = resp.text().await?;
+        let entity: Option<PortfoliosSubmitWithdrawalError> = serde_json::from_str(&content).ok();
         Err(Error::ResponseError(ResponseContent {
             status,
             content,

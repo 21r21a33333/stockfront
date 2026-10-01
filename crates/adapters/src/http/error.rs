@@ -13,7 +13,7 @@ use stockfront_core::carry::{CarryServiceError, EarnProviderError};
 use stockfront_core::liquidity::{LiquidityProviderError, LiquidityServiceError};
 use stockfront_core::managed_portfolios::{
     ListManagedPortfolioTemplatesQueryError, ListManagedPortfoliosQueryError,
-    ManagedPortfolioProviderError,
+    ManagedPortfolioProviderError, ManagedPortfolioServiceError,
 };
 use stockfront_core::wallet_portfolio::{
     BalanceReaderError, WalletAddressError, WalletPortfolioError,
@@ -274,20 +274,30 @@ impl ApiError {
         "managed_portfolio_provider_unavailable",
         "managed portfolio services are temporarily unavailable",
     );
-    const MANAGED_PORTFOLIO_ENROLLMENT_REJECTED: Self = Self::fixed(
+    const MANAGED_PORTFOLIO_REQUEST_REJECTED: Self = Self::fixed(
         StatusCode::UNPROCESSABLE_ENTITY,
-        "managed_portfolio_enrollment_rejected",
-        "the managed portfolio provider rejected the enrollment",
+        "managed_portfolio_request_rejected",
+        "the managed portfolio provider rejected the request",
     );
-    const MANAGED_PORTFOLIO_ENROLLMENT_CONFLICT: Self = Self::fixed(
+    const MANAGED_PORTFOLIO_CONFLICT: Self = Self::fixed(
         StatusCode::CONFLICT,
-        "managed_portfolio_enrollment_conflict",
-        "the wallet is already enrolled or the enrollment state has changed",
+        "managed_portfolio_conflict",
+        "the managed portfolio state has changed; retry with a fresh authorization",
     );
     const MANAGED_PORTFOLIO_NOT_FOUND: Self = Self::fixed(
         StatusCode::NOT_FOUND,
         "managed_portfolio_not_found",
         "the managed portfolio was not found",
+    );
+    const INVALID_MANAGED_PORTFOLIO_DEPOSIT_AMOUNT: Self = Self::fixed(
+        StatusCode::BAD_REQUEST,
+        "invalid_managed_portfolio_deposit_amount",
+        "managed portfolio deposit amount must be greater than zero",
+    );
+    const INVALID_MANAGED_PORTFOLIO_WITHDRAWAL_ASSETS: Self = Self::fixed(
+        StatusCode::BAD_REQUEST,
+        "invalid_managed_portfolio_withdrawal_assets",
+        "in-kind withdrawal assets and amounts must be greater than zero",
     );
     const fn fixed(status: StatusCode, code: &'static str, message: &'static str) -> Self {
         Self {
@@ -341,9 +351,23 @@ impl From<ManagedPortfolioProviderError> for ApiError {
                 Self::MANAGED_PORTFOLIO_PROVIDER_UNAVAILABLE
             }
             ManagedPortfolioProviderError::InvalidData => Self::INVALID_PROVIDER_RESPONSE,
-            ManagedPortfolioProviderError::Rejected => Self::MANAGED_PORTFOLIO_ENROLLMENT_REJECTED,
-            ManagedPortfolioProviderError::Conflict => Self::MANAGED_PORTFOLIO_ENROLLMENT_CONFLICT,
+            ManagedPortfolioProviderError::Rejected => Self::MANAGED_PORTFOLIO_REQUEST_REJECTED,
+            ManagedPortfolioProviderError::Conflict => Self::MANAGED_PORTFOLIO_CONFLICT,
             ManagedPortfolioProviderError::NotFound => Self::MANAGED_PORTFOLIO_NOT_FOUND,
+        }
+    }
+}
+
+impl From<ManagedPortfolioServiceError> for ApiError {
+    fn from(error: ManagedPortfolioServiceError) -> Self {
+        match error {
+            ManagedPortfolioServiceError::Provider(error) => error.into(),
+            ManagedPortfolioServiceError::InvalidDepositAmount => {
+                Self::INVALID_MANAGED_PORTFOLIO_DEPOSIT_AMOUNT
+            }
+            ManagedPortfolioServiceError::InvalidWithdrawalAssets => {
+                Self::INVALID_MANAGED_PORTFOLIO_WITHDRAWAL_ASSETS
+            }
         }
     }
 }

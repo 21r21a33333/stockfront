@@ -3,10 +3,13 @@ use std::time::Duration;
 use async_trait::async_trait;
 use stockfront_core::managed_portfolios::{
     EnrollManagedPortfolioRequest, ListManagedPortfolioTemplatesQuery, ListManagedPortfoliosQuery,
-    ManagedPortfolioEnrollment, ManagedPortfolioGateway, ManagedPortfolioPage,
-    ManagedPortfolioPositions, ManagedPortfolioProviderError, ManagedPortfolioSummary,
-    ManagedPortfolioTemplate, ManagedPortfolioTemplatePage,
-    PrepareManagedPortfolioEnrollmentRequest, PreparedManagedPortfolioEnrollment,
+    ManagedPortfolioEnrollment, ManagedPortfolioGateway, ManagedPortfolioOperation,
+    ManagedPortfolioPage, ManagedPortfolioPositions, ManagedPortfolioProviderError,
+    ManagedPortfolioSummary, ManagedPortfolioTemplate, ManagedPortfolioTemplatePage,
+    PrepareManagedPortfolioDepositRequest, PrepareManagedPortfolioEnrollmentRequest,
+    PrepareManagedPortfolioWithdrawalRequest, PreparedManagedPortfolioDeposit,
+    PreparedManagedPortfolioEnrollment, PreparedManagedPortfolioWithdrawal,
+    SubmitManagedPortfolioWithdrawalRequest, SubmittedManagedPortfolioWithdrawal,
 };
 use stockfront_core::wallet_portfolio::WalletAddress;
 
@@ -19,7 +22,7 @@ use super::{
 };
 
 pub struct GliderAdapter {
-    client: GliderClient,
+    pub(super) client: GliderClient,
 }
 
 impl GliderAdapter {
@@ -104,5 +107,37 @@ impl ManagedPortfolioGateway for GliderAdapter {
     ) -> Result<ManagedPortfolioPositions, ManagedPortfolioProviderError> {
         BnbManagedPortfolioPositions::try_from(*self.client.positions(portfolio_id).await?.data)
             .map(ManagedPortfolioPositions::from)
+    }
+
+    async fn prepare_deposit(
+        &self,
+        portfolio_id: &str,
+        request: &PrepareManagedPortfolioDepositRequest,
+    ) -> Result<PreparedManagedPortfolioDeposit, ManagedPortfolioProviderError> {
+        self.prepare_deposit_action(portfolio_id, request).await
+    }
+
+    async fn prepare_withdrawal(
+        &self,
+        portfolio_id: &str,
+        request: &PrepareManagedPortfolioWithdrawalRequest,
+    ) -> Result<PreparedManagedPortfolioWithdrawal, ManagedPortfolioProviderError> {
+        self.prepare_withdrawal_action(portfolio_id, request).await
+    }
+
+    async fn submit_withdrawal(
+        &self,
+        portfolio_id: &str,
+        request: &SubmitManagedPortfolioWithdrawalRequest,
+    ) -> Result<SubmittedManagedPortfolioWithdrawal, ManagedPortfolioProviderError> {
+        self.submit_withdrawal_action(portfolio_id, request).await
+    }
+
+    async fn operation(
+        &self,
+        portfolio_id: &str,
+        operation_id: &str,
+    ) -> Result<ManagedPortfolioOperation, ManagedPortfolioProviderError> {
+        self.withdrawal_operation(portfolio_id, operation_id).await
     }
 }

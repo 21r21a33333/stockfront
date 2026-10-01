@@ -4,7 +4,7 @@ use alloy_primitives::{Address, B256, U256};
 use chrono::DateTime;
 use glider_api::models::{
     CreateEnrollData, CreateEnrollSignatureData, DiscoveryStrategyItem, PortfolioAsset,
-    PortfolioListItem, PortfolioPositionsData, PortfolioSchedule, SmartAccount,
+    PortfolioDetail, PortfolioListItem, PortfolioPositionsData, PortfolioSchedule, SmartAccount,
     StrategyAllocationAsset,
     portfolio_position_warning::Kind as PositionWarningKind,
     portfolio_schedule::{Frequency, Status},
@@ -39,6 +39,8 @@ pub(super) struct BnbManagedPortfolioSummary(ManagedPortfolioSummary);
 
 pub(super) struct BnbManagedPortfolioPositions(ManagedPortfolioPositions);
 
+pub(super) struct BnbManagedPortfolioDepositAccount(ManagedPortfolioAccount);
+
 impl From<BnbManagedPortfolioTemplate> for ManagedPortfolioTemplate {
     fn from(value: BnbManagedPortfolioTemplate) -> Self {
         value.0
@@ -72,6 +74,12 @@ impl From<BnbManagedPortfolioSummary> for ManagedPortfolioSummary {
 impl From<BnbManagedPortfolioPositions> for ManagedPortfolioPositions {
     fn from(value: BnbManagedPortfolioPositions) -> Self {
         value.0
+    }
+}
+
+impl BnbManagedPortfolioDepositAccount {
+    pub(super) fn into_inner(self) -> ManagedPortfolioAccount {
+        self.0
     }
 }
 
@@ -266,6 +274,19 @@ impl TryFrom<PortfolioPositionsData> for BnbManagedPortfolioPositions {
     }
 }
 
+impl TryFrom<PortfolioDetail> for BnbManagedPortfolioDepositAccount {
+    type Error = ManagedPortfolioProviderError;
+
+    fn try_from(value: PortfolioDetail) -> Result<Self, Self::Error> {
+        value
+            .smart_accounts
+            .iter()
+            .find_map(bnb_deposit_account)
+            .map(Self)
+            .ok_or(ManagedPortfolioProviderError::InvalidData)
+    }
+}
+
 fn map_schedule(
     schedule: &PortfolioSchedule,
 ) -> Result<ManagedPortfolioSchedule, ManagedPortfolioProviderError> {
@@ -324,11 +345,19 @@ fn map_bnb_asset(
 }
 
 fn bnb_account(account: &SmartAccount) -> Option<ManagedPortfolioAccount> {
-    let address = account
-        .account_id
-        .strip_prefix(BNB_ACCOUNT_PREFIX)?
-        .parse()
-        .ok()?;
+    parse_bnb_account(&account.account_id)
+}
+
+fn bnb_deposit_account(account: &SmartAccount) -> Option<ManagedPortfolioAccount> {
+    account
+        .deposit_account_id
+        .as_deref()
+        .and_then(parse_bnb_account)
+        .or_else(|| parse_bnb_account(&account.account_id))
+}
+
+fn parse_bnb_account(account_id: &str) -> Option<ManagedPortfolioAccount> {
+    let address = account_id.strip_prefix(BNB_ACCOUNT_PREFIX)?.parse().ok()?;
     Some(ManagedPortfolioAccount {
         chain_id: BNB_CHAIN_ID,
         address,
@@ -339,7 +368,7 @@ fn parse_decimal(value: &str) -> Result<Decimal, ManagedPortfolioProviderError> 
     Decimal::from_str(value).map_err(|_| ManagedPortfolioProviderError::InvalidData)
 }
 
-fn parse_timestamp(value: &str) -> Result<i64, ManagedPortfolioProviderError> {
+pub(super) fn parse_timestamp(value: &str) -> Result<i64, ManagedPortfolioProviderError> {
     DateTime::parse_from_rfc3339(value)
         .map(|timestamp| timestamp.timestamp_millis())
         .map_err(|_| ManagedPortfolioProviderError::InvalidData)
@@ -517,6 +546,29 @@ mod tests {
                     .expect("test timestamp is valid")
                     .timestamp_millis()
             )
+        );
+    }
+
+    #[test]
+    fn resolves_bnb_portfolio_deposit_account() {
+        let portfolio = serde_json::from_value::<PortfolioDetail>(serde_json::json!({
+            "smartAccounts": [
+                { "accountId": "eip155:8453:0x2222222222222222222222222222222222222222" },
+                { "accountId": "eip155:56:0x1111111111111111111111111111111111111111" }
+            ]
+        }))
+        .unwrap_or_else(|error| panic!("valid portfolio detail rejected: {error}"));
+
+        let account = BnbManagedPortfolioDepositAccount::try_from(portfolio)
+            .unwrap_or_else(|error| panic!("BNB deposit account rejected: {error}"))
+            .into_inner();
+
+        assert_eq!(account.chain_id, BNB_CHAIN_ID);
+        assert_eq!(
+            account.address,
+            "0x1111111111111111111111111111111111111111"
+                .parse::<Address>()
+                .unwrap_or_else(|error| panic!("test address rejected: {error}"))
         );
     }
 

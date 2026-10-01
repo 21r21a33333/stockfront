@@ -3,9 +3,12 @@ use thiserror::Error;
 
 use super::{
     EnrollManagedPortfolioRequest, ListManagedPortfolioTemplatesQuery, ListManagedPortfoliosQuery,
-    ManagedPortfolioEnrollment, ManagedPortfolioPage, ManagedPortfolioPositions,
-    ManagedPortfolioTemplatePage, PrepareManagedPortfolioEnrollmentRequest,
-    PreparedManagedPortfolioEnrollment,
+    ManagedPortfolioEnrollment, ManagedPortfolioOperation, ManagedPortfolioPage,
+    ManagedPortfolioPositions, ManagedPortfolioTemplatePage, PrepareManagedPortfolioDepositRequest,
+    PrepareManagedPortfolioEnrollmentRequest, PrepareManagedPortfolioWithdrawalRequest,
+    PreparedManagedPortfolioDeposit, PreparedManagedPortfolioEnrollment,
+    PreparedManagedPortfolioWithdrawal, SubmitManagedPortfolioWithdrawalRequest,
+    SubmittedManagedPortfolioWithdrawal,
 };
 use crate::wallet_portfolio::WalletAddress;
 
@@ -50,4 +53,28 @@ pub trait ManagedPortfolioGateway: Send + Sync {
         &self,
         portfolio_id: &str,
     ) -> Result<ManagedPortfolioPositions, ManagedPortfolioProviderError>;
+
+    async fn prepare_deposit(
+        &self,
+        portfolio_id: &str,
+        request: &PrepareManagedPortfolioDepositRequest,
+    ) -> Result<PreparedManagedPortfolioDeposit, ManagedPortfolioProviderError>;
+
+    async fn prepare_withdrawal(
+        &self,
+        portfolio_id: &str,
+        request: &PrepareManagedPortfolioWithdrawalRequest,
+    ) -> Result<PreparedManagedPortfolioWithdrawal, ManagedPortfolioProviderError>;
+
+    async fn submit_withdrawal(
+        &self,
+        portfolio_id: &str,
+        request: &SubmitManagedPortfolioWithdrawalRequest,
+    ) -> Result<SubmittedManagedPortfolioWithdrawal, ManagedPortfolioProviderError>;
+
+    async fn operation(
+        &self,
+        portfolio_id: &str,
+        operation_id: &str,
+    ) -> Result<ManagedPortfolioOperation, ManagedPortfolioProviderError>;
 }

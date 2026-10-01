@@ -5,9 +5,13 @@ use axum::{
     extract::{Path, Query, State, rejection::JsonRejection},
 };
 use stockfront_core::managed_portfolios::{
-    EnrollManagedPortfolioRequest, ManagedPortfolioEnrollment, ManagedPortfolioPage,
-    ManagedPortfolioPositions, ManagedPortfolioService, ManagedPortfolioTemplatePage,
-    PrepareManagedPortfolioEnrollmentRequest, PreparedManagedPortfolioEnrollment,
+    EnrollManagedPortfolioRequest, ManagedPortfolioEnrollment, ManagedPortfolioOperation,
+    ManagedPortfolioPage, ManagedPortfolioPositions, ManagedPortfolioService,
+    ManagedPortfolioTemplatePage, PrepareManagedPortfolioDepositRequest,
+    PrepareManagedPortfolioEnrollmentRequest, PrepareManagedPortfolioWithdrawalRequest,
+    PreparedManagedPortfolioDeposit, PreparedManagedPortfolioEnrollment,
+    PreparedManagedPortfolioWithdrawal, SubmitManagedPortfolioWithdrawalRequest,
+    SubmittedManagedPortfolioWithdrawal,
 };
 
 use super::super::{
@@ -55,4 +59,46 @@ pub(in crate::http) async fn positions(
     Path(portfolio_id): Path<String>,
 ) -> ApiResult<ManagedPortfolioPositions> {
     Ok(Response::ok(service.positions(&portfolio_id).await?))
+}
+
+pub(in crate::http) async fn prepare_deposit(
+    State(service): State<Arc<ManagedPortfolioService>>,
+    Path(portfolio_id): Path<String>,
+    request: Result<Json<PrepareManagedPortfolioDepositRequest>, JsonRejection>,
+) -> ApiResult<PreparedManagedPortfolioDeposit> {
+    let Json(request) = request?;
+    Ok(Response::ok(
+        service.prepare_deposit(&portfolio_id, &request).await?,
+    ))
+}
+
+pub(in crate::http) async fn prepare_withdrawal(
+    State(service): State<Arc<ManagedPortfolioService>>,
+    Path(portfolio_id): Path<String>,
+    request: Result<Json<PrepareManagedPortfolioWithdrawalRequest>, JsonRejection>,
+) -> ApiResult<PreparedManagedPortfolioWithdrawal> {
+    let Json(request) = request?;
+    Ok(Response::ok(
+        service.prepare_withdrawal(&portfolio_id, &request).await?,
+    ))
+}
+
+pub(in crate::http) async fn submit_withdrawal(
+    State(service): State<Arc<ManagedPortfolioService>>,
+    Path(portfolio_id): Path<String>,
+    request: Result<Json<SubmitManagedPortfolioWithdrawalRequest>, JsonRejection>,
+) -> ApiResult<SubmittedManagedPortfolioWithdrawal> {
+    let Json(request) = request?;
+    Ok(Response::ok(
+        service.submit_withdrawal(&portfolio_id, &request).await?,
+    ))
+}
+
+pub(in crate::http) async fn operation(
+    State(service): State<Arc<ManagedPortfolioService>>,
+    Path((portfolio_id, operation_id)): Path<(String, String)>,
+) -> ApiResult<ManagedPortfolioOperation> {
+    Ok(Response::ok(
+        service.operation(&portfolio_id, &operation_id).await?,
+    ))
 }

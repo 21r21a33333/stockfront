@@ -16,10 +16,20 @@ pub struct SmartAccount {
     /// CAIP-10 account identifier for the smart account (Kernel smart account). Always chain-bound — the same smart account address on a different chain is a different account.
     #[serde(rename = "accountId")]
     pub account_id: String,
+    /// SVM B2B only: CAIP-10 of the Swig sub-account the user sends funds to (the deposit address). On the SVM subaccount path this equals `accountId` — the canonical smart-account address IS the fundable sub-account. Omitted for EVM and SVM create-only accounts.
+    #[serde(rename = "depositAccountId", skip_serializing_if = "Option::is_none")]
+    pub deposit_account_id: Option<String>,
+    /// SVM B2B only: the Swig role id that owns the sub-account (1 for the first vault of a tenant+user, higher for subsequent reused-Swig vaults). Omitted for EVM and SVM create-only accounts.
+    #[serde(rename = "swigRoleId", skip_serializing_if = "Option::is_none")]
+    pub swig_role_id: Option<i32>,
 }
 
 impl SmartAccount {
     pub fn new(account_id: String) -> SmartAccount {
-        SmartAccount { account_id }
+        SmartAccount {
+            account_id,
+            deposit_account_id: None,
+            swig_role_id: None,
+        }
     }
 }

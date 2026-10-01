@@ -39,6 +39,22 @@ pub fn managed_portfolio_router(service: Arc<ManagedPortfolioService>) -> Router
             "/v1/managed-portfolios/{portfolio_id}/positions",
             get(handlers::managed_portfolios::positions),
         )
+        .route(
+            "/v1/managed-portfolios/{portfolio_id}/deposits/prepare",
+            post(handlers::managed_portfolios::prepare_deposit),
+        )
+        .route(
+            "/v1/managed-portfolios/{portfolio_id}/withdrawals/prepare",
+            post(handlers::managed_portfolios::prepare_withdrawal),
+        )
+        .route(
+            "/v1/managed-portfolios/{portfolio_id}/withdrawals",
+            post(handlers::managed_portfolios::submit_withdrawal),
+        )
+        .route(
+            "/v1/managed-portfolios/{portfolio_id}/operations/{operation_id}",
+            get(handlers::managed_portfolios::operation),
+        )
         .with_state(service)
 }
 
