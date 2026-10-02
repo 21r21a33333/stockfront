@@ -4,6 +4,7 @@ use axum::{
     response::{IntoResponse, Response as AxumResponse},
 };
 use serde::Serialize;
+use stockfront_core::recipes::RecipeDiagnostic;
 
 use super::error::ApiError;
 
@@ -36,11 +37,20 @@ impl<T> Response<T> {
 }
 
 impl Response<()> {
-    pub(super) fn error(code: &'static str, message: String, status_code: StatusCode) -> Self {
+    pub(super) fn error(
+        code: &'static str,
+        message: String,
+        diagnostics: Option<Vec<RecipeDiagnostic>>,
+        status_code: StatusCode,
+    ) -> Self {
         Self {
             status: Status::Error,
             result: None,
-            error: Some(Error { code, message }),
+            error: Some(Error {
+                code,
+                message,
+                diagnostics,
+            }),
             status_code,
         }
     }
@@ -73,4 +83,6 @@ impl<T> List<T> {
 struct Error {
     code: &'static str,
     message: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    diagnostics: Option<Vec<RecipeDiagnostic>>,
 }

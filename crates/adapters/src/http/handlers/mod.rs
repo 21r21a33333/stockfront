@@ -4,6 +4,7 @@ pub(super) mod bstocks;
 pub(super) mod carry;
 pub(super) mod liquidity;
 pub(super) mod managed_portfolios;
+pub(super) mod recipes;
 pub(super) mod trades;
 pub(super) mod wallets;
 

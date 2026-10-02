@@ -19,6 +19,7 @@ alloy-primitives = "1.7.3"
 async-trait = "0.1.89"
 axum = "0.8.6"
 rust_decimal = "1.39.0"
+petgraph = "0.8.3"
 serde = "1.0.228"
 stockfront-core = { path = "crates/core" }
 thiserror = "2.0.17"

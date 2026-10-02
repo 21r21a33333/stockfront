@@ -8,7 +8,7 @@ use stockfront_adapters::{
     glider::GliderAdapter,
     http::{
         basket_router, borrowing_router, bstock_router, carry_router, liquidity_router,
-        managed_portfolio_router, trade_router, wallet_router,
+        managed_portfolio_router, recipe_router, trade_router, wallet_router,
     },
     reserve::ReserveAdapter,
     venus::VenusBorrowingAdapter,
@@ -21,6 +21,7 @@ use stockfront_core::{
     carry::{CarryPolicy, CarryService},
     liquidity::{LiquidityPolicy, LiquidityService},
     managed_portfolios::ManagedPortfolioService,
+    recipes::RecipeService,
     wallet_portfolio::WalletPortfolioService,
 };
 
@@ -53,20 +54,19 @@ async fn main() -> Result<(), Box<dyn Error>> {
         &binance_web3_api_secret,
         Duration::from_secs(10),
     )?;
-    drop(binance_web3_api_key);
-    drop(binance_web3_api_secret);
+    drop((binance_web3_api_key, binance_web3_api_secret));
     let binance = Arc::new(binance);
-    let bstock_market = Arc::new(BstockMarketService::new(binance.clone()));
+    let market = Arc::new(BstockMarketService::new(binance.clone()));
     let wallet_portfolio = Arc::new(WalletPortfolioService::new(
         binance.clone(),
         binance.clone(),
     ));
     let trade_policy = TradePolicy::new(
-        trade_settlement_tokens,
+        trade_settlement_tokens.clone(),
         max_trade_price_impact_bps,
         trade_slippage_bps,
     )?;
-    let bstock_trade = Arc::new(BstockTradeService::new(
+    let trades = Arc::new(BstockTradeService::new(
         binance.clone(),
         binance.clone(),
         trade_policy.clone(),
@@ -111,14 +111,17 @@ async fn main() -> Result<(), Box<dyn Error>> {
         Duration::from_secs(10),
     )?);
     let managed_portfolios = Arc::new(ManagedPortfolioService::new(glider));
-    let app = bstock_router(bstock_market)
+    let recipes = RecipeService::new(market.clone(), trades.clone(), trade_settlement_tokens);
+    let recipes = Arc::new(recipes);
+    let app = bstock_router(market)
         .merge(wallet_router(wallet_portfolio))
-        .merge(trade_router(bstock_trade))
+        .merge(trade_router(trades))
         .merge(borrowing_router(borrowing))
         .merge(carry_router(carry))
         .merge(liquidity_router(liquidity))
         .merge(basket_router(baskets))
-        .merge(managed_portfolio_router(managed_portfolios));
+        .merge(managed_portfolio_router(managed_portfolios))
+        .merge(recipe_router(recipes));
     let listener = tokio::net::TcpListener::bind(bind_address).await?;
 
     axum::serve(listener, app)

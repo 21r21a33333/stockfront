@@ -26,6 +26,18 @@ where
         .serialize(serializer)
 }
 
+pub(crate) fn serialize_all_as_strings<T, S>(values: &[T], serializer: S) -> Result<S::Ok, S::Error>
+where
+    T: Display,
+    S: Serializer,
+{
+    values
+        .iter()
+        .map(ToString::to_string)
+        .collect::<Vec<_>>()
+        .serialize(serializer)
+}
+
 pub(crate) fn serialize_bytes<S>(value: &Bytes, serializer: S) -> Result<S::Ok, S::Error>
 where
     S: Serializer,

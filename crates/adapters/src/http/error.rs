@@ -15,6 +15,7 @@ use stockfront_core::managed_portfolios::{
     ListManagedPortfolioTemplatesQueryError, ListManagedPortfoliosQueryError,
     ManagedPortfolioProviderError, ManagedPortfolioServiceError,
 };
+use stockfront_core::recipes::{RecipeDiagnostic, RecipeError};
 use stockfront_core::wallet_portfolio::{
     BalanceReaderError, WalletAddressError, WalletPortfolioError,
 };
@@ -26,6 +27,7 @@ pub(super) struct ApiError {
     status: StatusCode,
     code: &'static str,
     message: Cow<'static, str>,
+    diagnostics: Option<Vec<RecipeDiagnostic>>,
 }
 
 impl ApiError {
@@ -299,11 +301,32 @@ impl ApiError {
         "invalid_managed_portfolio_withdrawal_assets",
         "in-kind withdrawal assets and amounts must be greater than zero",
     );
+    const INVALID_RECIPE: Self = Self::fixed(
+        StatusCode::UNPROCESSABLE_ENTITY,
+        "invalid_recipe",
+        "the recipe structure is invalid",
+    );
+    const INVALID_RECIPE_SELECTION: Self = Self::fixed(
+        StatusCode::BAD_REQUEST,
+        "invalid_recipe_selection",
+        "recipe selections must match the prepared nodes",
+    );
+    const RECIPE_SELECTION_EXPIRED: Self = Self::fixed(
+        StatusCode::CONFLICT,
+        "recipe_selection_expired",
+        "the selected recipe route is no longer available",
+    );
+    const RECIPE_STEP_NOT_READY: Self = Self::fixed(
+        StatusCode::CONFLICT,
+        "recipe_step_not_ready",
+        "the recipe step depends on an earlier transaction result",
+    );
     const fn fixed(status: StatusCode, code: &'static str, message: &'static str) -> Self {
         Self {
             status,
             code,
             message: Cow::Borrowed(message),
+            diagnostics: None,
         }
     }
 
@@ -316,6 +339,23 @@ impl ApiError {
             status,
             code,
             message,
+            diagnostics: None,
+        }
+    }
+}
+
+impl From<RecipeError> for ApiError {
+    fn from(error: RecipeError) -> Self {
+        match error {
+            RecipeError::InvalidRecipe(report) => Self {
+                diagnostics: Some(report.diagnostics),
+                ..Self::INVALID_RECIPE
+            },
+            RecipeError::InvalidSelection => Self::INVALID_RECIPE_SELECTION,
+            RecipeError::SelectionExpired => Self::RECIPE_SELECTION_EXPIRED,
+            RecipeError::StepNotReady => Self::RECIPE_STEP_NOT_READY,
+            RecipeError::Market(error) => error.into(),
+            RecipeError::Trade(error) => error.into(),
         }
     }
 }
@@ -565,6 +605,12 @@ impl From<BorrowingProviderError> for ApiError {
 
 impl IntoResponse for ApiError {
     fn into_response(self) -> AxumResponse {
-        Response::error(self.code, self.message.into_owned(), self.status).into_response()
+        Response::error(
+            self.code,
+            self.message.into_owned(),
+            self.diagnostics,
+            self.status,
+        )
+        .into_response()
     }
 }
