@@ -4,7 +4,7 @@ import type {
   RecipeDiagnostic,
   TradeQuote,
 } from "@/api/generated";
-import type { ExecutionProgress } from "@/wallet/execution";
+import type { ExecutionAttempt } from "../execution/journal";
 import type { AssetOption } from "./types";
 
 export interface BuilderContextValue {
@@ -12,9 +12,10 @@ export interface BuilderContextValue {
   diagnostics: RecipeDiagnostic[];
   selectedRoutes: Record<string, TradeQuote>;
   prepared?: PreparedRecipe;
-  execution: ExecutionProgress[];
+  execution: ExecutionAttempt[];
   connectedOutputs: string[];
   appendTrade(sourceId: string): void;
+  openActivity(): void;
 }
 
 export const BuilderContext = createContext<BuilderContextValue | null>(null);

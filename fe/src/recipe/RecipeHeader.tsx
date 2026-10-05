@@ -10,6 +10,11 @@ export function RecipeHeader({
   onPreview,
   onSave,
   onDebug,
+  runStatus,
+  settled = false,
+  hasActivity = false,
+  onActivity,
+  onNewRun,
 }: {
   validation?: RecipeValidationReport;
   validating: boolean;
@@ -18,6 +23,11 @@ export function RecipeHeader({
   onPreview(): void;
   onSave(): void;
   onDebug(): void;
+  runStatus?: string;
+  settled?: boolean;
+  hasActivity?: boolean;
+  onActivity?(): void;
+  onNewRun?(): void;
 }) {
   const errors =
     validation?.diagnostics.filter((item) => item.severity === "ERROR")
@@ -50,10 +60,14 @@ export function RecipeHeader({
           <BookOpen size={14} /> Recipe API
         </button>
       </header>
-      <div className={styles.recipeHeader}>
+      <div className={styles.recipeHeader} aria-label="Recipe toolbar">
         <div>
           <strong>Wallet asset → Trade</strong>
-          <span>DRAFT</span>
+          <span
+            className={`${runStatus ? styles.runBadge : ""} ${settled ? styles.settledBadge : ""}`}
+          >
+            {runStatus ?? "DRAFT"}
+          </span>
         </div>
         <div className={styles.recipeActions}>
           <span className={`${styles.status} ${styles[status.tone]}`}>
@@ -63,19 +77,36 @@ export function RecipeHeader({
           <button type="button" className={styles.secondary} onClick={onSave}>
             <Save size={13} /> Save draft
           </button>
-          <button
-            type="button"
-            className={styles.primary}
-            onClick={onPreview}
-            disabled={!validation?.valid || previewing || !canPreview}
-            title={
-              canPreview
-                ? undefined
-                : "Connect a wallet on BNB Chain to preview routes"
-            }
-          >
-            {previewing ? "Finding routes…" : "Preview route"}
-          </button>
+          {hasActivity && (
+            <button
+              type="button"
+              className={`${styles.secondary} ${styles.activityButton}`}
+              onClick={onActivity}
+            >
+              Activity
+            </button>
+          )}
+          {settled ? (
+            <button type="button" className={styles.primary} onClick={onNewRun}>
+              New run
+            </button>
+          ) : (
+            <button
+              type="button"
+              className={styles.primary}
+              onClick={onPreview}
+              disabled={!validation?.valid || previewing || !canPreview}
+              title={
+                canPreview
+                  ? undefined
+                  : hasActivity
+                    ? "Review the current execution in Activity"
+                    : "Connect a wallet on BNB Chain to preview routes"
+              }
+            >
+              {previewing ? "Finding routes…" : "Preview route"}
+            </button>
+          )}
         </div>
       </div>
     </>

@@ -16,6 +16,38 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/bstock-trades/orders/{order_id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: operations["order_status"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/bstock-trades/transactions/{transaction_hash}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: operations["transaction_status"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/recipe-primitives": {
     parameters: {
       query?: never;
@@ -403,8 +435,42 @@ export interface components {
       };
       status: components["schemas"]["Status"];
     };
+    Response_TradeOrderStatus: {
+      error?: components["schemas"]["Error"];
+      result?: {
+        /** Format: int64 */
+        createdAtMs?: number;
+        /** Format: int64 */
+        filledAtMs?: number;
+        filledBuyAmount?: string;
+        filledSellAmount?: string;
+        state: components["schemas"]["TradeOrderState"];
+        /** Format: hex */
+        transactionHash?: `0x${string}`;
+      };
+      status: components["schemas"]["Status"];
+    };
+    Response_TradeTransactionStatus: {
+      error?: components["schemas"]["Error"];
+      result?: {
+        /** Format: int64 */
+        blockNumber?: number;
+        bought?: components["schemas"]["SettledTokenAmount"][];
+        error?: string;
+        /** Format: int64 */
+        executedAtMs?: number;
+        sold?: components["schemas"]["SettledTokenAmount"][];
+        state: components["schemas"]["TradeTransactionState"];
+      };
+      status: components["schemas"]["Status"];
+    };
     /** @enum {string} */
     RfqVenue: "inchFusion" | "cowSwap" | "pcsXRfq";
+    SettledTokenAmount: {
+      amount: string;
+      /** Format: evm-address */
+      token: `0x${string}`;
+    };
     /** @enum {string} */
     Status: "Ok" | "Error";
     SubmitOrderRequest: {
@@ -436,6 +502,17 @@ export interface components {
       | "expired"
       | "cancelled"
       | "unknown";
+    TradeOrderStatus: {
+      /** Format: int64 */
+      createdAtMs?: number;
+      /** Format: int64 */
+      filledAtMs?: number;
+      filledBuyAmount?: string;
+      filledSellAmount?: string;
+      state: components["schemas"]["TradeOrderState"];
+      /** Format: hex */
+      transactionHash?: `0x${string}`;
+    };
     TradeQuote: {
       /** Format: evm-address */
       approvalTarget?: `0x${string}`;
@@ -445,6 +522,18 @@ export interface components {
       routeQuoteId: string;
       sell: components["schemas"]["TokenAmount"];
       venue: string;
+    };
+    /** @enum {string} */
+    TradeTransactionState: "pending" | "succeeded" | "failed" | "unknown";
+    TradeTransactionStatus: {
+      /** Format: int64 */
+      blockNumber?: number;
+      bought?: components["schemas"]["SettledTokenAmount"][];
+      error?: string;
+      /** Format: int64 */
+      executedAtMs?: number;
+      sold?: components["schemas"]["SettledTokenAmount"][];
+      state: components["schemas"]["TradeTransactionState"];
     };
     /** @default null */
     TupleUnit: unknown;
@@ -512,14 +601,24 @@ export type Response_RecipeValidationReport =
   components["schemas"]["Response_RecipeValidationReport"];
 export type Response_SubmittedOrder =
   components["schemas"]["Response_SubmittedOrder"];
+export type Response_TradeOrderStatus =
+  components["schemas"]["Response_TradeOrderStatus"];
+export type Response_TradeTransactionStatus =
+  components["schemas"]["Response_TradeTransactionStatus"];
 export type RfqVenue = components["schemas"]["RfqVenue"];
+export type SettledTokenAmount = components["schemas"]["SettledTokenAmount"];
 export type Status = components["schemas"]["Status"];
 export type SubmitOrderRequest = components["schemas"]["SubmitOrderRequest"];
 export type SubmittedOrder = components["schemas"]["SubmittedOrder"];
 export type TokenAmount = components["schemas"]["TokenAmount"];
 export type TradeExecutionMode = components["schemas"]["TradeExecutionMode"];
 export type TradeOrderState = components["schemas"]["TradeOrderState"];
+export type TradeOrderStatus = components["schemas"]["TradeOrderStatus"];
 export type TradeQuote = components["schemas"]["TradeQuote"];
+export type TradeTransactionState =
+  components["schemas"]["TradeTransactionState"];
+export type TradeTransactionStatus =
+  components["schemas"]["TradeTransactionStatus"];
 export type TupleUnit = components["schemas"]["TupleUnit"];
 export type $defs = Record<string, never>;
 export interface operations {
@@ -542,6 +641,64 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["Response_SubmittedOrder"];
+        };
+      };
+      default: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Response"];
+        };
+      };
+    };
+  };
+  order_status: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        order_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Response_TradeOrderStatus"];
+        };
+      };
+      default: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Response"];
+        };
+      };
+    };
+  };
+  transaction_status: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        transaction_hash: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Response_TradeTransactionStatus"];
         };
       };
       default: {

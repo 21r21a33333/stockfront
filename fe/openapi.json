@@ -41,6 +41,74 @@
         }
       }
     },
+    "/v1/bstock-trades/orders/{order_id}": {
+      "get": {
+        "tags": ["super::handlers::trades"],
+        "operationId": "order_status",
+        "parameters": [
+          {
+            "name": "order_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Response_TradeOrderStatus"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Response" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/bstock-trades/transactions/{transaction_hash}": {
+      "get": {
+        "tags": ["super::handlers::trades"],
+        "operationId": "transaction_status",
+        "parameters": [
+          {
+            "name": "transaction_hash",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Response_TradeTransactionStatus"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Response" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/recipe-primitives": {
       "get": {
         "tags": ["super::handlers::recipes"],
@@ -789,9 +857,67 @@
           "status": { "$ref": "#/components/schemas/Status" }
         }
       },
+      "Response_TradeOrderStatus": {
+        "type": "object",
+        "required": ["status"],
+        "properties": {
+          "error": { "$ref": "#/components/schemas/Error" },
+          "result": {
+            "type": "object",
+            "required": ["state"],
+            "properties": {
+              "createdAtMs": { "type": "integer", "format": "int64" },
+              "filledAtMs": { "type": "integer", "format": "int64" },
+              "filledBuyAmount": { "type": "string" },
+              "filledSellAmount": { "type": "string" },
+              "state": { "$ref": "#/components/schemas/TradeOrderState" },
+              "transactionHash": { "type": "string", "format": "hex" }
+            }
+          },
+          "status": { "$ref": "#/components/schemas/Status" }
+        }
+      },
+      "Response_TradeTransactionStatus": {
+        "type": "object",
+        "required": ["status"],
+        "properties": {
+          "error": { "$ref": "#/components/schemas/Error" },
+          "result": {
+            "type": "object",
+            "required": ["state"],
+            "properties": {
+              "blockNumber": {
+                "type": "integer",
+                "format": "int64",
+                "minimum": 0
+              },
+              "bought": {
+                "type": "array",
+                "items": { "$ref": "#/components/schemas/SettledTokenAmount" }
+              },
+              "error": { "type": "string" },
+              "executedAtMs": { "type": "integer", "format": "int64" },
+              "sold": {
+                "type": "array",
+                "items": { "$ref": "#/components/schemas/SettledTokenAmount" }
+              },
+              "state": { "$ref": "#/components/schemas/TradeTransactionState" }
+            }
+          },
+          "status": { "$ref": "#/components/schemas/Status" }
+        }
+      },
       "RfqVenue": {
         "type": "string",
         "enum": ["inchFusion", "cowSwap", "pcsXRfq"]
+      },
+      "SettledTokenAmount": {
+        "type": "object",
+        "required": ["token", "amount"],
+        "properties": {
+          "amount": { "type": "string" },
+          "token": { "type": "string", "format": "evm-address" }
+        }
       },
       "Status": { "type": "string", "enum": ["Ok", "Error"] },
       "SubmitOrderRequest": {
@@ -834,6 +960,18 @@
           "unknown"
         ]
       },
+      "TradeOrderStatus": {
+        "type": "object",
+        "required": ["state"],
+        "properties": {
+          "createdAtMs": { "type": "integer", "format": "int64" },
+          "filledAtMs": { "type": "integer", "format": "int64" },
+          "filledBuyAmount": { "type": "string" },
+          "filledSellAmount": { "type": "string" },
+          "state": { "$ref": "#/components/schemas/TradeOrderState" },
+          "transactionHash": { "type": "string", "format": "hex" }
+        }
+      },
       "TradeQuote": {
         "type": "object",
         "required": ["routeQuoteId", "venue", "executionMode", "sell", "buy"],
@@ -847,6 +985,28 @@
           "routeQuoteId": { "type": "string" },
           "sell": { "$ref": "#/components/schemas/TokenAmount" },
           "venue": { "type": "string" }
+        }
+      },
+      "TradeTransactionState": {
+        "type": "string",
+        "enum": ["pending", "succeeded", "failed", "unknown"]
+      },
+      "TradeTransactionStatus": {
+        "type": "object",
+        "required": ["state"],
+        "properties": {
+          "blockNumber": { "type": "integer", "format": "int64", "minimum": 0 },
+          "bought": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/SettledTokenAmount" }
+          },
+          "error": { "type": "string" },
+          "executedAtMs": { "type": "integer", "format": "int64" },
+          "sold": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/SettledTokenAmount" }
+          },
+          "state": { "$ref": "#/components/schemas/TradeTransactionState" }
         }
       },
       "TupleUnit": { "default": null }

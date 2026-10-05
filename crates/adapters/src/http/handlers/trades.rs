@@ -60,6 +60,11 @@ pub(in crate::http) async fn submit_order(
     Ok(Response::ok(order))
 }
 
+#[utoipa::path(
+    get, path = "/v1/bstock-trades/orders/{order_id}",
+    params(("order_id" = String, Path)),
+    responses((status = 200, body = Response<TradeOrderStatus>), (status = "default", body = ErrorResponse))
+)]
 pub(in crate::http) async fn order_status(
     State(service): State<Arc<BstockTradeService>>,
     Path(order_id): Path<String>,
@@ -68,6 +73,11 @@ pub(in crate::http) async fn order_status(
     Ok(Response::ok(status))
 }
 
+#[utoipa::path(
+    get, path = "/v1/bstock-trades/transactions/{transaction_hash}",
+    params(("transaction_hash" = String, Path)),
+    responses((status = 200, body = Response<TradeTransactionStatus>), (status = "default", body = ErrorResponse))
+)]
 pub(in crate::http) async fn transaction_status(
     State(service): State<Arc<BstockTradeService>>,
     Path(transaction_hash): Path<String>,

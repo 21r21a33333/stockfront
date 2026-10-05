@@ -74,13 +74,10 @@ it("shows quote output first, then prepared minimum and actual network estimate"
     diagnostics: [],
     preview,
     selectedRouteId: "quote-1",
-    execution: [],
     completed: false,
     preparing: false,
-    executing: false,
     onRouteSelect: () => {},
     onPrepare: () => {},
-    onExecute: () => {},
   };
   const view = render(<RecipeInspector {...props} />);
   expect(screen.getByText("Expected received")).toBeInTheDocument();
@@ -90,7 +87,6 @@ it("shows quote output first, then prepared minimum and actual network estimate"
   expect(screen.getByText("Minimum received")).toBeInTheDocument();
   expect(screen.getByText("0.09", { exact: false })).toBeInTheDocument();
   expect(screen.getByText("≈ 0.000021 BNB")).toBeInTheDocument();
-  expect(screen.getByText("21,000 gas")).toBeInTheDocument();
 });
 
 it("shows the bound wallet asset and amount on a trade input", () => {
@@ -120,13 +116,10 @@ it("shows the bound wallet asset and amount on a trade input", () => {
       node={node}
       assets={assets}
       diagnostics={[]}
-      execution={[]}
       completed={false}
       preparing={false}
-      executing={false}
       onRouteSelect={() => {}}
       onPrepare={() => {}}
-      onExecute={() => {}}
     />,
   );
   expect(
@@ -135,36 +128,21 @@ it("shows the bound wallet asset and amount on a trade input", () => {
   expect(screen.getByText("6 USDT")).toBeInTheDocument();
 });
 
-it("labels a prepared RFQ as an order, not a swap", () => {
+it("keeps activity accessible without a selected node", () => {
   render(
     <RecipeInspector
-      node={node}
       assets={assets}
       diagnostics={[]}
-      prepared={{
-        steps: [
-          {
-            kind: "TRADE",
-            nodeId: node.id,
-            action: {
-              executionMode: "RFQ",
-              submissionId: "submission-1",
-              routeQuoteId: "quote-1",
-              venue: "inchFusion",
-              typedData: "{}",
-            },
-          },
-        ],
-      }}
-      execution={[]}
       completed={false}
       preparing={false}
-      executing={false}
+      activity={<p>Recovered order</p>}
+      view="activity"
       onRouteSelect={() => {}}
       onPrepare={() => {}}
-      onExecute={() => {}}
     />,
   );
-  expect(screen.getByText("Submit RFQ → NVDAB")).toBeInTheDocument();
-  expect(screen.queryByText("Swap → NVDAB")).not.toBeInTheDocument();
+  expect(screen.getByText("Recovered order")).toBeVisible();
+  expect(
+    screen.queryByRole("button", { name: "Remove action" }),
+  ).not.toBeInTheDocument();
 });

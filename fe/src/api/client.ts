@@ -19,6 +19,7 @@ export class StockfrontApiError extends Error {
     readonly code: string,
     message: string,
     readonly diagnostics: RecipeDiagnostic[] = [],
+    readonly retryAfterMs?: number,
   ) {
     super(message);
     this.name = "StockfrontApiError";
@@ -37,17 +38,30 @@ export async function apiResult<T>(
   try {
     const { data, error, response } = await pending;
     const failure = error?.error ?? data?.error;
+    const delay = response.headers.get("Retry-After");
+    const milliseconds =
+      delay === null
+        ? NaN
+        : /^\d+$/.test(delay)
+          ? Number(delay) * 1000
+          : Date.parse(delay) - Date.now();
+    const retryAfterMs = Number.isFinite(milliseconds)
+      ? Math.max(0, milliseconds)
+      : undefined;
     if (failure) {
       throw new StockfrontApiError(
         failure.code,
         failure.message,
         failure.diagnostics,
+        retryAfterMs,
       );
     }
     if (!response.ok) {
       throw new StockfrontApiError(
         "request_failed",
         `Stockfront request failed with status ${response.status}.`,
+        [],
+        retryAfterMs,
       );
     }
     if (data?.status !== "Ok" || data.result === undefined) {

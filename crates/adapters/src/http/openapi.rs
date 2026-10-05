@@ -20,6 +20,8 @@ use utoipa::OpenApi;
         super::handlers::recipes::preview,
         super::handlers::recipes::prepare,
         super::handlers::trades::submit_order,
+        super::handlers::trades::order_status,
+        super::handlers::trades::transaction_status,
     )
 )]
 pub struct ApiDoc;

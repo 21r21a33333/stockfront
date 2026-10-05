@@ -16,4 +16,18 @@ export const recipesApi = {
     apiResult(api.POST("/v1/recipes/prepare", { body })),
   submitOrder: (body: SubmitOrderRequest) =>
     apiResult(api.POST("/v1/bstock-trades/orders", { body })),
+  orderStatus: (orderId: string, signal?: AbortSignal) =>
+    apiResult(
+      api.GET("/v1/bstock-trades/orders/{order_id}", {
+        params: { path: { order_id: orderId } },
+        signal,
+      }),
+    ),
+  transactionStatus: (transactionHash: string, signal?: AbortSignal) =>
+    apiResult(
+      api.GET("/v1/bstock-trades/transactions/{transaction_hash}", {
+        params: { path: { transaction_hash: transactionHash } },
+        signal,
+      }),
+    ),
 };

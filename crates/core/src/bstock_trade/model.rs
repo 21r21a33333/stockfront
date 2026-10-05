@@ -78,11 +78,13 @@ pub struct TokenAmount {
     pub amount: U256,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(utoipa::ToSchema, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SettledTokenAmount {
     #[serde(serialize_with = "serialize_as_string")]
+    #[schema(value_type = String, format = "evm-address")]
     pub token: Address,
+    #[schema(value_type = String)]
     pub amount: Decimal,
 }
 
@@ -197,7 +199,7 @@ pub struct SubmittedOrder {
     pub created_at_ms: i64,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(utoipa::ToSchema, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TradeOrderStatus {
     pub state: TradeOrderState,
@@ -205,24 +207,29 @@ pub struct TradeOrderStatus {
         skip_serializing_if = "Option::is_none",
         serialize_with = "serialize_optional_as_string"
     )]
+    #[schema(value_type = Option<String>, format = "hex", nullable = false)]
     pub transaction_hash: Option<B256>,
     #[serde(
         skip_serializing_if = "Option::is_none",
         serialize_with = "serialize_optional_as_string"
     )]
+    #[schema(value_type = Option<String>, nullable = false)]
     pub filled_sell_amount: Option<U256>,
     #[serde(
         skip_serializing_if = "Option::is_none",
         serialize_with = "serialize_optional_as_string"
     )]
+    #[schema(value_type = Option<String>, nullable = false)]
     pub filled_buy_amount: Option<U256>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(nullable = false)]
     pub created_at_ms: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(nullable = false)]
     pub filled_at_ms: Option<i64>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(utoipa::ToSchema, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub enum TradeTransactionState {
     Pending,
@@ -231,7 +238,7 @@ pub enum TradeTransactionState {
     Unknown,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(utoipa::ToSchema, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TradeTransactionStatus {
     pub state: TradeTransactionState,
@@ -240,9 +247,12 @@ pub struct TradeTransactionStatus {
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub bought: Vec<SettledTokenAmount>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(nullable = false)]
     pub block_number: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(nullable = false)]
     pub executed_at_ms: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(nullable = false)]
     pub error: Option<String>,
 }

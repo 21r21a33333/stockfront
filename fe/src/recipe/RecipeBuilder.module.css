@@ -317,12 +317,11 @@
 }
 
 .recipeHeader {
-  position: absolute;
+  position: relative;
   z-index: 12;
-  top: 80px;
-  left: 20px;
-  right: 20px;
-  height: 52px;
+  flex: none;
+  margin: 16px 20px 0;
+  min-height: 52px;
   padding: 0 10px 0 15px;
   display: flex;
   align-items: center;
@@ -748,6 +747,7 @@
   border-left: 1px solid #c8c8d1;
 }
 .branchStep {
+  cursor: pointer;
   min-height: 28px;
   padding: 4px 9px 4px 5px;
   display: flex;
@@ -796,7 +796,7 @@
 .inspector {
   position: absolute;
   z-index: 11;
-  top: 78px;
+  top: 16px;
   right: 16px;
   bottom: 16px;
   width: 300px;
@@ -805,7 +805,7 @@
   overflow: hidden;
   border: 1px solid #e7e7ea;
   border-radius: 14px;
-  background: rgb(255 255 255 / 97%);
+  background: white;
   box-shadow: 0 12px 30px -25px rgb(20 20 40 / 42%);
 }
 
@@ -1034,8 +1034,7 @@
   color: var(--ink-soft);
 }
 
-.routeSection,
-.transactionSection {
+.routeSection {
   margin-top: 14px;
 }
 
@@ -1157,8 +1156,7 @@
   font-size: 9.5px;
 }
 
-.prepareButton,
-.executeButton {
+.prepareButton {
   width: 100%;
   height: 38px;
   border: 0;
@@ -1170,74 +1168,10 @@
   cursor: pointer;
 }
 
-.prepareButton:disabled,
-.executeButton:disabled {
+.prepareButton:disabled {
   background: #bba6d3;
 }
 
-.recipeComplete {
-  height: 38px;
-  margin: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 7px;
-  border-radius: 19px;
-  background: var(--success-soft);
-  color: var(--success);
-  font-size: 11.5px;
-  font-weight: 650;
-}
-
-.transaction {
-  margin-bottom: 6px;
-  overflow: hidden;
-  border: 1px solid var(--border-soft);
-  border-radius: 10px;
-  background: white;
-}
-.transactionTop {
-  min-height: 36px;
-  padding: 0 9px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  border-bottom: 1px solid var(--border-soft);
-  background: var(--surface-soft);
-}
-.transactionTop > span {
-  width: 21px;
-  height: 21px;
-  display: grid;
-  place-items: center;
-  border-radius: 50%;
-  background: var(--purple);
-  color: white;
-  font: 9px var(--mono);
-}
-
-.transaction .txComplete {
-  background: var(--success);
-}
-.transactionTop strong {
-  flex: 1;
-  font-size: 11.5px;
-}
-.transactionTop small {
-  color: var(--muted);
-  font-size: 9.5px;
-  text-transform: capitalize;
-}
-.transactionMeta {
-  min-height: 25px;
-  padding: 0 9px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 6px;
-  color: var(--muted);
-  font: 9px var(--mono);
-}
 .diagnosticsSection {
   margin-top: 14px;
 }
@@ -1510,15 +1444,24 @@
     display: none;
   }
   .recipeHeader {
-    left: 10px;
-    right: 10px;
-    top: 62px;
+    margin: 10px 10px 0;
+    padding: 10px;
+    flex-wrap: wrap;
+    gap: 10px;
   }
   .recipeHeader > div:first-child > span,
   .recipeActions .status,
   .secondary,
   .iconButton {
     display: none;
+  }
+  .recipeHeader > div:first-child > .runBadge,
+  .recipeActions .activityButton {
+    display: inline-flex;
+  }
+  .recipeHeader > div:first-child,
+  .recipeActions {
+    flex-wrap: wrap;
   }
   .canvas {
     inset: 0;
@@ -1532,4 +1475,38 @@
     width: auto;
     height: min(52vh, 430px);
   }
+}
+
+.inspectorTabs {
+  display: flex;
+  flex: none;
+  padding: 0 14px;
+  gap: 18px;
+  border-bottom: 1px solid var(--border-soft);
+}
+.inspectorTabs button {
+  background: transparent;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  padding: 12px 0;
+  color: var(--muted);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.inspectorTabs button[aria-pressed="true"] {
+  color: var(--purple);
+  border-bottom-color: var(--purple);
+  font-weight: 600;
+}
+.quoteDetails > summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 12px;
+  margin-top: 18px;
+}
+
+.recipeHeader > div:first-child > .settledBadge {
+  background: #e5f5ed;
+  color: #15845b;
 }

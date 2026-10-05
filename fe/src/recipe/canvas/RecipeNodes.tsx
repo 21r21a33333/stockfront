@@ -3,7 +3,7 @@ import { ArrowRightLeft, Check, Plus, WalletCards } from "lucide-react";
 import { useState } from "react";
 import { formatUnits } from "viem";
 import type { PreparedRecipeStep } from "@/api/generated";
-import type { ExecutionProgress } from "@/wallet/execution";
+import { attemptLabel, type ExecutionAttempt } from "../execution/journal";
 import { diagnosticsForNode } from "../editor/compiler";
 import { inputForTrade } from "../editor/flowInput";
 import { useRecipeEditor } from "../editor/store";
@@ -60,6 +60,7 @@ export function TradeNode({ id, data, selected }: NodeProps<RecipeFlowNode>) {
     execution,
     connectedOutputs,
     appendTrade,
+    openActivity,
   } = useBuilderContext();
   const [showNextActions, setShowNextActions] = useState(false);
   if (data.kind !== "TRADE") return null;
@@ -67,6 +68,9 @@ export function TradeNode({ id, data, selected }: NodeProps<RecipeFlowNode>) {
     (item) => item.address.toLowerCase() === data.buyToken?.toLowerCase(),
   );
   const quote = selectedRoutes[id];
+  const tradeProgress = execution.find(
+    (item) => item.nodeId === id && item.kind === "TRADE",
+  );
   const input = inputForTrade(nodes, edges, id);
   const sellAsset = assets.find(
     (item) =>
@@ -93,10 +97,16 @@ export function TradeNode({ id, data, selected }: NodeProps<RecipeFlowNode>) {
       <div className={styles.nodeTags}>
         <span>
           {quote && asset
-            ? `≈ ${formatCompact(BigInt(quote.buy.amount), asset.decimals)} ${asset.symbol}`
+            ? `${tradeProgress?.phase === "complete" ? "Quote " : ""}≈ ${formatCompact(BigInt(quote.buy.amount), asset.decimals)} ${asset.symbol}`
             : `Buy ${asset?.symbol ?? "not selected"}`}
         </span>
-        <span>{quote ? quote.venue : "Preview for route"}</span>
+        <span>
+          {tradeProgress
+            ? attemptLabel(tradeProgress)
+            : quote
+              ? quote.venue
+              : "Preview for route"}
+        </span>
       </div>
       <Handle
         id="sell"
@@ -159,6 +169,7 @@ export function TradeNode({ id, data, selected }: NodeProps<RecipeFlowNode>) {
           assets={assets}
           buySymbol={asset?.symbol}
           execution={execution}
+          onOpen={openActivity}
         />
       ) : null}
     </NodeShell>
@@ -170,18 +181,22 @@ function PreparedActionBranch({
   assets,
   buySymbol,
   execution,
+  onOpen,
 }: {
   actions: { step: PreparedRecipeStep; index: number }[];
   assets: AssetOption[];
   buySymbol?: string;
-  execution: ExecutionProgress[];
+  execution: ExecutionAttempt[];
+  onOpen(): void;
 }) {
   return (
     <div className={styles.actionBranch} aria-label="Prepared actions">
       <span className={styles.branchLabel}>prepare</span>
       <div className={styles.branchSteps}>
         {actions.map(({ step, index }) => {
-          const state = execution.find((item) => item.index === index)?.state;
+          const state = execution.find(
+            (item) => item.nodeId === step.nodeId && item.kind === step.kind,
+          )?.phase;
           const approvedAsset =
             step.kind === "APPROVAL"
               ? assets.find(
@@ -195,14 +210,22 @@ function PreparedActionBranch({
               ? `Approve ${approvedAsset?.symbol ?? "asset"}`
               : `${step.action.executionMode === "RFQ" ? "Submit RFQ" : "Swap"} → ${buySymbol ?? "asset"}`;
           return (
-            <span className={styles.branchStep} key={`${step.kind}-${index}`}>
+            <button
+              type="button"
+              className={`${styles.branchStep} nodrag nopan`}
+              key={`${step.kind}-${index}`}
+              onClick={(event) => {
+                event.stopPropagation();
+                onOpen();
+              }}
+            >
               <span
                 className={`${styles.branchNumber} ${state === "complete" ? styles.branchDone : ""} ${state === "awaiting" || state === "pending" ? styles.branchActive : ""}`}
               >
                 {state === "complete" ? <Check size={12} /> : index + 1}
               </span>
               {label}
-            </span>
+            </button>
           );
         })}
       </div>
