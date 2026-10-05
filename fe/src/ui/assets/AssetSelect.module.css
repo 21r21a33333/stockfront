@@ -1,0 +1,159 @@
+.field {
+  width: 100%;
+  height: 42px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: white;
+  padding: 0 9px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.field > svg {
+  color: var(--muted);
+}
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgb(24 21 35 / 30%);
+  backdrop-filter: blur(3px);
+}
+.dialog {
+  width: min(460px, 100%);
+  max-height: min(640px, 86vh);
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: white;
+  box-shadow: 0 25px 90px rgb(25 15 45 / 22%);
+}
+.dialog header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.dialog header strong {
+  font-size: 16px;
+}
+.dialog header button {
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+.search {
+  min-height: 44px;
+  padding: 0 12px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-soft);
+  color: var(--muted);
+}
+.search input {
+  width: 100%;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+}
+.search:focus-within {
+  border-color: color-mix(in srgb, var(--purple) 65%, white);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--purple) 13%, transparent);
+}
+.search input:focus-visible {
+  outline: none;
+}
+.quickPicks {
+  display: flex;
+  gap: 7px;
+  flex-wrap: wrap;
+}
+.quickPicks button {
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: var(--surface-soft);
+  color: var(--ink);
+  cursor: pointer;
+  font-size: 11px;
+}
+.tokenList {
+  min-height: 90px;
+  overflow: auto;
+  scrollbar-width: thin;
+}
+.tokenRow {
+  width: 100%;
+  min-height: 58px;
+  padding: 8px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 0;
+  border-radius: 9px;
+  background: white;
+  text-align: left;
+  cursor: pointer;
+}
+.tokenRow:hover,
+.tokenRow:focus-visible {
+  background: var(--purple-soft);
+  outline: none;
+}
+.tokenRow > :first-child > :last-child {
+  display: none;
+}
+.tokenRow > :first-child img,
+.tokenRow > :first-child > span:first-child {
+  width: 32px;
+  height: 32px;
+}
+.tokenDetails {
+  flex: 1;
+  min-width: 0;
+}
+.tokenDetails strong,
+.tokenDetails small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tokenDetails strong {
+  color: var(--ink);
+  font-size: 13px;
+}
+.tokenDetails small {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 11px;
+}
+.balance {
+  color: var(--ink-soft);
+  font: 11px var(--mono);
+}
+.noResults {
+  color: var(--muted);
+  font-size: 12px;
+  text-align: center;
+}

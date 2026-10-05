@@ -3,9 +3,9 @@
 //! The compiler stops at a logical plan. This service is the boundary that may
 //! call external systems to obtain quotes and prepared wallet actions.
 //!
-//! Preview and prepare are separate on purpose. A route shown during preview
-//! can expire. Prepare therefore fetches current routes again and accepts the
-//! selection only when both its route ID and venue still match.
+//! Preview and prepare are separate on purpose. Prepare passes the selected
+//! provider quote ID back to the provider, which decides whether it is still
+//! valid while building the wallet action.
 
 use std::{collections::HashMap, sync::Arc};
 
@@ -32,8 +32,6 @@ pub enum RecipeError {
     InvalidRecipe(RecipeValidationReport),
     #[error("the recipe selection is missing, duplicated, or belongs to another node")]
     InvalidSelection,
-    #[error("the selected route is no longer available")]
-    SelectionExpired,
     #[error("this recipe step depends on the result of an earlier transaction")]
     StepNotReady,
     #[error(transparent)]
@@ -146,8 +144,8 @@ impl RecipeService {
     ///
     /// # Errors
     ///
-    /// Returns [`RecipeError`] when the recipe or selections are invalid, a
-    /// route expired, or a provider rejects preparation.
+    /// Returns [`RecipeError`] when the recipe or selections are invalid, or a
+    /// provider rejects preparation or reports that its quote expired.
     pub async fn prepare(
         &self,
         request: &PrepareRecipeRequest,
@@ -195,13 +193,6 @@ impl RecipeService {
                         buy_token: *buy_token,
                         sell_amount: *amount,
                     };
-                    let still_available =
-                        self.trade.quotes(&trade).await?.into_iter().any(|quote| {
-                            quote.route_quote_id == *route_quote_id && quote.venue == *venue
-                        });
-                    if !still_available {
-                        return Err(RecipeError::SelectionExpired);
-                    }
                     let approval = self
                         .trade
                         .prepare_approval(&ApprovalRequest {

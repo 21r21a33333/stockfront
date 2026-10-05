@@ -1,0 +1,19 @@
+import { api, apiResult } from "./client";
+import type {
+  PrepareRecipeRequest,
+  RecipeDefinition,
+  RecipePreviewRequest,
+  SubmitOrderRequest,
+} from "@/api/generated";
+
+export const recipesApi = {
+  catalog: () => apiResult(api.GET("/v1/recipe-primitives")),
+  validate: (body: RecipeDefinition) =>
+    apiResult(api.POST("/v1/recipes/validate", { body })),
+  preview: (body: RecipePreviewRequest) =>
+    apiResult(api.POST("/v1/recipes/preview", { body })),
+  prepare: (body: PrepareRecipeRequest) =>
+    apiResult(api.POST("/v1/recipes/prepare", { body })),
+  submitOrder: (body: SubmitOrderRequest) =>
+    apiResult(api.POST("/v1/bstock-trades/orders", { body })),
+};

@@ -25,6 +25,7 @@ stockfront-core.workspace = true
 thiserror.workspace = true
 tokio = { workspace = true, features = ["rt", "sync"] }
 uuid = { workspace = true, features = ["v4"] }
+utoipa.workspace = true
 venus-api = { path = "../venus-api" }
 zeroize = "1.8.2"
 url = "2.5.7"

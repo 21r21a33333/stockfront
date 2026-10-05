@@ -12,8 +12,10 @@ rust_decimal.workspace = true
 serde = { workspace = true, features = ["derive"] }
 thiserror.workspace = true
 uuid = { workspace = true, features = ["serde"] }
+utoipa.workspace = true
 
 [dev-dependencies]
+serde_json = "1.0"
 tokio = { workspace = true, features = ["macros", "rt"] }
 
 [lints]

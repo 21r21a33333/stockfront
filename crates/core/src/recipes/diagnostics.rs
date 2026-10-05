@@ -11,14 +11,14 @@
 use serde::Serialize;
 use uuid::Uuid;
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[derive(utoipa::ToSchema, Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum RecipeDiagnosticSeverity {
     Error,
     Warning,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[derive(utoipa::ToSchema, Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum RecipeDiagnosticCode {
     EmptyRecipe,
@@ -40,17 +40,31 @@ pub enum RecipeDiagnosticCode {
     InvalidAmount,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[derive(utoipa::ToSchema, Clone, Debug, Eq, PartialEq, Serialize)]
 #[serde(tag = "kind", rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum RecipeDiagnosticLocation {
     Recipe,
-    Node { node_id: Uuid },
-    Field { node_id: Uuid, field: String },
-    Port { node_id: Uuid, port: String },
-    Edge { edge_id: Uuid },
+    Node {
+        #[serde(rename = "nodeId")]
+        node_id: Uuid,
+    },
+    Field {
+        #[serde(rename = "nodeId")]
+        node_id: Uuid,
+        field: String,
+    },
+    Port {
+        #[serde(rename = "nodeId")]
+        node_id: Uuid,
+        port: String,
+    },
+    Edge {
+        #[serde(rename = "edgeId")]
+        edge_id: Uuid,
+    },
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[derive(utoipa::ToSchema, Clone, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RecipeDiagnostic {
     pub code: RecipeDiagnosticCode,
@@ -74,7 +88,7 @@ impl RecipeDiagnostic {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[derive(utoipa::ToSchema, Clone, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RecipeValidationReport {
     pub valid: bool,
@@ -87,5 +101,33 @@ impl RecipeValidationReport {
             .iter()
             .all(|item| item.severity != RecipeDiagnosticSeverity::Error);
         Self { valid, diagnostics }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use serde_json::{json, to_value};
+
+    use super::RecipeDiagnosticLocation;
+
+    #[test]
+    fn serializes_diagnostic_location_fields_as_camel_case() {
+        let node_id = uuid::Uuid::from_u128(1);
+        let result = to_value(RecipeDiagnosticLocation::Field {
+            node_id,
+            field: "rawAmount".to_owned(),
+        });
+
+        let Ok(value) = result else {
+            panic!("recipe diagnostic location did not serialize");
+        };
+        assert_eq!(
+            value,
+            json!({
+                "kind": "FIELD",
+                "nodeId": node_id,
+                "field": "rawAmount"
+            })
+        );
     }
 }

@@ -10,7 +10,7 @@ use crate::{
     wallet_portfolio::WalletAddress,
 };
 
-#[derive(Clone, Copy, Debug, Deserialize, Serialize)]
+#[derive(utoipa::ToSchema, Clone, Copy, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub enum RfqVenue {
     #[serde(alias = "InchFusion")]
@@ -21,7 +21,7 @@ pub enum RfqVenue {
     PcsXRfq,
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Serialize)]
+#[derive(utoipa::ToSchema, Clone, Copy, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum TradeExecutionMode {
     Swap,
@@ -58,7 +58,7 @@ pub struct PrepareTradeRequest {
     pub route_quote_id: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(utoipa::ToSchema, Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SubmitOrderRequest {
     pub submission_id: Uuid,
@@ -67,12 +67,14 @@ pub struct SubmitOrderRequest {
     pub signature: String,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(utoipa::ToSchema, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TokenAmount {
     #[serde(serialize_with = "serialize_as_string")]
+    #[schema(value_type = String, format = "evm-address")]
     pub token: Address,
     #[serde(serialize_with = "serialize_as_string")]
+    #[schema(value_type = String)]
     pub amount: U256,
 }
 
@@ -84,7 +86,7 @@ pub struct SettledTokenAmount {
     pub amount: Decimal,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(utoipa::ToSchema, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TradeQuote {
     pub route_quote_id: String,
@@ -93,36 +95,43 @@ pub struct TradeQuote {
     pub sell: TokenAmount,
     pub buy: TokenAmount,
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(nullable = false)]
     pub price_impact_percent: Option<Decimal>,
     #[serde(
         skip_serializing_if = "Option::is_none",
         serialize_with = "serialize_optional_as_string"
     )]
+    #[schema(value_type = Option<String>, format = "evm-address", nullable = false)]
     pub approval_target: Option<Address>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(utoipa::ToSchema, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PreparedApproval {
     #[serde(serialize_with = "serialize_as_string")]
+    #[schema(value_type = String, format = "evm-address")]
     pub to: Address,
     #[serde(serialize_with = "serialize_as_string")]
+    #[schema(value_type = String, format = "evm-address")]
     pub spender: Address,
     #[serde(serialize_with = "serialize_bytes")]
+    #[schema(value_type = String, format = "hex")]
     pub data: Bytes,
     #[serde(
         skip_serializing_if = "Option::is_none",
         serialize_with = "serialize_optional_as_string"
     )]
+    #[schema(value_type = Option<String>, nullable = false)]
     pub gas_limit: Option<U256>,
     #[serde(
         skip_serializing_if = "Option::is_none",
         serialize_with = "serialize_optional_as_string"
     )]
+    #[schema(value_type = Option<String>, nullable = false)]
     pub gas_price: Option<U256>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(utoipa::ToSchema, Debug, Serialize)]
 #[serde(tag = "executionMode", rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum PreparedTrade {
     Swap {
@@ -139,29 +148,36 @@ pub enum PreparedTrade {
     },
 }
 
-#[derive(Debug, Serialize)]
+#[derive(utoipa::ToSchema, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PreparedTransaction {
     #[serde(serialize_with = "serialize_as_string")]
+    #[schema(value_type = String, format = "evm-address")]
     pub to: Address,
     #[serde(serialize_with = "serialize_bytes")]
+    #[schema(value_type = String, format = "hex")]
     pub data: Bytes,
     #[serde(serialize_with = "serialize_as_string")]
+    #[schema(value_type = String)]
     pub value: U256,
     #[serde(serialize_with = "serialize_as_string")]
+    #[schema(value_type = String)]
     pub gas_limit: U256,
     #[serde(serialize_with = "serialize_as_string")]
+    #[schema(value_type = String)]
     pub gas_price: U256,
     #[serde(
         skip_serializing_if = "Option::is_none",
         serialize_with = "serialize_optional_as_string"
     )]
+    #[schema(value_type = Option<String>, nullable = false)]
     pub max_priority_fee_per_gas: Option<U256>,
     #[serde(serialize_with = "serialize_as_string")]
+    #[schema(value_type = String)]
     pub min_receive_amount: U256,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(utoipa::ToSchema, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub enum TradeOrderState {
     PendingVendor,
@@ -173,7 +189,7 @@ pub enum TradeOrderState {
     Unknown,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(utoipa::ToSchema, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SubmittedOrder {
     pub order_id: String,

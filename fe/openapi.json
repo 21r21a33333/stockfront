@@ -1,0 +1,855 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Stockfront Recipe API",
+    "description": "",
+    "license": { "name": "MIT", "identifier": "MIT" },
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/v1/bstock-trades/orders": {
+      "post": {
+        "tags": ["super::handlers::trades"],
+        "operationId": "submit_order",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/SubmitOrderRequest" }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Response_SubmittedOrder"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Response" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/recipe-primitives": {
+      "get": {
+        "tags": ["super::handlers::recipes"],
+        "operationId": "primitives",
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Response_RecipeCatalog"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Response" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/recipes/prepare": {
+      "post": {
+        "tags": ["super::handlers::recipes"],
+        "operationId": "prepare",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/PrepareRecipeRequest" }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Response_PreparedRecipe"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Response" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/recipes/preview": {
+      "post": {
+        "tags": ["super::handlers::recipes"],
+        "operationId": "preview",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/RecipePreviewRequest" }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Response_RecipePreview"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Response" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/recipes/validate": {
+      "post": {
+        "tags": ["super::handlers::recipes"],
+        "operationId": "validate",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/RecipeDefinition" }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Response_RecipeValidationReport"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Response" }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "AssetKind": {
+        "type": "string",
+        "enum": ["stock", "preIpo", "etf", "unknown"]
+      },
+      "BstockId": {
+        "type": "object",
+        "required": ["chainId", "contract"],
+        "properties": {
+          "chainId": { "type": "integer", "format": "int64", "minimum": 0 },
+          "contract": { "type": "string", "format": "evm-address" }
+        }
+      },
+      "BstockSummary": {
+        "allOf": [
+          { "$ref": "#/components/schemas/BstockId" },
+          {
+            "type": "object",
+            "required": [
+              "tokenName",
+              "tokenSymbol",
+              "tokenDecimals",
+              "underlyingTicker",
+              "underlyingName",
+              "assetKind",
+              "tokenToShareRatio",
+              "tags"
+            ],
+            "properties": {
+              "assetKind": { "$ref": "#/components/schemas/AssetKind" },
+              "marketCapUsd": { "type": "string" },
+              "marketStatus": { "$ref": "#/components/schemas/MarketStatus" },
+              "referencePriceUsd": { "type": "string" },
+              "tags": { "type": "array", "items": { "type": "string" } },
+              "tokenDecimals": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              },
+              "tokenLogoUrl": { "type": "string" },
+              "tokenName": { "type": "string" },
+              "tokenPriceUsd": { "type": "string" },
+              "tokenSymbol": { "type": "string" },
+              "tokenToShareRatio": { "type": "string" },
+              "underlyingName": { "type": "string" },
+              "underlyingTicker": { "type": "string" },
+              "volume24hUsd": { "type": "string" }
+            }
+          }
+        ]
+      },
+      "Error": {
+        "type": "object",
+        "required": ["code", "message"],
+        "properties": {
+          "code": { "type": "string" },
+          "diagnostics": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/RecipeDiagnostic" }
+          },
+          "message": { "type": "string" }
+        }
+      },
+      "MarketStatus": {
+        "type": "object",
+        "properties": {
+          "nextCloseAtMs": { "type": "integer", "format": "int64" },
+          "nextOpenAtMs": { "type": "integer", "format": "int64" },
+          "reason": { "type": "string" },
+          "reasonCode": { "type": "string" },
+          "session": { "type": "string" },
+          "tradable": { "type": "boolean" }
+        }
+      },
+      "PrepareRecipeRequest": {
+        "type": "object",
+        "required": ["recipe", "context", "selections"],
+        "properties": {
+          "context": { "$ref": "#/components/schemas/RecipeContext" },
+          "recipe": { "$ref": "#/components/schemas/RecipeDefinition" },
+          "selections": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/RecipeNodeSelection" }
+          }
+        }
+      },
+      "PreparedApproval": {
+        "type": "object",
+        "required": ["to", "spender", "data"],
+        "properties": {
+          "data": { "type": "string", "format": "hex" },
+          "gasLimit": { "type": "string" },
+          "gasPrice": { "type": "string" },
+          "spender": { "type": "string", "format": "evm-address" },
+          "to": { "type": "string", "format": "evm-address" }
+        }
+      },
+      "PreparedRecipe": {
+        "type": "object",
+        "required": ["steps"],
+        "properties": {
+          "steps": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/PreparedRecipeStep" }
+          }
+        }
+      },
+      "PreparedRecipeStep": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": ["nodeId", "action", "kind"],
+            "properties": {
+              "action": { "$ref": "#/components/schemas/PreparedApproval" },
+              "kind": { "type": "string", "enum": ["APPROVAL"] },
+              "nodeId": { "type": "string", "format": "uuid" }
+            }
+          },
+          {
+            "type": "object",
+            "required": ["nodeId", "action", "kind"],
+            "properties": {
+              "action": { "$ref": "#/components/schemas/PreparedTrade" },
+              "kind": { "type": "string", "enum": ["TRADE"] },
+              "nodeId": { "type": "string", "format": "uuid" }
+            }
+          }
+        ]
+      },
+      "PreparedTrade": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": ["transaction", "executionMode"],
+            "properties": {
+              "executionMode": { "type": "string", "enum": ["SWAP"] },
+              "transaction": {
+                "$ref": "#/components/schemas/PreparedTransaction"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "submissionId",
+              "routeQuoteId",
+              "venue",
+              "typedData",
+              "executionMode"
+            ],
+            "properties": {
+              "executionMode": { "type": "string", "enum": ["RFQ"] },
+              "routeQuoteId": { "type": "string" },
+              "submissionId": { "type": "string", "format": "uuid" },
+              "typedData": { "type": "string" },
+              "venue": { "$ref": "#/components/schemas/RfqVenue" }
+            }
+          }
+        ]
+      },
+      "PreparedTransaction": {
+        "type": "object",
+        "required": [
+          "to",
+          "data",
+          "value",
+          "gasLimit",
+          "gasPrice",
+          "minReceiveAmount"
+        ],
+        "properties": {
+          "data": { "type": "string", "format": "hex" },
+          "gasLimit": { "type": "string" },
+          "gasPrice": { "type": "string" },
+          "maxPriorityFeePerGas": { "type": "string" },
+          "minReceiveAmount": { "type": "string" },
+          "to": { "type": "string", "format": "evm-address" },
+          "value": { "type": "string" }
+        }
+      },
+      "RecipeCatalog": {
+        "type": "object",
+        "required": [
+          "schemaVersion",
+          "primitives",
+          "settlementTokens",
+          "bstocks"
+        ],
+        "properties": {
+          "bstocks": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/BstockSummary" }
+          },
+          "primitives": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RecipePrimitiveDescriptor"
+            }
+          },
+          "schemaVersion": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "settlementTokens": {
+            "type": "array",
+            "items": { "type": "string", "format": "evm-address" }
+          }
+        }
+      },
+      "RecipeContext": {
+        "type": "object",
+        "required": ["wallet"],
+        "properties": {
+          "wallet": { "type": "string", "format": "evm-address" }
+        }
+      },
+      "RecipeDefinition": {
+        "type": "object",
+        "required": ["schemaVersion", "chainId", "nodes", "edges"],
+        "properties": {
+          "chainId": { "type": "integer", "format": "int64", "minimum": 0 },
+          "edges": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/RecipeEdge" }
+          },
+          "nodes": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/RecipeNode" }
+          },
+          "schemaVersion": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          }
+        }
+      },
+      "RecipeDiagnostic": {
+        "type": "object",
+        "required": ["code", "severity", "location", "message"],
+        "properties": {
+          "code": { "$ref": "#/components/schemas/RecipeDiagnosticCode" },
+          "location": {
+            "$ref": "#/components/schemas/RecipeDiagnosticLocation"
+          },
+          "message": { "type": "string" },
+          "severity": {
+            "$ref": "#/components/schemas/RecipeDiagnosticSeverity"
+          }
+        }
+      },
+      "RecipeDiagnosticCode": {
+        "type": "string",
+        "enum": [
+          "EMPTY_RECIPE",
+          "UNSUPPORTED_SCHEMA_VERSION",
+          "UNSUPPORTED_CHAIN",
+          "RECIPE_TOO_LARGE",
+          "DUPLICATE_NODE_ID",
+          "DUPLICATE_EDGE_ID",
+          "UNKNOWN_NODE",
+          "UNKNOWN_PORT",
+          "INVALID_PORT_DIRECTION",
+          "PORT_TYPE_MISMATCH",
+          "MISSING_REQUIRED_INPUT",
+          "TOO_MANY_CONNECTIONS",
+          "CONSUMABLE_OUTPUT_REUSED",
+          "SELF_CONNECTION",
+          "RECIPE_CYCLE",
+          "DISCONNECTED_NODE",
+          "INVALID_AMOUNT"
+        ]
+      },
+      "RecipeDiagnosticLocation": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": ["kind"],
+            "properties": { "kind": { "type": "string", "enum": ["RECIPE"] } }
+          },
+          {
+            "type": "object",
+            "required": ["nodeId", "kind"],
+            "properties": {
+              "kind": { "type": "string", "enum": ["NODE"] },
+              "nodeId": { "type": "string", "format": "uuid" }
+            }
+          },
+          {
+            "type": "object",
+            "required": ["nodeId", "field", "kind"],
+            "properties": {
+              "field": { "type": "string" },
+              "kind": { "type": "string", "enum": ["FIELD"] },
+              "nodeId": { "type": "string", "format": "uuid" }
+            }
+          },
+          {
+            "type": "object",
+            "required": ["nodeId", "port", "kind"],
+            "properties": {
+              "kind": { "type": "string", "enum": ["PORT"] },
+              "nodeId": { "type": "string", "format": "uuid" },
+              "port": { "type": "string" }
+            }
+          },
+          {
+            "type": "object",
+            "required": ["edgeId", "kind"],
+            "properties": {
+              "edgeId": { "type": "string", "format": "uuid" },
+              "kind": { "type": "string", "enum": ["EDGE"] }
+            }
+          }
+        ]
+      },
+      "RecipeDiagnosticSeverity": {
+        "type": "string",
+        "enum": ["ERROR", "WARNING"]
+      },
+      "RecipeEdge": {
+        "type": "object",
+        "required": ["id", "from", "to"],
+        "properties": {
+          "from": { "$ref": "#/components/schemas/RecipePortRef" },
+          "id": { "type": "string", "format": "uuid" },
+          "to": { "$ref": "#/components/schemas/RecipePortRef" }
+        }
+      },
+      "RecipeFieldControl": { "type": "string", "enum": ["TOKEN", "AMOUNT"] },
+      "RecipeFieldDescriptor": {
+        "type": "object",
+        "required": ["key", "name", "control", "required", "optionSources"],
+        "properties": {
+          "control": { "$ref": "#/components/schemas/RecipeFieldControl" },
+          "key": { "type": "string" },
+          "name": { "type": "string" },
+          "optionSources": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/RecipeOptionSource" }
+          },
+          "required": { "type": "boolean" }
+        }
+      },
+      "RecipeNode": {
+        "allOf": [
+          { "$ref": "#/components/schemas/RecipePrimitive" },
+          {
+            "type": "object",
+            "required": ["id"],
+            "properties": { "id": { "type": "string", "format": "uuid" } }
+          }
+        ]
+      },
+      "RecipeNodePreview": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": ["nodeId", "state", "kind"],
+            "properties": {
+              "kind": { "type": "string", "enum": ["TRADE"] },
+              "nodeId": { "type": "string", "format": "uuid" },
+              "routes": {
+                "type": "array",
+                "items": { "$ref": "#/components/schemas/TradeQuote" }
+              },
+              "state": { "$ref": "#/components/schemas/RecipeNodeState" },
+              "waitingFor": {
+                "type": "array",
+                "items": { "type": "string", "format": "uuid" }
+              }
+            }
+          }
+        ]
+      },
+      "RecipeNodeSelection": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": ["nodeId", "routeQuoteId", "venue", "kind"],
+            "properties": {
+              "kind": { "type": "string", "enum": ["TRADE"] },
+              "nodeId": { "type": "string", "format": "uuid" },
+              "routeQuoteId": { "type": "string" },
+              "venue": { "type": "string" }
+            }
+          }
+        ]
+      },
+      "RecipeNodeState": {
+        "type": "string",
+        "enum": ["READY", "WAITING_FOR_UPSTREAM"]
+      },
+      "RecipeOptionSource": {
+        "type": "string",
+        "enum": ["SETTLEMENT_TOKENS", "BSTOCKS"]
+      },
+      "RecipePortDescriptor": {
+        "type": "object",
+        "required": ["key", "direction", "valueType", "minConnections", "flow"],
+        "properties": {
+          "direction": { "$ref": "#/components/schemas/RecipePortDirection" },
+          "flow": { "$ref": "#/components/schemas/RecipePortFlow" },
+          "key": { "type": "string" },
+          "maxConnections": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "minConnections": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "valueType": { "$ref": "#/components/schemas/RecipePortValueType" }
+        }
+      },
+      "RecipePortDirection": { "type": "string", "enum": ["INPUT", "OUTPUT"] },
+      "RecipePortFlow": { "type": "string", "enum": ["CONSUME", "REFERENCE"] },
+      "RecipePortRef": {
+        "type": "object",
+        "required": ["nodeId", "port"],
+        "properties": {
+          "nodeId": { "type": "string", "format": "uuid" },
+          "port": { "type": "string" }
+        }
+      },
+      "RecipePortValueType": { "type": "string", "enum": ["TOKEN_AMOUNT"] },
+      "RecipePreview": {
+        "type": "object",
+        "required": ["nodes"],
+        "properties": {
+          "nodes": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/RecipeNodePreview" }
+          }
+        }
+      },
+      "RecipePreviewRequest": {
+        "type": "object",
+        "required": ["recipe", "context"],
+        "properties": {
+          "context": { "$ref": "#/components/schemas/RecipeContext" },
+          "recipe": { "$ref": "#/components/schemas/RecipeDefinition" }
+        }
+      },
+      "RecipePrimitive": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": ["token", "rawAmount", "kind"],
+            "properties": {
+              "kind": { "type": "string", "enum": ["WALLET_ASSET"] },
+              "rawAmount": { "type": "string" },
+              "token": { "type": "string", "format": "evm-address" }
+            }
+          },
+          {
+            "type": "object",
+            "required": ["buyToken", "kind"],
+            "properties": {
+              "buyToken": { "type": "string", "format": "evm-address" },
+              "kind": { "type": "string", "enum": ["TRADE"] }
+            }
+          }
+        ]
+      },
+      "RecipePrimitiveDescriptor": {
+        "type": "object",
+        "required": ["kind", "name", "description", "fields", "ports"],
+        "properties": {
+          "description": { "type": "string" },
+          "fields": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/RecipeFieldDescriptor" }
+          },
+          "kind": { "$ref": "#/components/schemas/RecipePrimitiveKind" },
+          "name": { "type": "string" },
+          "ports": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/RecipePortDescriptor" }
+          }
+        }
+      },
+      "RecipePrimitiveKind": {
+        "type": "string",
+        "enum": ["WALLET_ASSET", "TRADE"]
+      },
+      "RecipeValidationReport": {
+        "type": "object",
+        "required": ["valid", "diagnostics"],
+        "properties": {
+          "diagnostics": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/RecipeDiagnostic" }
+          },
+          "valid": { "type": "boolean" }
+        }
+      },
+      "Response": {
+        "type": "object",
+        "required": ["status"],
+        "properties": {
+          "error": { "$ref": "#/components/schemas/Error" },
+          "result": { "$ref": "#/components/schemas/TupleUnit" },
+          "status": { "$ref": "#/components/schemas/Status" }
+        }
+      },
+      "Response_PreparedRecipe": {
+        "type": "object",
+        "required": ["status"],
+        "properties": {
+          "error": { "$ref": "#/components/schemas/Error" },
+          "result": {
+            "type": "object",
+            "required": ["steps"],
+            "properties": {
+              "steps": {
+                "type": "array",
+                "items": { "$ref": "#/components/schemas/PreparedRecipeStep" }
+              }
+            }
+          },
+          "status": { "$ref": "#/components/schemas/Status" }
+        }
+      },
+      "Response_RecipeCatalog": {
+        "type": "object",
+        "required": ["status"],
+        "properties": {
+          "error": { "$ref": "#/components/schemas/Error" },
+          "result": {
+            "type": "object",
+            "required": [
+              "schemaVersion",
+              "primitives",
+              "settlementTokens",
+              "bstocks"
+            ],
+            "properties": {
+              "bstocks": {
+                "type": "array",
+                "items": { "$ref": "#/components/schemas/BstockSummary" }
+              },
+              "primitives": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/RecipePrimitiveDescriptor"
+                }
+              },
+              "schemaVersion": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              },
+              "settlementTokens": {
+                "type": "array",
+                "items": { "type": "string", "format": "evm-address" }
+              }
+            }
+          },
+          "status": { "$ref": "#/components/schemas/Status" }
+        }
+      },
+      "Response_RecipePreview": {
+        "type": "object",
+        "required": ["status"],
+        "properties": {
+          "error": { "$ref": "#/components/schemas/Error" },
+          "result": {
+            "type": "object",
+            "required": ["nodes"],
+            "properties": {
+              "nodes": {
+                "type": "array",
+                "items": { "$ref": "#/components/schemas/RecipeNodePreview" }
+              }
+            }
+          },
+          "status": { "$ref": "#/components/schemas/Status" }
+        }
+      },
+      "Response_RecipeValidationReport": {
+        "type": "object",
+        "required": ["status"],
+        "properties": {
+          "error": { "$ref": "#/components/schemas/Error" },
+          "result": {
+            "type": "object",
+            "required": ["valid", "diagnostics"],
+            "properties": {
+              "diagnostics": {
+                "type": "array",
+                "items": { "$ref": "#/components/schemas/RecipeDiagnostic" }
+              },
+              "valid": { "type": "boolean" }
+            }
+          },
+          "status": { "$ref": "#/components/schemas/Status" }
+        }
+      },
+      "Response_SubmittedOrder": {
+        "type": "object",
+        "required": ["status"],
+        "properties": {
+          "error": { "$ref": "#/components/schemas/Error" },
+          "result": {
+            "type": "object",
+            "required": ["orderId", "state", "createdAtMs"],
+            "properties": {
+              "createdAtMs": { "type": "integer", "format": "int64" },
+              "orderId": { "type": "string" },
+              "state": { "$ref": "#/components/schemas/TradeOrderState" }
+            }
+          },
+          "status": { "$ref": "#/components/schemas/Status" }
+        }
+      },
+      "RfqVenue": {
+        "type": "string",
+        "enum": ["inchFusion", "cowSwap", "pcsXRfq"]
+      },
+      "Status": { "type": "string", "enum": ["Ok", "Error"] },
+      "SubmitOrderRequest": {
+        "type": "object",
+        "required": ["submissionId", "routeQuoteId", "venue", "signature"],
+        "properties": {
+          "routeQuoteId": { "type": "string" },
+          "signature": { "type": "string" },
+          "submissionId": { "type": "string", "format": "uuid" },
+          "venue": { "$ref": "#/components/schemas/RfqVenue" }
+        }
+      },
+      "SubmittedOrder": {
+        "type": "object",
+        "required": ["orderId", "state", "createdAtMs"],
+        "properties": {
+          "createdAtMs": { "type": "integer", "format": "int64" },
+          "orderId": { "type": "string" },
+          "state": { "$ref": "#/components/schemas/TradeOrderState" }
+        }
+      },
+      "TokenAmount": {
+        "type": "object",
+        "required": ["token", "amount"],
+        "properties": {
+          "amount": { "type": "string" },
+          "token": { "type": "string", "format": "evm-address" }
+        }
+      },
+      "TradeExecutionMode": { "type": "string", "enum": ["SWAP", "RFQ"] },
+      "TradeOrderState": {
+        "type": "string",
+        "enum": [
+          "pendingVendor",
+          "pendingOnchain",
+          "filled",
+          "failed",
+          "expired",
+          "cancelled",
+          "unknown"
+        ]
+      },
+      "TradeQuote": {
+        "type": "object",
+        "required": ["routeQuoteId", "venue", "executionMode", "sell", "buy"],
+        "properties": {
+          "approvalTarget": { "type": "string", "format": "evm-address" },
+          "buy": { "$ref": "#/components/schemas/TokenAmount" },
+          "executionMode": {
+            "$ref": "#/components/schemas/TradeExecutionMode"
+          },
+          "priceImpactPercent": { "type": "string" },
+          "routeQuoteId": { "type": "string" },
+          "sell": { "$ref": "#/components/schemas/TokenAmount" },
+          "venue": { "type": "string" }
+        }
+      },
+      "TupleUnit": { "default": null }
+    }
+  }
+}

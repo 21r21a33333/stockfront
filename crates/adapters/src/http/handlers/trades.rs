@@ -13,7 +13,7 @@ use stockfront_core::bstock_trade::{
 
 use super::super::{
     error::ApiError,
-    primitives::{ApiResult, List, Response},
+    primitives::{ApiResult, ErrorResponse, List, Response},
 };
 
 pub(in crate::http) async fn quotes(
@@ -43,6 +43,14 @@ pub(in crate::http) async fn prepare_trade(
     Ok(Response::ok(trade))
 }
 
+#[utoipa::path(
+    post, path = "/v1/bstock-trades/orders",
+    request_body = SubmitOrderRequest,
+    responses(
+        (status = 200, body = Response<SubmittedOrder>),
+        (status = "default", body = ErrorResponse)
+    )
+)]
 pub(in crate::http) async fn submit_order(
     State(service): State<Arc<BstockTradeService>>,
     request: Result<Json<SubmitOrderRequest>, JsonRejection>,

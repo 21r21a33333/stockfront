@@ -2,6 +2,7 @@
 
 mod error;
 mod handlers;
+pub mod openapi;
 mod primitives;
 mod request;
 
@@ -20,6 +21,7 @@ use stockfront_core::{
 
 pub fn recipe_router(service: Arc<RecipeService>) -> Router {
     Router::new()
+        .route("/v1/openapi.json", get(openapi::document))
         .route("/v1/recipe-primitives", get(handlers::recipes::primitives))
         .route("/v1/recipes/validate", post(handlers::recipes::validate))
         .route("/v1/recipes/preview", post(handlers::recipes::preview))

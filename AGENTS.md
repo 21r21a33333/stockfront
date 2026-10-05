@@ -31,6 +31,7 @@ Never write scaffolding, generated clients, production code or tests before the 
 - `stockfront-app` is the thin composition root and runtime entry point.
 - Dependencies point inward: `app -> adapters -> core`. Core never depends on adapters or app.
 - Add modules and ports only when their first working vertical slice needs them.
+- Keep the frontend feature-oriented (`api/`, `wallet/`, `recipe/`, `ui/`), without duplicating the backend's hexagonal layers. Generate API request and response types from the Rust-owned OpenAPI contract; keep only editor and presentation state as frontend-owned types. Run `pnpm codegen` after contract changes and `pnpm codegen:check` before review.
 - Organize adapters by responsibility, such as authentication, provider calls, conversion, requests, responses and errors. Do not accumulate an integration in one large file.
 
 ## Boundaries and integration types

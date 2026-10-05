@@ -58,7 +58,7 @@ use crate::{
     wallet_portfolio::WalletAddress,
 };
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(utoipa::ToSchema, Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum RecipePrimitiveKind {
     WalletAsset,
@@ -69,34 +69,34 @@ impl RecipePrimitiveKind {
     pub(super) const ALL: [Self; 2] = [Self::WalletAsset, Self::Trade];
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[derive(utoipa::ToSchema, Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum RecipeFieldControl {
     Token,
     Amount,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[derive(utoipa::ToSchema, Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum RecipeOptionSource {
     SettlementTokens,
     Bstocks,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[derive(utoipa::ToSchema, Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum RecipePortDirection {
     Input,
     Output,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[derive(utoipa::ToSchema, Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum RecipePortValueType {
     TokenAmount,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[derive(utoipa::ToSchema, Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum RecipePortFlow {
     /// The value can be connected once because the action spends it.
@@ -105,7 +105,7 @@ pub enum RecipePortFlow {
     Reference,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[derive(utoipa::ToSchema, Clone, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RecipeFieldDescriptor {
     pub key: &'static str,
@@ -115,7 +115,7 @@ pub struct RecipeFieldDescriptor {
     pub option_sources: Vec<RecipeOptionSource>,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[derive(utoipa::ToSchema, Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RecipePortDescriptor {
     pub key: &'static str,
@@ -123,11 +123,12 @@ pub struct RecipePortDescriptor {
     pub value_type: RecipePortValueType,
     pub min_connections: u8,
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(nullable = false)]
     pub max_connections: Option<u8>,
     pub flow: RecipePortFlow,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[derive(utoipa::ToSchema, Clone, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RecipePrimitiveDescriptor {
     pub kind: RecipePrimitiveKind,
@@ -210,7 +211,7 @@ impl RecipePrimitiveKind {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(utoipa::ToSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "kind", rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum RecipePrimitive {
     WalletAsset {
@@ -218,12 +219,14 @@ pub enum RecipePrimitive {
             deserialize_with = "deserialize_from_string",
             serialize_with = "serialize_as_string"
         )]
+        #[schema(value_type = String, format = "evm-address")]
         token: Address,
         #[serde(
             rename = "rawAmount",
             deserialize_with = "deserialize_from_string",
             serialize_with = "serialize_as_string"
         )]
+        #[schema(value_type = String)]
         raw_amount: U256,
     },
     Trade {
@@ -232,6 +235,7 @@ pub enum RecipePrimitive {
             deserialize_with = "deserialize_from_string",
             serialize_with = "serialize_as_string"
         )]
+        #[schema(value_type = String, format = "evm-address")]
         buy_token: Address,
     },
 }
@@ -245,7 +249,7 @@ impl RecipePrimitive {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(utoipa::ToSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RecipeNode {
     pub id: Uuid,
@@ -259,14 +263,14 @@ impl RecipeNode {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(utoipa::ToSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RecipePortRef {
     pub node_id: Uuid,
     pub port: String,
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(utoipa::ToSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RecipeEdge {
     pub id: Uuid,
@@ -274,7 +278,7 @@ pub struct RecipeEdge {
     pub to: RecipePortRef,
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(utoipa::ToSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RecipeDefinition {
     pub schema_version: u16,
@@ -283,60 +287,65 @@ pub struct RecipeDefinition {
     pub edges: Vec<RecipeEdge>,
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(utoipa::ToSchema, Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RecipeContext {
+    #[schema(value_type = String, format = "evm-address")]
     pub wallet: WalletAddress,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(utoipa::ToSchema, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RecipeCatalog {
     pub schema_version: u16,
     pub primitives: Vec<RecipePrimitiveDescriptor>,
     #[serde(serialize_with = "serialize_all_as_strings")]
+    #[schema(value_type = Vec<String>, format = "evm-address")]
     pub settlement_tokens: Vec<Address>,
     pub bstocks: Vec<BstockSummary>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(utoipa::ToSchema, Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RecipePreviewRequest {
     pub recipe: RecipeDefinition,
     pub context: RecipeContext,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[derive(utoipa::ToSchema, Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum RecipeNodeState {
     Ready,
     WaitingForUpstream,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(utoipa::ToSchema, Debug, Serialize)]
 #[serde(tag = "kind", rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum RecipeNodePreview {
     Trade {
+        #[serde(rename = "nodeId")]
         node_id: Uuid,
         state: RecipeNodeState,
         #[serde(skip_serializing_if = "Vec::is_empty")]
         routes: Vec<TradeQuote>,
-        #[serde(skip_serializing_if = "Vec::is_empty")]
+        #[serde(rename = "waitingFor", skip_serializing_if = "Vec::is_empty")]
         waiting_for: Vec<Uuid>,
     },
 }
 
-#[derive(Debug, Serialize)]
+#[derive(utoipa::ToSchema, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RecipePreview {
     pub nodes: Vec<RecipeNodePreview>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(utoipa::ToSchema, Debug, Deserialize)]
 #[serde(tag = "kind", rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum RecipeNodeSelection {
     Trade {
+        #[serde(rename = "nodeId")]
         node_id: Uuid,
+        #[serde(rename = "routeQuoteId")]
         route_quote_id: String,
         venue: String,
     },
@@ -350,7 +359,7 @@ impl RecipeNodeSelection {
     }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(utoipa::ToSchema, Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PrepareRecipeRequest {
     pub recipe: RecipeDefinition,
@@ -358,21 +367,103 @@ pub struct PrepareRecipeRequest {
     pub selections: Vec<RecipeNodeSelection>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(utoipa::ToSchema, Debug, Serialize)]
 #[serde(tag = "kind", rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum PreparedRecipeStep {
     Approval {
+        #[serde(rename = "nodeId")]
         node_id: Uuid,
         action: PreparedApproval,
     },
     Trade {
+        #[serde(rename = "nodeId")]
         node_id: Uuid,
         action: PreparedTrade,
     },
 }
 
-#[derive(Debug, Serialize)]
+#[derive(utoipa::ToSchema, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PreparedRecipe {
     pub steps: Vec<PreparedRecipeStep>,
+}
+
+#[cfg(test)]
+mod tests {
+    use alloy_primitives::{Address, Bytes};
+    use serde_json::{from_value, json, to_value};
+
+    use super::{
+        PreparedRecipe, PreparedRecipeStep, RecipeNodePreview, RecipeNodeSelection, RecipeNodeState,
+    };
+    use crate::bstock_trade::PreparedApproval;
+
+    #[test]
+    fn serializes_preview_node_fields_as_camel_case() {
+        let node_id = uuid::Uuid::from_u128(1);
+        let result = to_value(RecipeNodePreview::Trade {
+            node_id,
+            state: RecipeNodeState::Ready,
+            routes: Vec::new(),
+            waiting_for: Vec::new(),
+        });
+
+        let Ok(value) = result else {
+            panic!("recipe preview did not serialize");
+        };
+        assert_eq!(
+            value,
+            json!({
+                "kind": "TRADE",
+                "nodeId": node_id,
+                "state": "READY"
+            })
+        );
+    }
+
+    #[test]
+    fn deserializes_camel_case_recipe_selection_fields() {
+        let node_id = uuid::Uuid::from_u128(2);
+        let result = from_value::<RecipeNodeSelection>(json!({
+            "kind": "TRADE",
+            "nodeId": node_id,
+            "routeQuoteId": "quote-1",
+            "venue": "LiquidMesh"
+        }));
+
+        let Ok(RecipeNodeSelection::Trade {
+            node_id: actual_node_id,
+            route_quote_id,
+            venue,
+        }) = result
+        else {
+            panic!("camel-case recipe selection did not deserialize");
+        };
+        assert_eq!(actual_node_id, node_id);
+        assert_eq!(route_quote_id, "quote-1");
+        assert_eq!(venue, "LiquidMesh");
+    }
+
+    #[test]
+    fn serializes_prepared_step_node_id_as_camel_case() {
+        let node_id = uuid::Uuid::from_u128(3);
+        let result = to_value(PreparedRecipe {
+            steps: vec![PreparedRecipeStep::Approval {
+                node_id,
+                action: PreparedApproval {
+                    to: Address::ZERO,
+                    spender: Address::ZERO,
+                    data: Bytes::new(),
+                    gas_limit: None,
+                    gas_price: None,
+                },
+            }],
+        });
+
+        let Ok(value) = result else {
+            panic!("prepared recipe did not serialize");
+        };
+        assert_eq!(value.pointer("/steps/0/nodeId"), Some(&json!(node_id)));
+        assert!(value.pointer("/steps/0/node_id").is_none());
+    }
 }

@@ -311,11 +311,6 @@ impl ApiError {
         "invalid_recipe_selection",
         "recipe selections must match the prepared nodes",
     );
-    const RECIPE_SELECTION_EXPIRED: Self = Self::fixed(
-        StatusCode::CONFLICT,
-        "recipe_selection_expired",
-        "the selected recipe route is no longer available",
-    );
     const RECIPE_STEP_NOT_READY: Self = Self::fixed(
         StatusCode::CONFLICT,
         "recipe_step_not_ready",
@@ -352,7 +347,6 @@ impl From<RecipeError> for ApiError {
                 ..Self::INVALID_RECIPE
             },
             RecipeError::InvalidSelection => Self::INVALID_RECIPE_SELECTION,
-            RecipeError::SelectionExpired => Self::RECIPE_SELECTION_EXPIRED,
             RecipeError::StepNotReady => Self::RECIPE_STEP_NOT_READY,
             RecipeError::Market(error) => error.into(),
             RecipeError::Trade(error) => error.into(),

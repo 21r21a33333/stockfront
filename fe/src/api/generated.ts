@@ -1,0 +1,677 @@
+// Generated from Rust. Run pnpm codegen; do not edit.
+export interface paths {
+  "/v1/bstock-trades/orders": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post: operations["submit_order"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/recipe-primitives": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: operations["primitives"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/recipes/prepare": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post: operations["prepare"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/recipes/preview": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post: operations["preview"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/recipes/validate": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post: operations["validate"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+}
+export type webhooks = Record<string, never>;
+export interface components {
+  schemas: {
+    /** @enum {string} */
+    AssetKind: "stock" | "preIpo" | "etf" | "unknown";
+    BstockId: {
+      /** Format: int64 */
+      chainId: number;
+      /** Format: evm-address */
+      contract: `0x${string}`;
+    };
+    BstockSummary: components["schemas"]["BstockId"] & {
+      assetKind: components["schemas"]["AssetKind"];
+      marketCapUsd?: string;
+      marketStatus?: components["schemas"]["MarketStatus"];
+      referencePriceUsd?: string;
+      tags: string[];
+      /** Format: int32 */
+      tokenDecimals: number;
+      tokenLogoUrl?: string;
+      tokenName: string;
+      tokenPriceUsd?: string;
+      tokenSymbol: string;
+      tokenToShareRatio: string;
+      underlyingName: string;
+      underlyingTicker: string;
+      volume24hUsd?: string;
+    };
+    Error: {
+      code: string;
+      diagnostics?: components["schemas"]["RecipeDiagnostic"][];
+      message: string;
+    };
+    MarketStatus: {
+      /** Format: int64 */
+      nextCloseAtMs?: number;
+      /** Format: int64 */
+      nextOpenAtMs?: number;
+      reason?: string;
+      reasonCode?: string;
+      session?: string;
+      tradable?: boolean;
+    };
+    PrepareRecipeRequest: {
+      context: components["schemas"]["RecipeContext"];
+      recipe: components["schemas"]["RecipeDefinition"];
+      selections: components["schemas"]["RecipeNodeSelection"][];
+    };
+    PreparedApproval: {
+      /** Format: hex */
+      data: `0x${string}`;
+      gasLimit?: string;
+      gasPrice?: string;
+      /** Format: evm-address */
+      spender: `0x${string}`;
+      /** Format: evm-address */
+      to: `0x${string}`;
+    };
+    PreparedRecipe: {
+      steps: components["schemas"]["PreparedRecipeStep"][];
+    };
+    PreparedRecipeStep:
+      | {
+          action: components["schemas"]["PreparedApproval"];
+          /** @enum {string} */
+          kind: "APPROVAL";
+          /** Format: uuid */
+          nodeId: string;
+        }
+      | {
+          action: components["schemas"]["PreparedTrade"];
+          /** @enum {string} */
+          kind: "TRADE";
+          /** Format: uuid */
+          nodeId: string;
+        };
+    PreparedTrade:
+      | {
+          /** @enum {string} */
+          executionMode: "SWAP";
+          transaction: components["schemas"]["PreparedTransaction"];
+        }
+      | {
+          /** @enum {string} */
+          executionMode: "RFQ";
+          routeQuoteId: string;
+          /** Format: uuid */
+          submissionId: string;
+          typedData: string;
+          venue: components["schemas"]["RfqVenue"];
+        };
+    PreparedTransaction: {
+      /** Format: hex */
+      data: `0x${string}`;
+      gasLimit: string;
+      gasPrice: string;
+      maxPriorityFeePerGas?: string;
+      minReceiveAmount: string;
+      /** Format: evm-address */
+      to: `0x${string}`;
+      value: string;
+    };
+    RecipeCatalog: {
+      bstocks: components["schemas"]["BstockSummary"][];
+      primitives: components["schemas"]["RecipePrimitiveDescriptor"][];
+      /** Format: int32 */
+      schemaVersion: number;
+      settlementTokens: `0x${string}`[];
+    };
+    RecipeContext: {
+      /** Format: evm-address */
+      wallet: `0x${string}`;
+    };
+    RecipeDefinition: {
+      /** Format: int64 */
+      chainId: number;
+      edges: components["schemas"]["RecipeEdge"][];
+      nodes: components["schemas"]["RecipeNode"][];
+      /** Format: int32 */
+      schemaVersion: number;
+    };
+    RecipeDiagnostic: {
+      code: components["schemas"]["RecipeDiagnosticCode"];
+      location: components["schemas"]["RecipeDiagnosticLocation"];
+      message: string;
+      severity: components["schemas"]["RecipeDiagnosticSeverity"];
+    };
+    /** @enum {string} */
+    RecipeDiagnosticCode:
+      | "EMPTY_RECIPE"
+      | "UNSUPPORTED_SCHEMA_VERSION"
+      | "UNSUPPORTED_CHAIN"
+      | "RECIPE_TOO_LARGE"
+      | "DUPLICATE_NODE_ID"
+      | "DUPLICATE_EDGE_ID"
+      | "UNKNOWN_NODE"
+      | "UNKNOWN_PORT"
+      | "INVALID_PORT_DIRECTION"
+      | "PORT_TYPE_MISMATCH"
+      | "MISSING_REQUIRED_INPUT"
+      | "TOO_MANY_CONNECTIONS"
+      | "CONSUMABLE_OUTPUT_REUSED"
+      | "SELF_CONNECTION"
+      | "RECIPE_CYCLE"
+      | "DISCONNECTED_NODE"
+      | "INVALID_AMOUNT";
+    RecipeDiagnosticLocation:
+      | {
+          /** @enum {string} */
+          kind: "RECIPE";
+        }
+      | {
+          /** @enum {string} */
+          kind: "NODE";
+          /** Format: uuid */
+          nodeId: string;
+        }
+      | {
+          field: string;
+          /** @enum {string} */
+          kind: "FIELD";
+          /** Format: uuid */
+          nodeId: string;
+        }
+      | {
+          /** @enum {string} */
+          kind: "PORT";
+          /** Format: uuid */
+          nodeId: string;
+          port: string;
+        }
+      | {
+          /** Format: uuid */
+          edgeId: string;
+          /** @enum {string} */
+          kind: "EDGE";
+        };
+    /** @enum {string} */
+    RecipeDiagnosticSeverity: "ERROR" | "WARNING";
+    RecipeEdge: {
+      from: components["schemas"]["RecipePortRef"];
+      /** Format: uuid */
+      id: string;
+      to: components["schemas"]["RecipePortRef"];
+    };
+    /** @enum {string} */
+    RecipeFieldControl: "TOKEN" | "AMOUNT";
+    RecipeFieldDescriptor: {
+      control: components["schemas"]["RecipeFieldControl"];
+      key: string;
+      name: string;
+      optionSources: components["schemas"]["RecipeOptionSource"][];
+      required: boolean;
+    };
+    RecipeNode: components["schemas"]["RecipePrimitive"] & {
+      /** Format: uuid */
+      id: string;
+    };
+    RecipeNodePreview: {
+      /** @enum {string} */
+      kind: "TRADE";
+      /** Format: uuid */
+      nodeId: string;
+      routes?: components["schemas"]["TradeQuote"][];
+      state: components["schemas"]["RecipeNodeState"];
+      waitingFor?: string[];
+    };
+    RecipeNodeSelection: {
+      /** @enum {string} */
+      kind: "TRADE";
+      /** Format: uuid */
+      nodeId: string;
+      routeQuoteId: string;
+      venue: string;
+    };
+    /** @enum {string} */
+    RecipeNodeState: "READY" | "WAITING_FOR_UPSTREAM";
+    /** @enum {string} */
+    RecipeOptionSource: "SETTLEMENT_TOKENS" | "BSTOCKS";
+    RecipePortDescriptor: {
+      direction: components["schemas"]["RecipePortDirection"];
+      flow: components["schemas"]["RecipePortFlow"];
+      key: string;
+      /** Format: int32 */
+      maxConnections?: number;
+      /** Format: int32 */
+      minConnections: number;
+      valueType: components["schemas"]["RecipePortValueType"];
+    };
+    /** @enum {string} */
+    RecipePortDirection: "INPUT" | "OUTPUT";
+    /** @enum {string} */
+    RecipePortFlow: "CONSUME" | "REFERENCE";
+    RecipePortRef: {
+      /** Format: uuid */
+      nodeId: string;
+      port: string;
+    };
+    /** @enum {string} */
+    RecipePortValueType: "TOKEN_AMOUNT";
+    RecipePreview: {
+      nodes: components["schemas"]["RecipeNodePreview"][];
+    };
+    RecipePreviewRequest: {
+      context: components["schemas"]["RecipeContext"];
+      recipe: components["schemas"]["RecipeDefinition"];
+    };
+    RecipePrimitive:
+      | {
+          /** @enum {string} */
+          kind: "WALLET_ASSET";
+          rawAmount: string;
+          /** Format: evm-address */
+          token: `0x${string}`;
+        }
+      | {
+          /** Format: evm-address */
+          buyToken: `0x${string}`;
+          /** @enum {string} */
+          kind: "TRADE";
+        };
+    RecipePrimitiveDescriptor: {
+      description: string;
+      fields: components["schemas"]["RecipeFieldDescriptor"][];
+      kind: components["schemas"]["RecipePrimitiveKind"];
+      name: string;
+      ports: components["schemas"]["RecipePortDescriptor"][];
+    };
+    /** @enum {string} */
+    RecipePrimitiveKind: "WALLET_ASSET" | "TRADE";
+    RecipeValidationReport: {
+      diagnostics: components["schemas"]["RecipeDiagnostic"][];
+      valid: boolean;
+    };
+    Response: {
+      error?: components["schemas"]["Error"];
+      result?: components["schemas"]["TupleUnit"];
+      status: components["schemas"]["Status"];
+    };
+    Response_PreparedRecipe: {
+      error?: components["schemas"]["Error"];
+      result?: {
+        steps: components["schemas"]["PreparedRecipeStep"][];
+      };
+      status: components["schemas"]["Status"];
+    };
+    Response_RecipeCatalog: {
+      error?: components["schemas"]["Error"];
+      result?: {
+        bstocks: components["schemas"]["BstockSummary"][];
+        primitives: components["schemas"]["RecipePrimitiveDescriptor"][];
+        /** Format: int32 */
+        schemaVersion: number;
+        settlementTokens: `0x${string}`[];
+      };
+      status: components["schemas"]["Status"];
+    };
+    Response_RecipePreview: {
+      error?: components["schemas"]["Error"];
+      result?: {
+        nodes: components["schemas"]["RecipeNodePreview"][];
+      };
+      status: components["schemas"]["Status"];
+    };
+    Response_RecipeValidationReport: {
+      error?: components["schemas"]["Error"];
+      result?: {
+        diagnostics: components["schemas"]["RecipeDiagnostic"][];
+        valid: boolean;
+      };
+      status: components["schemas"]["Status"];
+    };
+    Response_SubmittedOrder: {
+      error?: components["schemas"]["Error"];
+      result?: {
+        /** Format: int64 */
+        createdAtMs: number;
+        orderId: string;
+        state: components["schemas"]["TradeOrderState"];
+      };
+      status: components["schemas"]["Status"];
+    };
+    /** @enum {string} */
+    RfqVenue: "inchFusion" | "cowSwap" | "pcsXRfq";
+    /** @enum {string} */
+    Status: "Ok" | "Error";
+    SubmitOrderRequest: {
+      routeQuoteId: string;
+      signature: string;
+      /** Format: uuid */
+      submissionId: string;
+      venue: components["schemas"]["RfqVenue"];
+    };
+    SubmittedOrder: {
+      /** Format: int64 */
+      createdAtMs: number;
+      orderId: string;
+      state: components["schemas"]["TradeOrderState"];
+    };
+    TokenAmount: {
+      amount: string;
+      /** Format: evm-address */
+      token: `0x${string}`;
+    };
+    /** @enum {string} */
+    TradeExecutionMode: "SWAP" | "RFQ";
+    /** @enum {string} */
+    TradeOrderState:
+      | "pendingVendor"
+      | "pendingOnchain"
+      | "filled"
+      | "failed"
+      | "expired"
+      | "cancelled"
+      | "unknown";
+    TradeQuote: {
+      /** Format: evm-address */
+      approvalTarget?: `0x${string}`;
+      buy: components["schemas"]["TokenAmount"];
+      executionMode: components["schemas"]["TradeExecutionMode"];
+      priceImpactPercent?: string;
+      routeQuoteId: string;
+      sell: components["schemas"]["TokenAmount"];
+      venue: string;
+    };
+    /** @default null */
+    TupleUnit: unknown;
+  };
+  responses: never;
+  parameters: never;
+  requestBodies: never;
+  headers: never;
+  pathItems: never;
+}
+export type AssetKind = components["schemas"]["AssetKind"];
+export type BstockId = components["schemas"]["BstockId"];
+export type BstockSummary = components["schemas"]["BstockSummary"];
+export type Error = components["schemas"]["Error"];
+export type MarketStatus = components["schemas"]["MarketStatus"];
+export type PrepareRecipeRequest =
+  components["schemas"]["PrepareRecipeRequest"];
+export type PreparedApproval = components["schemas"]["PreparedApproval"];
+export type PreparedRecipe = components["schemas"]["PreparedRecipe"];
+export type PreparedRecipeStep = components["schemas"]["PreparedRecipeStep"];
+export type PreparedTrade = components["schemas"]["PreparedTrade"];
+export type PreparedTransaction = components["schemas"]["PreparedTransaction"];
+export type RecipeCatalog = components["schemas"]["RecipeCatalog"];
+export type RecipeContext = components["schemas"]["RecipeContext"];
+export type RecipeDefinition = components["schemas"]["RecipeDefinition"];
+export type RecipeDiagnostic = components["schemas"]["RecipeDiagnostic"];
+export type RecipeDiagnosticCode =
+  components["schemas"]["RecipeDiagnosticCode"];
+export type RecipeDiagnosticLocation =
+  components["schemas"]["RecipeDiagnosticLocation"];
+export type RecipeDiagnosticSeverity =
+  components["schemas"]["RecipeDiagnosticSeverity"];
+export type RecipeEdge = components["schemas"]["RecipeEdge"];
+export type RecipeFieldControl = components["schemas"]["RecipeFieldControl"];
+export type RecipeFieldDescriptor =
+  components["schemas"]["RecipeFieldDescriptor"];
+export type RecipeNode = components["schemas"]["RecipeNode"];
+export type RecipeNodePreview = components["schemas"]["RecipeNodePreview"];
+export type RecipeNodeSelection = components["schemas"]["RecipeNodeSelection"];
+export type RecipeNodeState = components["schemas"]["RecipeNodeState"];
+export type RecipeOptionSource = components["schemas"]["RecipeOptionSource"];
+export type RecipePortDescriptor =
+  components["schemas"]["RecipePortDescriptor"];
+export type RecipePortDirection = components["schemas"]["RecipePortDirection"];
+export type RecipePortFlow = components["schemas"]["RecipePortFlow"];
+export type RecipePortRef = components["schemas"]["RecipePortRef"];
+export type RecipePortValueType = components["schemas"]["RecipePortValueType"];
+export type RecipePreview = components["schemas"]["RecipePreview"];
+export type RecipePreviewRequest =
+  components["schemas"]["RecipePreviewRequest"];
+export type RecipePrimitive = components["schemas"]["RecipePrimitive"];
+export type RecipePrimitiveDescriptor =
+  components["schemas"]["RecipePrimitiveDescriptor"];
+export type RecipePrimitiveKind = components["schemas"]["RecipePrimitiveKind"];
+export type RecipeValidationReport =
+  components["schemas"]["RecipeValidationReport"];
+export type Response = components["schemas"]["Response"];
+export type Response_PreparedRecipe =
+  components["schemas"]["Response_PreparedRecipe"];
+export type Response_RecipeCatalog =
+  components["schemas"]["Response_RecipeCatalog"];
+export type Response_RecipePreview =
+  components["schemas"]["Response_RecipePreview"];
+export type Response_RecipeValidationReport =
+  components["schemas"]["Response_RecipeValidationReport"];
+export type Response_SubmittedOrder =
+  components["schemas"]["Response_SubmittedOrder"];
+export type RfqVenue = components["schemas"]["RfqVenue"];
+export type Status = components["schemas"]["Status"];
+export type SubmitOrderRequest = components["schemas"]["SubmitOrderRequest"];
+export type SubmittedOrder = components["schemas"]["SubmittedOrder"];
+export type TokenAmount = components["schemas"]["TokenAmount"];
+export type TradeExecutionMode = components["schemas"]["TradeExecutionMode"];
+export type TradeOrderState = components["schemas"]["TradeOrderState"];
+export type TradeQuote = components["schemas"]["TradeQuote"];
+export type TupleUnit = components["schemas"]["TupleUnit"];
+export type $defs = Record<string, never>;
+export interface operations {
+  submit_order: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["SubmitOrderRequest"];
+      };
+    };
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Response_SubmittedOrder"];
+        };
+      };
+      default: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Response"];
+        };
+      };
+    };
+  };
+  primitives: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Response_RecipeCatalog"];
+        };
+      };
+      default: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Response"];
+        };
+      };
+    };
+  };
+  prepare: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["PrepareRecipeRequest"];
+      };
+    };
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Response_PreparedRecipe"];
+        };
+      };
+      default: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Response"];
+        };
+      };
+    };
+  };
+  preview: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["RecipePreviewRequest"];
+      };
+    };
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Response_RecipePreview"];
+        };
+      };
+      default: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Response"];
+        };
+      };
+    };
+  };
+  validate: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["RecipeDefinition"];
+      };
+    };
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Response_RecipeValidationReport"];
+        };
+      };
+      default: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Response"];
+        };
+      };
+    };
+  };
+}

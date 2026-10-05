@@ -1,0 +1,24 @@
+:root {
+  --page: #ececee;
+  --canvas: #f5f5f7;
+  --surface: #ffffff;
+  --surface-soft: #fbfbfc;
+  --ink: #1b1b1f;
+  --ink-soft: #3b3b42;
+  --muted: #8a8a93;
+  --border: #e4e4e8;
+  --border-soft: #ededf0;
+  --purple: #5e2b97;
+  --purple-dark: #45206f;
+  --purple-soft: #f1eaf9;
+  --orange: #e0782a;
+  --orange-soft: #fdf0e4;
+  --success: #1f8a5b;
+  --success-soft: #e7f5ee;
+  --warning: #9a6514;
+  --danger: #c23434;
+  --danger-soft: #fdeded;
+  --sans: "Geist Variable", "Geist", Inter, system-ui, sans-serif;
+  --mono: "Geist Mono", ui-monospace, SFMono-Regular, monospace;
+  color-scheme: light;
+}

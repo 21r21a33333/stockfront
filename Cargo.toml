@@ -25,6 +25,7 @@ stockfront-core = { path = "crates/core" }
 thiserror = "2.0.17"
 tokio = "1.47.1"
 uuid = "1.18.1"
+utoipa = { version = "5.4", features = ["uuid", "decimal"] }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"
