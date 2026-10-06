@@ -4,6 +4,7 @@ import type {
   PreparedRecipe,
   RecipeDiagnostic,
   RecipePreview,
+  RecipeTradePolicy,
   TradeQuote,
 } from "@/api/generated";
 import type { AssetOption, RecipeFlowNode } from "../editor/types";
@@ -17,6 +18,7 @@ import { TradeFields } from "./TradeFields";
 export function RecipeInspector({
   node,
   assets,
+  tradePolicy,
   diagnostics,
   preview,
   selectedRouteId,
@@ -32,6 +34,7 @@ export function RecipeInspector({
 }: {
   node?: RecipeFlowNode;
   assets: AssetOption[];
+  tradePolicy: RecipeTradePolicy;
   diagnostics: RecipeDiagnostic[];
   preview?: RecipePreview;
   selectedRouteId?: string;
@@ -125,6 +128,7 @@ export function RecipeInspector({
               <TradeFields
                 node={node}
                 assets={assets}
+                tradePolicy={tradePolicy}
                 preview={preview}
                 selectedRouteId={selectedRouteId}
                 prepared={prepared}

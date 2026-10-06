@@ -3,11 +3,13 @@ import { AssetSelect } from "@/ui/assets/AssetSelect";
 import type {
   PreparedRecipe,
   RecipePreview,
+  RecipeTradePolicy,
   TradeQuote,
 } from "@/api/generated";
 import type { AssetOption, RecipeFlowNode } from "../editor/types";
 import { inputForTrade } from "../editor/flowInput";
 import { useRecipeEditor } from "../editor/store";
+import { compatibleTradeAssets } from "../editor/tradePolicy";
 import { RoutePreview } from "./RoutePreview";
 import { formatQuote } from "./amounts";
 import styles from "../RecipeBuilder.module.css";
@@ -15,6 +17,7 @@ import styles from "../RecipeBuilder.module.css";
 export function TradeFields({
   node,
   assets,
+  tradePolicy,
   preview,
   selectedRouteId,
   prepared,
@@ -25,6 +28,7 @@ export function TradeFields({
 }: {
   node: RecipeFlowNode;
   assets: AssetOption[];
+  tradePolicy: RecipeTradePolicy;
   preview?: RecipePreview;
   selectedRouteId?: string;
   prepared?: PreparedRecipe;
@@ -35,11 +39,23 @@ export function TradeFields({
 }) {
   const editor = useRecipeEditor();
   if (node.data.kind !== "TRADE") return null;
-  const routes =
-    preview?.nodes.find((item) => item.nodeId === node.id)?.routes ?? [];
+  const buyToken = node.data.buyToken;
+  const previewNode = preview?.nodes.find((item) => item.nodeId === node.id);
+  const routes = previewNode?.routes ?? [];
   const input = inputForTrade(editor.nodes, editor.edges, node.id);
   const sellAsset = assets.find(
     (asset) => asset.address.toLowerCase() === input?.token?.toLowerCase(),
+  );
+  const buyAsset = assets.find(
+    (asset) => asset.address.toLowerCase() === buyToken?.toLowerCase(),
+  );
+  const compatibleAssets = compatibleTradeAssets(
+    input?.token,
+    assets,
+    tradePolicy,
+  );
+  const supported = compatibleAssets.some(
+    (asset) => asset.address.toLowerCase() === buyToken?.toLowerCase(),
   );
   const selectedRoute = routes.find(
     (route) => route.routeQuoteId === selectedRouteId,
@@ -70,12 +86,32 @@ export function TradeFields({
         <div className={styles.portRow}>
           <span>Buy</span>
           <AssetSelect
-            assets={assets}
-            value={node.data.buyToken}
+            assets={compatibleAssets}
+            value={buyToken}
+            selectedAsset={buyAsset}
+            invalid={Boolean(input && buyToken && !supported)}
             onChange={(buyToken) => editor.updateNode(node.id, { buyToken })}
           />
         </div>
+        {input && buyToken && !supported ? (
+          <p className={`${styles.runtimeNotice} ${styles.runtimeWarning}`}>
+            {buyAsset?.symbol ?? "This asset"} cannot be bought with{" "}
+            {sellAsset?.symbol ?? "the incoming asset"}. Choose a supported
+            asset.
+          </p>
+        ) : null}
       </section>
+      {previewNode?.state === "WAITING_FOR_UPSTREAM" ? (
+        <p className={styles.runtimeNotice}>
+          Waiting for the previous action to settle
+        </p>
+      ) : previewNode?.state === "OUTPUT_UNAVAILABLE" ? (
+        <p className={`${styles.runtimeNotice} ${styles.runtimeWarning}`}>
+          The previous action settled, but its exact output is unavailable
+        </p>
+      ) : previewNode?.state === "COMPLETE" ? (
+        <p className={styles.runtimeNotice}>This action is complete</p>
+      ) : null}
       {routes.length > 0 ? (
         <details
           open={completed ? undefined : true}

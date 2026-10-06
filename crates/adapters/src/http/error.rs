@@ -311,6 +311,11 @@ impl ApiError {
         "invalid_recipe_selection",
         "recipe selections must match the prepared nodes",
     );
+    const INVALID_RECIPE_CONTEXT: Self = Self::fixed(
+        StatusCode::BAD_REQUEST,
+        "invalid_recipe_context",
+        "completed recipe nodes do not match the compiled plan",
+    );
     const RECIPE_STEP_NOT_READY: Self = Self::fixed(
         StatusCode::CONFLICT,
         "recipe_step_not_ready",
@@ -346,6 +351,7 @@ impl From<RecipeError> for ApiError {
                 diagnostics: Some(report.diagnostics),
                 ..Self::INVALID_RECIPE
             },
+            RecipeError::InvalidContext => Self::INVALID_RECIPE_CONTEXT,
             RecipeError::InvalidSelection => Self::INVALID_RECIPE_SELECTION,
             RecipeError::StepNotReady => Self::RECIPE_STEP_NOT_READY,
             RecipeError::Market(error) => error.into(),
@@ -606,5 +612,22 @@ impl IntoResponse for ApiError {
             self.status,
         )
         .into_response()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn maps_invalid_recipe_context_to_a_stable_client_error() {
+        let error = ApiError::from(RecipeError::InvalidContext);
+
+        assert_eq!(error.status, StatusCode::BAD_REQUEST);
+        assert_eq!(error.code, "invalid_recipe_context");
+        assert_eq!(
+            error.message,
+            "completed recipe nodes do not match the compiled plan"
+        );
     }
 }

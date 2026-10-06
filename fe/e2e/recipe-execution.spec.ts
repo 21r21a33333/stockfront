@@ -50,6 +50,12 @@ async function mockApp(
       return ok({
         schemaVersion: 1,
         settlementTokens: [usdt],
+        tradePolicy: {
+          allowedTransitions: [
+            { sell: "SETTLEMENT_TOKENS", buy: "BSTOCKS" },
+            { sell: "BSTOCKS", buy: "SETTLEMENT_TOKENS" },
+          ],
+        },
         bstocks: [
           {
             chainId: 56,
@@ -268,7 +274,7 @@ test("a recovered buy shows approval and swap once in Activity and keeps the quo
               kind: "APPROVAL",
               attempt: 1,
               phase: "complete",
-              transactionHash: `0x${"ab".repeat(32)}`,
+              callBatchId: "settled-batch",
             },
             {
               nodeId,
@@ -276,6 +282,7 @@ test("a recovered buy shows approval and swap once in Activity and keeps the quo
               attempt: 1,
               phase: "complete",
               executionMode: "SWAP",
+              callBatchId: "settled-batch",
               transactionHash: `0x${"cd".repeat(32)}`,
             },
           ],
@@ -286,7 +293,7 @@ test("a recovered buy shows approval and swap once in Activity and keeps the quo
     { wallet, recipe: mock.recipe() },
   );
   const activity = page.getByRole("region", { name: "Execution activity" });
-  await expect(activity.getByText("2 / 2")).toBeVisible();
+  await expect(activity.getByText("1 / 1")).toBeVisible();
   await expect(activity.getByText("Approve USDT", { exact: true })).toHaveCount(
     1,
   );
@@ -301,9 +308,14 @@ test("a recovered buy shows approval and swap once in Activity and keeps the quo
     .getByRole("navigation", { name: "Inspector view" })
     .getByRole("button", { name: "Configure", exact: true })
     .click();
-  await expect(page.getByText("Quote estimate", { exact: true })).toBeVisible();
+  await expect(
+    page.getByText("Quote estimate", { exact: true }),
+  ).not.toBeVisible();
   await expect(page.getByText("Minimum received")).not.toBeVisible();
-  await page.getByRole("button", { name: "Swap → NVDAB", exact: true }).click();
+  await page
+    .getByRole("navigation", { name: "Inspector view" })
+    .getByRole("button", { name: "Activity", exact: true })
+    .click();
   await expect(activity).toBeVisible();
   expect(mock.submissions()).toBe(0);
 });

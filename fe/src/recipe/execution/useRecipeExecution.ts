@@ -7,19 +7,22 @@ import type {
   SubmitOrderRequest,
 } from "@/api/generated";
 import { recipesApi } from "@/api/recipes";
-import { useSettlement } from "./useSettlement";
 import { stockfrontChain } from "@/wallet/config";
 import {
+  createRun,
   executionProgress,
   isRunComplete,
   isUnresolved,
   latestAttempts,
-  readRun,
-  runKey,
-  writeRun,
+  nextAttemptNumber,
+  patchAttempt,
+  sameRecipe,
   type ExecutionAttempt,
   type ExecutionRun,
-} from "./journal";
+} from "./model";
+import { readRun, runKey, writeRun } from "./journal";
+import { preparedExecution, supportsAtomicCalls } from "./preparedExecution";
+import { useExecutionStatus } from "./useExecutionStatus";
 
 const RFQ_RETRY_WINDOW_MS = 30 * 60_000;
 
@@ -31,17 +34,13 @@ export function useRecipeExecution({
   prepared?: PreparedRecipe;
 }) {
   const account = useAccount();
-  const { data: walletClient } = useWalletClient();
   const publicClient = usePublicClient();
+  const { data: walletClient } = useWalletClient();
   const key = account.address
     ? runKey(account.address, account.chainId ?? 0)
     : undefined;
-  const context = useRef({
-    key,
-    address: account.address,
-    chainId: account.chainId,
-  });
-  context.current = { key, address: account.address, chainId: account.chainId };
+  const context = useRef(key);
+  context.current = key;
   const memory = useRef(new Map<string, ExecutionRun>());
   const storageFaults = useRef(new Set<string>());
   const signedOrders = useRef(new Map<string, SubmitOrderRequest>());
@@ -49,65 +48,35 @@ export function useRecipeExecution({
   const currentPreparation = useRef(prepared);
   currentPreparation.current = prepared;
   const running = useRef(false);
-  const mounted = useRef(true);
   const [run, setRun] = useState<ExecutionRun>();
   const [error, setError] = useState<string>();
   const [busy, setBusy] = useState(false);
 
-  useEffect(() => {
-    mounted.current = true;
-    return () => {
-      mounted.current = false;
-    };
-  }, []);
-
   function publish(value: ExecutionRun): void {
     const target = runKey(value.wallet, value.chainId);
     memory.current.set(target, value);
-    if (context.current.key === target) setRun(value);
+    if (context.current === target) setRun(value);
   }
+
   function save(value: ExecutionRun): void {
+    const target = runKey(value.wallet, value.chainId);
     try {
       writeRun(value);
-      storageFaults.current.delete(runKey(value.wallet, value.chainId));
+      storageFaults.current.delete(target);
     } catch {
-      storageFaults.current.add(runKey(value.wallet, value.chainId));
+      storageFaults.current.add(target);
       publish(value);
       throw new Error(
-        "Could not save recovery data. Copy the transaction/order reference and do not start another spend.",
+        "Could not save recovery data. Copy the visible reference before leaving this page.",
       );
     }
     publish(value);
-  }
-  function update(
-    value: ExecutionRun,
-    attempt: ExecutionAttempt,
-    patch: Partial<ExecutionAttempt>,
-    persist = true,
-  ): ExecutionRun {
-    const next = {
-      ...value,
-      updatedAtMs: Date.now(),
-      attempts: value.attempts.map((item) =>
-        item.nodeId === attempt.nodeId &&
-        item.kind === attempt.kind &&
-        item.attempt === attempt.attempt
-          ? { ...item, ...patch }
-          : item,
-      ),
-    };
-    if (persist) save(next);
-    else publish(next);
-    return next;
   }
 
   useEffect(() => {
     setError(undefined);
     const load = () => {
-      if (!account.address || !key) {
-        setRun(undefined);
-        return;
-      }
+      if (!account.address || !key) return setRun(undefined);
       try {
         const saved = storageFaults.current.has(key)
           ? memory.current.get(key)
@@ -115,11 +84,7 @@ export function useRecipeExecution({
         if (saved) memory.current.set(key, saved);
         setRun(saved);
       } catch (cause) {
-        setError(
-          cause instanceof Error
-            ? cause.message
-            : "Recovery data could not be read.",
-        );
+        setError(message(cause, "Recovery data could not be read."));
       }
     };
     load();
@@ -139,383 +104,305 @@ export function useRecipeExecution({
   const progress = executionProgress(current?.attempts ?? [], busy);
   const pending = progress.find(isUnresolved);
   const completed = current !== undefined && isRunComplete(current);
-  const blocked = pending !== undefined;
-  const sameRecipe =
-    !current || JSON.stringify(current.recipe) === JSON.stringify(recipe);
+  const matches = !current || sameRecipe(current.recipe, recipe);
 
-  const settlement = useSettlement({
+  const status = useExecutionStatus({
     run: current,
     busy,
-    onStatus: async (current, pending, patch) => {
-      if (!navigator.locks) {
-        // Read-only recovery still works; shared storage requires a lock.
-        update(current, pending, patch, false);
-        return;
-      }
-      await navigator.locks.request(
-        runKey(current.wallet, current.chainId),
-        { ifAvailable: true },
-        (lock) => {
-          if (!lock) return;
-          const target = runKey(current.wallet, current.chainId);
-          const saved = storageFaults.current.has(target)
-            ? memory.current.get(target)
-            : readRun(current.wallet, current.chainId);
-          if (!saved || saved.id !== current.id) return;
-          const latest = latestAttempts(saved.attempts).find(
-            (item) =>
-              item.nodeId === pending.nodeId && item.kind === pending.kind,
-          );
-          if (
-            latest?.attempt === pending.attempt &&
-            isUnresolved(latest) &&
-            !latest.needsReconciliation
-          )
-            update(saved, latest, patch);
-        },
-      );
+    onStatus: async (snapshot, attempt, patch) => {
+      await withRunLock(snapshot, (saved) => {
+        const latest = latestAttempts(saved.attempts).find(
+          (item) => item.id === attempt.id,
+        );
+        if (latest && isUnresolved(latest))
+          save(patchAttempt(saved, latest, patch));
+      });
     },
   });
 
-  async function execute(): Promise<void> {
+  async function execute(nextPrepared?: PreparedRecipe): Promise<void> {
+    const plan = nextPrepared ?? prepared;
     if (
       running.current ||
-      !prepared ||
+      !plan ||
       !walletClient ||
       !publicClient ||
       !account.address ||
       account.chainId !== stockfrontChain.id
     )
       return;
-    if (!navigator.locks) {
-      setError(
-        "This browser does not support safe execution locks. Use a current browser on HTTPS or localhost.",
-      );
-      return;
-    }
-    const executionKey = runKey(account.address, account.chainId);
-    const assertContext = () => {
-      if (
-        !mounted.current ||
-        context.current.key !== executionKey ||
-        walletClient.account.address.toLowerCase() !==
-          account.address?.toLowerCase()
-      )
-        throw new Error(
-          "Wallet changed. Return to the original wallet to continue.",
-        );
-    };
+    if (!navigator.locks)
+      return setError("This browser cannot safely lock recipe execution.");
+
     running.current = true;
     setBusy(true);
     setError(undefined);
     try {
       await navigator.locks.request(
-        executionKey,
+        runKey(account.address, account.chainId),
         { ifAvailable: true },
         async (lock) => {
-          if (!lock) {
-            setError("This wallet is executing in another tab.");
-            return;
-          }
-          assertContext();
-          if (storageFaults.current.has(executionKey))
+          if (!lock)
+            throw new Error("This wallet is executing in another tab.");
+          assertWalletContext();
+          const execution = await preparedExecution(
+            plan,
+            publicClient,
+            walletClient.account.address,
+          );
+          if (
+            execution.kind === "CALL_BATCH" &&
+            execution.atomicRequired &&
+            !(await supportsAtomicCalls(
+              walletClient,
+              walletClient.account.address,
+              stockfrontChain.id,
+            ))
+          )
             throw new Error(
-              "Recovery storage is unavailable. Check the saved reference before continuing.",
+              "Atomic batching is not supported by this wallet on BNB Chain. No transaction was sent.",
             );
-          let active = readRun(account.address!, account.chainId!);
-          if (active) {
-            publish(active);
-            if (isRunComplete(active)) return;
-            if (active.attempts.some(isUnresolved)) {
-              setError(
-                "Previous action is unresolved. Check status; do not submit it again.",
-              );
-              return;
-            }
-            if (JSON.stringify(active.recipe) !== JSON.stringify(recipe))
-              throw new Error(
-                "The draft differs from the execution snapshot. Finish the existing run first.",
-              );
-          }
-          if (usedPreparations.current.has(prepared))
+
+          let active =
+            readRun(account.address!, account.chainId!) ??
+            createRun(structuredClone(recipe), account.address!);
+          if (isRunComplete(active)) return;
+          if (active.attempts.some(isUnresolved))
+            throw new Error(
+              "Previous action is unresolved. Check its status first.",
+            );
+          if (!sameRecipe(active.recipe, recipe))
+            throw new Error(
+              "Finish the saved execution before running this draft.",
+            );
+          if (usedPreparations.current.has(plan))
             throw new Error(
               "Refresh the route and prepare again before continuing.",
             );
-          if (!prepared.steps.length) return;
-          active ??= {
-            version: 1,
+
+          const attempt: ExecutionAttempt = {
             id: crypto.randomUUID(),
-            wallet: account.address!,
-            chainId: account.chainId!,
-            recipe: structuredClone(recipe),
-            createdAtMs: Date.now(),
-            updatedAtMs: Date.now(),
-            attempts: [],
+            nodeId: execution.nodeId,
+            kind: execution.action,
+            attempt: nextAttemptNumber(active.attempts, execution.nodeId),
+            phase: "awaiting",
+            executionMode: execution.executionMode,
+            steps: execution.steps,
+            approvalSkipped:
+              plan.steps.some((step) => step.kind === "APPROVAL") &&
+              !execution.steps.some((step) => step === "APPROVAL"),
           };
+          active = { ...active, attempts: [...active.attempts, attempt] };
           save(active);
-          usedPreparations.current.add(prepared);
-          for (const step of prepared.steps) {
-            if (
-              active.attempts.some(
-                (item) =>
-                  item.nodeId === step.nodeId &&
-                  item.kind === "TRADE" &&
-                  item.phase === "complete",
-              )
-            )
-              continue;
-            assertContext();
-            const attempt: ExecutionAttempt = {
-              nodeId: step.nodeId,
-              kind: step.kind,
-              attempt:
-                1 +
-                Math.max(
-                  0,
-                  ...active.attempts
-                    .filter(
-                      (item) =>
-                        item.nodeId === step.nodeId && item.kind === step.kind,
-                    )
-                    .map((item) => item.attempt),
-                ),
-              phase: "awaiting",
-              executionMode:
-                step.kind === "TRADE" ? step.action.executionMode : undefined,
-            };
-            active = { ...active, attempts: [...active.attempts, attempt] };
-            save(active);
-            try {
-              if (
-                step.kind === "TRADE" &&
-                step.action.executionMode === "RFQ"
-              ) {
-                const typedData = JSON.parse(
-                  step.action.typedData,
-                ) as SignTypedDataParameters;
-                const signature = await walletClient.signTypedData({
-                  ...typedData,
-                  account: walletClient.account,
-                });
-                assertContext();
-                const order: SubmitOrderRequest = {
-                  submissionId: step.action.submissionId,
-                  routeQuoteId: step.action.routeQuoteId,
-                  venue: step.action.venue,
-                  signature,
-                };
-                signedOrders.current.set(active.id, order);
-                active = update(active, attempt, {
-                  phase: "submitting",
+          usedPreparations.current.add(plan);
+
+          try {
+            assertWalletContext();
+            if (execution.kind === "CALL_BATCH") {
+              const submitted = await walletClient.sendCalls({
+                account: walletClient.account,
+                chain: stockfrontChain,
+                calls: execution.calls,
+                forceAtomic: execution.atomicRequired,
+              });
+              active = patchAttempt(active, attempt, {
+                phase: "pending",
+                firstSubmittedAtMs: Date.now(),
+                reference: {
+                  kind: "CALL_BATCH",
+                  id: submitted.id,
+                  atomicRequired: execution.atomicRequired,
+                },
+              });
+            } else {
+              const typedData = JSON.parse(
+                execution.order.typedData,
+              ) as SignTypedDataParameters;
+              const signature = await walletClient.signTypedData({
+                ...typedData,
+                account: walletClient.account,
+              });
+              const order: SubmitOrderRequest = {
+                submissionId: execution.order.submissionId,
+                routeQuoteId: execution.order.routeQuoteId,
+                venue: execution.order.venue,
+                signature,
+              };
+              signedOrders.current.set(attempt.id, order);
+              active = patchAttempt(active, attempt, {
+                phase: "submitting",
+                firstSubmittedAtMs: Date.now(),
+                reference: {
+                  kind: "RFQ_ORDER",
                   submissionId: order.submissionId,
-                  firstSubmittedAtMs: Date.now(),
-                });
-                const submitted = await recipesApi.submitOrder(order);
-                active = update(active, attempt, {
-                  phase: "pending",
+                },
+              });
+              save(active);
+              const submitted = await recipesApi.submitOrder(order);
+              active = patchAttempt(active, attempt, {
+                phase: "pending",
+                reference: {
+                  kind: "RFQ_ORDER",
+                  submissionId: order.submissionId,
                   orderId: submitted.orderId,
-                });
-                signedOrders.current.delete(active.id);
-              } else {
-                const tx =
-                  step.kind === "APPROVAL"
-                    ? step.action
-                    : step.action.executionMode === "SWAP"
-                      ? step.action.transaction
-                      : undefined;
-                if (!tx) throw new Error("Unsupported prepared action.");
-                const hash = await walletClient.sendTransaction({
-                  account: walletClient.account,
-                  chain: stockfrontChain,
-                  to: tx.to,
-                  data: tx.data,
-                  value: "value" in tx ? BigInt(tx.value) : undefined,
-                  gas: tx.gasLimit ? BigInt(tx.gasLimit) : undefined,
-                  gasPrice: tx.gasPrice ? BigInt(tx.gasPrice) : undefined,
-                });
-                active = update(active, attempt, {
-                  phase: "pending",
-                  transactionHash: hash,
-                });
-                let replaced = false;
-                const receipt = await publicClient.waitForTransactionReceipt({
-                  hash,
-                  timeout: 30_000,
-                  onReplaced: ({ reason, transaction }) => {
-                    replaced = reason !== "repriced";
-                    active = update(active!, attempt, {
-                      replacementHash: transaction.hash,
-                      ...(replaced
-                        ? {
-                            phase:
-                              reason === "cancelled" ? "failed" : "attention",
-                            needsReconciliation: reason !== "cancelled",
-                            error:
-                              reason === "cancelled"
-                                ? "Transaction cancelled in wallet."
-                                : "Transaction replaced with a different action. Reconcile before retrying.",
-                          }
-                        : {}),
-                    });
-                  },
-                });
-                if (replaced) return;
-                active = update(
-                  active,
-                  attempt,
-                  receipt.status === "success"
-                    ? {
-                        phase:
-                          step.kind === "APPROVAL" ? "complete" : "pending",
-                        receiptConfirmed: true,
-                      }
-                    : {
-                        phase: "failed",
-                        error:
-                          "Transaction reverted. Refresh the route before retrying.",
-                      },
-                );
-                if (receipt.status !== "success") return;
-              }
-            } catch (cause) {
-              const saved = memory.current.get(executionKey) ?? active;
-              const latest = saved.attempts.at(-1)!;
-              if (!storageFaults.current.has(executionKey)) {
-                const rejected =
-                  userRejected(cause) && latest.phase === "awaiting";
-                active = update(saved, latest, {
-                  phase: rejected ? "failed" : "attention",
-                  error: rejected
-                    ? "Wallet request rejected. Refresh the route to retry."
-                    : "Outcome not confirmed. Check the reference before retrying.",
-                });
-              }
-              throw cause;
+                },
+              });
+              signedOrders.current.delete(attempt.id);
             }
-            if (step.kind === "TRADE") return;
+            save(active);
+          } catch (cause) {
+            const rejected = userRejected(cause);
+            save(
+              patchAttempt(active, attempt, {
+                phase: rejected ? "failed" : "attention",
+                error: rejected
+                  ? "Wallet request rejected. Refresh the route to retry."
+                  : "Submission outcome is unknown. Check wallet activity before retrying.",
+              }),
+            );
+            throw cause;
           }
         },
       );
     } catch (cause) {
-      // Do not surface wallet/provider exception payloads: they can contain signed requests.
-      setError(
-        storageFaults.current.has(executionKey)
-          ? "Could not save recovery data. Copy the visible reference before leaving this page."
-          : cause instanceof Error &&
-              cause.message.startsWith("Refresh the route")
-            ? cause.message
-            : "Execution paused. Review the action status before continuing.",
-      );
+      setError(publicExecutionError(cause));
     } finally {
       running.current = false;
       setBusy(false);
-      settlement.resetWindow();
+      status.resetWindow();
     }
   }
 
   async function retrySubmission(): Promise<void> {
-    if (!current || running.current || !navigator.locks) return;
+    if (!current || running.current) return;
+    const attempt = current.attempts.at(-1);
+    const order = attempt && signedOrders.current.get(attempt.id);
+    const reference = attempt?.reference;
+    if (
+      !attempt ||
+      !order ||
+      reference?.kind !== "RFQ_ORDER" ||
+      reference.orderId ||
+      !attempt.firstSubmittedAtMs ||
+      Date.now() - attempt.firstSubmittedAtMs >= RFQ_RETRY_WINDOW_MS
+    )
+      return;
     running.current = true;
     setBusy(true);
     try {
-      await navigator.locks.request(
-        runKey(current.wallet, current.chainId),
-        { ifAvailable: true },
-        async (lock) => {
-          if (
-            !lock ||
-            context.current.key !== runKey(current.wallet, current.chainId)
-          )
-            return;
-          const saved = readRun(current.wallet, current.chainId);
-          const attempt = saved?.attempts.at(-1);
-          const order = signedOrders.current.get(current.id);
-          if (
-            !saved ||
-            saved.id !== current.id ||
-            !attempt ||
-            !order ||
-            attempt.orderId ||
-            !attempt.firstSubmittedAtMs ||
-            attempt.submissionId !== order.submissionId ||
-            Date.now() - attempt.firstSubmittedAtMs >= RFQ_RETRY_WINDOW_MS ||
-            storageFaults.current.has(runKey(current.wallet, current.chainId))
-          )
-            return;
-          save(saved);
-          const submitted = await recipesApi.submitOrder(order);
-          update(saved, attempt, {
+      await withRunLock(current, async (saved) => {
+        const submitted = await recipesApi.submitOrder(order);
+        save(
+          patchAttempt(saved, attempt, {
             phase: "pending",
-            orderId: submitted.orderId,
             error: undefined,
-          });
-          signedOrders.current.delete(current.id);
-        },
-      );
+            reference: {
+              ...reference,
+              orderId: submitted.orderId,
+            },
+          }),
+        );
+        signedOrders.current.delete(attempt.id);
+      });
     } catch {
-      setError(
-        "Submission outcome is still unknown. Keep this page open and do not create another order.",
-      );
+      setError("Submission outcome remains unknown. No new order was created.");
     } finally {
       running.current = false;
       setBusy(false);
-      settlement.resetWindow();
     }
   }
 
   async function startNewRun(): Promise<void> {
-    if (!current || !navigator.locks || running.current) return;
-    await navigator.locks
-      .request(
-        runKey(current.wallet, current.chainId),
-        { ifAvailable: true },
-        (lock) => {
-          if (!lock) return;
-          const saved = readRun(current.wallet, current.chainId);
-          if (!saved || !isRunComplete(saved)) return;
-          if (prepared) usedPreparations.current.add(prepared);
-          localStorage.removeItem(runKey(current.wallet, current.chainId));
-          memory.current.delete(runKey(current.wallet, current.chainId));
-          setRun(undefined);
-          setError(undefined);
-        },
-      )
-      .catch(() =>
-        setError(
-          "Could not clear the completed run. Recovery data was retained.",
-        ),
+    if (!current || running.current || !navigator.locks) return;
+    await navigator.locks.request(
+      runKey(current.wallet, current.chainId),
+      { ifAvailable: true },
+      (lock) => {
+        if (!lock) return;
+        const saved = readRun(current.wallet, current.chainId);
+        if (!saved || !isRunComplete(saved)) return;
+        localStorage.removeItem(runKey(current.wallet, current.chainId));
+        memory.current.delete(runKey(current.wallet, current.chainId));
+        setRun(undefined);
+        setError(undefined);
+      },
+    );
+  }
+
+  async function withRunLock(
+    snapshot: ExecutionRun,
+    action: (saved: ExecutionRun) => void | Promise<void>,
+  ): Promise<void> {
+    if (!navigator.locks) return;
+    await navigator.locks.request(
+      runKey(snapshot.wallet, snapshot.chainId),
+      { ifAvailable: true },
+      async (lock) => {
+        if (
+          !lock ||
+          context.current !== runKey(snapshot.wallet, snapshot.chainId)
+        )
+          return;
+        const saved = readRun(snapshot.wallet, snapshot.chainId);
+        if (saved?.id === snapshot.id) await action(saved);
+      },
+    );
+  }
+
+  function assertWalletContext(): void {
+    if (
+      context.current !== key ||
+      walletClient?.account.address.toLowerCase() !==
+        account.address?.toLowerCase()
+    )
+      throw new Error(
+        "Wallet changed. Return to the original wallet to continue.",
       );
   }
 
-  const last = current?.attempts.at(-1);
+  const latest = latestAttempts(current?.attempts ?? []);
+  const last = latest.at(-1);
+  const requiresFreshRoute = latest.some(
+    (item) => item.kind === "APPROVAL" && item.phase === "complete",
+  );
+  const canPrepareFresh = Boolean(
+    navigator.locks &&
+    !pending &&
+    !completed &&
+    matches &&
+    !busy &&
+    account.chainId === stockfrontChain.id,
+  );
   return {
     run: current,
     progress,
     completed,
-    blocked,
+    blocked: pending !== undefined,
     busy,
-    sameRecipe,
-    paused: settlement.paused,
-    error: error ?? settlement.error,
+    sameRecipe: matches,
+    requiresFreshRoute,
+    canPrepareFresh,
+    paused: status.paused,
+    error: error ?? status.error,
     canExecute: Boolean(
       navigator.locks &&
       prepared &&
       !usedPreparations.current.has(prepared) &&
-      !blocked &&
+      !pending &&
       !completed &&
-      sameRecipe &&
+      matches &&
       !busy &&
       account.chainId === stockfrontChain.id,
     ),
     canRetrySubmission: Boolean(
-      current &&
-      last?.firstSubmittedAtMs &&
-      !last.orderId &&
-      signedOrders.current.has(current.id) &&
+      last?.reference?.kind === "RFQ_ORDER" &&
+      !last.reference.orderId &&
+      last.firstSubmittedAtMs &&
+      signedOrders.current.has(last.id) &&
       Date.now() - last.firstSubmittedAtMs < RFQ_RETRY_WINDOW_MS,
     ),
     execute,
-    checkStatus: settlement.checkStatus,
+    checkStatus: status.checkStatus,
     retrySubmission,
     startNewRun,
   };
@@ -531,4 +418,17 @@ function userRejected(cause: unknown): boolean {
     cause = "cause" in cause ? cause.cause : undefined;
   }
   return false;
+}
+
+function message(cause: unknown, fallback: string): string {
+  return cause instanceof Error ? cause.message : fallback;
+}
+
+function publicExecutionError(cause: unknown): string {
+  const value = message(cause, "Execution paused.");
+  return /^(Atomic|Previous|Finish|Refresh|This wallet|Wallet changed|Could not|No prepared|Prepare one|The prepared|Unsupported)/.test(
+    value,
+  )
+    ? value
+    : "Execution paused. Review the action status before continuing.";
 }

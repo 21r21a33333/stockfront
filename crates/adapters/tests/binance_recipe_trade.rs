@@ -50,7 +50,10 @@ async fn previews_and_prepares_live_bstock_recipe() -> Result<(), Box<dyn Error>
     let preview = service
         .preview(&RecipePreviewRequest {
             recipe: recipe.clone(),
-            context: RecipeContext { wallet },
+            context: RecipeContext {
+                wallet,
+                completed_nodes: Vec::new(),
+            },
         })
         .await?;
     let Some(RecipeNodePreview::Trade { routes, .. }) = preview.nodes.into_iter().next() else {
@@ -70,7 +73,10 @@ async fn previews_and_prepares_live_bstock_recipe() -> Result<(), Box<dyn Error>
     let prepared = service
         .prepare(&PrepareRecipeRequest {
             recipe,
-            context: RecipeContext { wallet },
+            context: RecipeContext {
+                wallet,
+                completed_nodes: Vec::new(),
+            },
             selections: vec![RecipeNodeSelection::Trade {
                 node_id: Uuid::from_u128(2),
                 route_quote_id: quote.route_quote_id,

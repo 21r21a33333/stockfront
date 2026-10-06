@@ -1,13 +1,15 @@
-import { BookOpen, ChevronRight, Save } from "lucide-react";
+import { BookOpen, ChevronRight, FilePlus2, Save } from "lucide-react";
 import type { RecipeValidationReport } from "@/api/generated";
 import styles from "./RecipeBuilder.module.css";
 
 export function RecipeHeader({
+  title,
   validation,
   validating,
   previewing,
   canPreview,
   onPreview,
+  onNewRecipe,
   onSave,
   onDebug,
   runStatus,
@@ -16,11 +18,13 @@ export function RecipeHeader({
   onActivity,
   onNewRun,
 }: {
+  title: string;
   validation?: RecipeValidationReport;
   validating: boolean;
   previewing: boolean;
   canPreview: boolean;
   onPreview(): void;
+  onNewRecipe(): void;
   onSave(): void;
   onDebug(): void;
   runStatus?: string;
@@ -62,7 +66,7 @@ export function RecipeHeader({
       </header>
       <div className={styles.recipeHeader} aria-label="Recipe toolbar">
         <div>
-          <strong>Wallet asset → Trade</strong>
+          <strong>{title}</strong>
           <span
             className={`${runStatus ? styles.runBadge : ""} ${settled ? styles.settledBadge : ""}`}
           >
@@ -74,6 +78,13 @@ export function RecipeHeader({
             <i /> {status.label}
           </span>
           <code>/validate</code>
+          <button
+            type="button"
+            className={styles.secondary}
+            onClick={onNewRecipe}
+          >
+            <FilePlus2 size={13} /> New recipe
+          </button>
           <button type="button" className={styles.secondary} onClick={onSave}>
             <Save size={13} /> Save draft
           </button>

@@ -37,7 +37,7 @@ interface RecipeEditorState {
     position: XYPosition,
     defaults: EditorDefaults,
   ): void;
-  appendTrade(sourceId: string, defaults: EditorDefaults): void;
+  appendTrade(sourceId: string, buyToken?: Address): void;
   updateNode(id: string, patch: Partial<RecipeNodeData>): void;
   selectNode(id?: string): void;
   removeSelected(): void;
@@ -45,6 +45,7 @@ interface RecipeEditorState {
   onNodesChange(changes: NodeChange<RecipeFlowNode>[]): void;
   onEdgesChange(changes: EdgeChange<RecipeFlowEdge>[]): void;
   setMode(mode: "builder" | "debug"): void;
+  startNewRecipe(): void;
   saveDraft(): void;
   restoreDraft(): boolean;
 }
@@ -110,7 +111,7 @@ export const useRecipeEditor = create<RecipeEditorState>((set, get) => ({
       selectedNodeId: node.id,
     }));
   },
-  appendTrade: (sourceId, defaults) =>
+  appendTrade: (sourceId, buyToken) =>
     set((state) => {
       const source = state.nodes.find((node) => node.id === sourceId);
       if (
@@ -121,11 +122,6 @@ export const useRecipeEditor = create<RecipeEditorState>((set, get) => ({
       ) {
         return state;
       }
-      const buyToken =
-        source.data.buyToken?.toLowerCase() ===
-        defaults.settlementToken?.toLowerCase()
-          ? defaults.bstockToken
-          : defaults.settlementToken;
       const node: RecipeFlowNode = {
         id: crypto.randomUUID(),
         type: "trade",
@@ -180,6 +176,16 @@ export const useRecipeEditor = create<RecipeEditorState>((set, get) => ({
   onEdgesChange: (changes) =>
     set((state) => ({ edges: applyEdgeChanges(changes, state.edges) })),
   setMode: (mode) => set({ mode }),
+  startNewRecipe: () => {
+    localStorage.removeItem(DRAFT_KEY);
+    set({
+      nodes: [],
+      edges: [],
+      selectedNodeId: undefined,
+      mode: "builder",
+      initialized: true,
+    });
+  },
   saveDraft: () => {
     const { nodes, edges } = get();
     const draft: DraftRecipe = { version: 1, nodes, edges };

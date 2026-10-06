@@ -26,11 +26,11 @@ pub use diagnostics::{
     RecipeValidationReport,
 };
 pub use model::{
-    PrepareRecipeRequest, PreparedRecipe, PreparedRecipeStep, RecipeCatalog, RecipeContext,
-    RecipeDefinition, RecipeEdge, RecipeFieldControl, RecipeFieldDescriptor, RecipeNode,
-    RecipeNodePreview, RecipeNodeSelection, RecipeNodeState, RecipeOptionSource,
-    RecipePortDescriptor, RecipePortDirection, RecipePortFlow, RecipePortRef, RecipePortValueType,
-    RecipePreview, RecipePreviewRequest, RecipePrimitive, RecipePrimitiveDescriptor,
-    RecipePrimitiveKind,
+    PrepareRecipeRequest, PreparedRecipe, PreparedRecipeStep, RecipeAssetTransition, RecipeCatalog,
+    RecipeCompletedNode, RecipeContext, RecipeDefinition, RecipeEdge, RecipeFieldControl,
+    RecipeFieldDescriptor, RecipeNode, RecipeNodeOutput, RecipeNodePreview, RecipeNodeSelection,
+    RecipeNodeState, RecipeOptionSource, RecipePortDescriptor, RecipePortDirection, RecipePortFlow,
+    RecipePortRef, RecipePortValueType, RecipePreview, RecipePreviewRequest, RecipePrimitive,
+    RecipePrimitiveDescriptor, RecipePrimitiveKind, RecipeTradePolicy,
 };
 pub use service::{RecipeError, RecipeService};

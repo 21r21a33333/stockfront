@@ -1,4 +1,4 @@
-import { Check, Copy, ExternalLink, AlertCircle, Clock3 } from "lucide-react";
+import { AlertCircle, Check, Clock3, Copy, ExternalLink } from "lucide-react";
 import { useState } from "react";
 import type { PreparedRecipe, RecipeDefinition } from "@/api/generated";
 import type { AssetOption } from "../editor/types";
@@ -8,10 +8,15 @@ import {
   executionProgress,
   isRunComplete,
   isUnresolved,
+  latestAttempts,
   type ExecutionAttempt,
   type ExecutionRun,
-} from "./journal";
+} from "./model";
 import styles from "./ExecutionPanel.module.css";
+
+type ActivityItem = Omit<ExecutionAttempt, "phase"> & {
+  phase: ExecutionAttempt["phase"] | "ready";
+};
 
 export function ExecutionPanel({
   run,
@@ -22,10 +27,12 @@ export function ExecutionPanel({
   paused,
   sameRecipe,
   canExecute,
+  requiresFreshRoute = false,
   canRetrySubmission,
   onExecute,
   onCheck,
   onRetry,
+  onRetryFailed,
   onRefresh,
   onRestore,
 }: {
@@ -37,49 +44,26 @@ export function ExecutionPanel({
   paused: boolean;
   sameRecipe: boolean;
   canExecute: boolean;
+  requiresFreshRoute?: boolean;
   canRetrySubmission: boolean;
   onExecute(): void;
   onCheck(): void;
   onRetry(): void;
+  onRetryFailed(nodeId: string): void;
   onRefresh(): void;
   onRestore(): void;
 }) {
   const [copyMessage, setCopyMessage] = useState("");
   const attempts = executionProgress(run?.attempts ?? [], busy);
-  const actions: ExecutionAttempt[] = prepared
-    ? prepared.steps.map(
-        (step) =>
-          attempts.find(
-            (item) => item.nodeId === step.nodeId && item.kind === step.kind,
-          ) ?? {
-            nodeId: step.nodeId,
-            kind: step.kind,
-            attempt: 0,
-            phase: "ready",
-            executionMode:
-              step.kind === "TRADE" ? step.action.executionMode : undefined,
-          },
-      )
-    : [...attempts];
-  for (const attempt of attempts) {
-    if (
-      !actions.some(
-        (item) => item.nodeId === attempt.nodeId && item.kind === attempt.kind,
-      )
-    )
-      actions.push(attempt);
-  }
+  const actions = mergePreparedActions(attempts, prepared);
   const pending = attempts.find(isUnresolved);
-  const canCheck = Boolean(
-    pending &&
-    !pending.needsReconciliation &&
-    (pending.transactionHash || pending.orderId),
-  );
+  const failed = attempts.find((item) => item.phase === "failed");
   const complete = Boolean(run && isRunComplete(run));
   const snapshot = run?.recipe ?? recipe;
   const symbol = (token?: string) =>
     assets.find((asset) => asset.address.toLowerCase() === token?.toLowerCase())
       ?.symbol ?? "asset";
+
   async function copy(value: string) {
     try {
       await navigator.clipboard.writeText(value);
@@ -88,40 +72,34 @@ export function ExecutionPanel({
       setCopyMessage("Copy unavailable. Select the reference in Details.");
     }
   }
+
   return (
     <section className={styles.panel} aria-label="Execution activity">
       <div className={styles.summary}>
-        <strong>
-          {complete
-            ? "Recipe settled"
-            : attempts.some(
-                  (item) =>
-                    item.phase === "attention" || item.phase === "failed",
-                )
-              ? "Needs attention"
-              : pending
-                ? "Execution in progress"
-                : "Review transactions"}
-        </strong>
+        <strong>{summaryLabel(complete, attempts, pending)}</strong>
         <span>
-          {actions.filter((item) => item.phase === "complete").length} /{" "}
-          {actions.length}
+          {
+            latestAttempts(attempts).filter((item) => item.phase === "complete")
+              .length
+          }
+          {" / "}
+          {snapshot.nodes.filter((node) => node.kind === "TRADE").length}
         </span>
       </div>
       <p className={styles.caption}>
         {run
           ? `BNB Chain · ${shortAddress(run.wallet)}`
-          : "Review each action before confirming in your wallet."}
+          : "Review the grouped action before confirming it in your wallet."}
       </p>
       {!sameRecipe && (
         <p className={styles.notice}>
-          You are editing a different draft. This activity belongs to the saved
-          execution.
+          This activity belongs to the saved execution, not the edited draft.
         </p>
       )}
       {paused && pending && (
         <p className={styles.notice}>
-          Status checking is paused. No action was resubmitted.
+          Automatic status checks paused after two minutes. No action was
+          resubmitted.
         </p>
       )}
       <ol className={styles.timeline}>
@@ -137,18 +115,16 @@ export function ExecutionPanel({
               : source?.kind === "TRADE"
                 ? source.buyToken
                 : undefined;
-          const approval = prepared?.steps.find(
-            (step) => step.nodeId === item.nodeId && step.kind === "APPROVAL",
-          );
+          const buyToken = node?.kind === "TRADE" ? node.buyToken : undefined;
           const label =
             item.kind === "APPROVAL"
-              ? `Approve ${symbol(approval?.kind === "APPROVAL" ? approval.action.to : sellToken)}`
-              : `${item.executionMode === "RFQ" ? "RFQ" : "Swap"} ${symbol(sellToken)} → ${symbol(node?.kind === "TRADE" ? node.buyToken : undefined)}`;
-          const hash = item.replacementHash ?? item.transactionHash;
+              ? `Approve ${symbol(sellToken)}`
+              : `${item.executionMode === "RFQ" ? "RFQ" : "Swap"} ${symbol(sellToken)} → ${symbol(buyToken)}`;
+          const hash = transactionHash(item);
           const attention =
             item.phase === "attention" || item.phase === "failed";
           return (
-            <li className={styles.card} key={`${item.nodeId}:${item.kind}`}>
+            <li className={styles.card} key={item.id}>
               <div className={styles.action}>
                 <span
                   className={`${styles.marker} ${item.phase === "complete" ? styles.done : attention ? styles.warning : ""}`}
@@ -157,7 +133,8 @@ export function ExecutionPanel({
                     <Check size={15} />
                   ) : attention ? (
                     <AlertCircle size={15} />
-                  ) : isUnresolved(item) ? (
+                  ) : item.phase !== "ready" &&
+                    isUnresolved(item as ExecutionAttempt) ? (
                     <Clock3 size={15} />
                   ) : (
                     index + 1
@@ -165,9 +142,20 @@ export function ExecutionPanel({
                 </span>
                 <div>
                   <strong>{label}</strong>
-                  <span role="status">{attemptLabel(item)}</span>
+                  <span role="status">
+                    {item.phase === "ready"
+                      ? "Ready"
+                      : attemptLabel(item as ExecutionAttempt)}
+                  </span>
                 </div>
               </div>
+              {item.steps.length > 1 && (
+                <div className={styles.steps}>
+                  <span>Approve {symbol(sellToken)}</span>
+                  <span>Swap → {symbol(buyToken)}</span>
+                  <b>Atomic</b>
+                </div>
+              )}
               {item.error && <p className={styles.notice}>{item.error}</p>}
               {hash && (
                 <div className={styles.reference}>
@@ -187,29 +175,27 @@ export function ExecutionPanel({
                   </button>
                 </div>
               )}
-              {(hash || item.orderId || item.submissionId) && (
+              {item.reference && (
                 <details className={styles.details}>
                   <summary>Details</summary>
-                  {hash && <code>{hash}</code>}
-                  {item.orderId && <code>Order: {item.orderId}</code>}
-                  {item.submissionId && !item.orderId && (
-                    <code>Submission: {item.submissionId}</code>
-                  )}
-                  {item.orderId && (
-                    <button
-                      type="button"
-                      onClick={() => void copy(item.orderId!)}
-                    >
-                      Copy order ID
-                    </button>
-                  )}
+                  <code>{referenceLabel(item.reference)}</code>
                 </details>
               )}
-              {isUnresolved(item) && !hash && !item.orderId && !busy && (
+              {item.phase === "attention" && !item.reference && (
                 <p className={styles.notice}>
-                  No settlement reference was recovered. Check wallet activity
-                  before making another trade.
+                  No settlement reference was returned. Review wallet activity
+                  before starting another spend.
                 </p>
+              )}
+              {item.phase === "failed" && sameRecipe && (
+                <button
+                  type="button"
+                  className={styles.retryAction}
+                  onClick={() => onRetryFailed(item.nodeId)}
+                  disabled={busy}
+                >
+                  Refresh route to retry
+                </button>
               )}
             </li>
           );
@@ -221,7 +207,7 @@ export function ExecutionPanel({
             Restore execution recipe
           </button>
         )}
-        {canCheck && (
+        {pending?.reference && (
           <button type="button" onClick={onCheck} disabled={busy}>
             Check status
           </button>
@@ -241,18 +227,20 @@ export function ExecutionPanel({
               ? "Follow the request in your wallet."
               : "No new transaction will be sent while this outcome is unresolved."}
           </p>
-        ) : canExecute ? (
+        ) : failed ? null : canExecute ? (
           <button
             type="button"
             className={styles.primary}
             onClick={onExecute}
             disabled={busy}
           >
-            Execute recipe
+            {requiresFreshRoute
+              ? "Refresh route and continue"
+              : "Execute recipe"}
           </button>
         ) : sameRecipe && run ? (
           <button type="button" onClick={onRefresh} disabled={busy}>
-            Refresh route
+            Preview next step
           </button>
         ) : null}
       </div>
@@ -263,4 +251,57 @@ export function ExecutionPanel({
       )}
     </section>
   );
+}
+
+function mergePreparedActions(
+  attempts: ExecutionAttempt[],
+  prepared?: PreparedRecipe,
+): ActivityItem[] {
+  const actions: ActivityItem[] = [...latestAttempts(attempts)];
+  for (const nodeId of new Set(
+    prepared?.steps.map((step) => step.nodeId) ?? [],
+  )) {
+    if (actions.some((item) => item.nodeId === nodeId)) continue;
+    const steps = prepared!.steps.filter((step) => step.nodeId === nodeId);
+    const trade = steps.find((step) => step.kind === "TRADE");
+    actions.push({
+      id: `prepared:${nodeId}`,
+      nodeId,
+      kind: trade ? "TRADE" : "APPROVAL",
+      attempt: 0,
+      phase: "ready",
+      executionMode:
+        trade?.kind === "TRADE" ? trade.action.executionMode : "SWAP",
+      steps: steps.map((step) => step.kind),
+    });
+  }
+  return actions;
+}
+
+function summaryLabel(
+  complete: boolean,
+  attempts: ExecutionAttempt[],
+  pending?: ExecutionAttempt,
+): string {
+  if (complete) return "Recipe settled";
+  if (attempts.some((item) => ["attention", "failed"].includes(item.phase)))
+    return "Needs attention";
+  return pending ? "Execution in progress" : "Review transaction";
+}
+
+function transactionHash(item: ActivityItem): string | undefined {
+  return item.reference && "transactionHash" in item.reference
+    ? item.reference.transactionHash
+    : undefined;
+}
+
+function referenceLabel(
+  reference: NonNullable<ActivityItem["reference"]>,
+): string {
+  if (reference.kind === "CALL_BATCH") return `Wallet batch: ${reference.id}`;
+  if (reference.kind === "RFQ_ORDER")
+    return reference.orderId
+      ? `Order: ${reference.orderId}`
+      : `Submission: ${reference.submissionId}`;
+  return `Legacy transaction: ${reference.transactionHash}`;
 }

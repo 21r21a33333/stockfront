@@ -55,6 +55,28 @@
   margin-top: 3px;
   line-height: 1.5;
 }
+.steps {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 12px;
+  color: var(--muted);
+  font-size: 10px;
+}
+.steps span,
+.steps b {
+  padding: 4px 7px;
+  border-radius: 6px;
+  background: white;
+  border: 1px solid var(--border-soft);
+  font-weight: 500;
+}
+.steps b {
+  margin-left: auto;
+  color: #15845b;
+  background: #e5f5ed;
+  border-color: transparent;
+}
 .marker {
   width: 26px;
   height: 26px;
@@ -132,6 +154,12 @@
   color: var(--muted);
   font-size: 12px;
   line-height: 1.6;
+}
+.card .retryAction {
+  width: 100%;
+  margin-top: 12px;
+  border-color: color-mix(in srgb, var(--purple) 28%, var(--border-soft));
+  font-weight: 600;
 }
 .controls {
   display: grid;

@@ -1,6 +1,7 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { ExecutionPanel } from "./ExecutionPanel";
-import { recipe, wallet, hash, token } from "./fixtures.test-support";
+import { hash, prepared, recipe, token, wallet } from "./fixtures.test-support";
+import type { ExecutionAttempt, ExecutionRun } from "./model";
 
 const assets = [
   {
@@ -18,6 +19,26 @@ const assets = [
     kind: "bstock" as const,
   },
 ];
+const attempt = (patch: Partial<ExecutionAttempt> = {}): ExecutionAttempt => ({
+  id: "trade:1",
+  nodeId: "trade",
+  kind: "TRADE",
+  attempt: 1,
+  phase: "pending",
+  executionMode: "SWAP",
+  steps: ["APPROVAL", "TRADE"],
+  ...patch,
+});
+const run = (item: ExecutionAttempt): ExecutionRun => ({
+  version: 2,
+  id: "run",
+  wallet,
+  chainId: 56,
+  recipe,
+  createdAtMs: 1,
+  updatedAtMs: 1,
+  attempts: [item],
+});
 const props = {
   recipe,
   assets,
@@ -26,113 +47,79 @@ const props = {
   sameRecipe: true,
   canExecute: false,
   canRetrySubmission: false,
-  onCheck() {},
-  onRetry() {},
-  onRefresh() {},
-  onRestore() {},
-  onExecute() {},
+  onCheck: vi.fn(),
+  onRetry: vi.fn(),
+  onRetryFailed: vi.fn(),
+  onRefresh: vi.fn(),
+  onRestore: vi.fn(),
+  onExecute: vi.fn(),
 };
 
-it("keeps unresolved recovery visible without a selected draft node or prepared calldata", () => {
-  render(
-    <ExecutionPanel
-      {...props}
-      run={{
-        version: 1,
-        id: "run",
-        wallet,
-        chainId: 56,
-        recipe,
-        createdAtMs: 1,
-        updatedAtMs: 1,
-        attempts: [
-          {
-            nodeId: "trade",
-            kind: "TRADE",
-            attempt: 1,
-            phase: "awaiting",
-            transactionHash: hash,
-          },
-        ],
-      }}
-      busy={false}
-      paused={false}
-      sameRecipe={false}
-      canRetrySubmission={false}
-      onCheck={() => {}}
-      onRetry={() => {}}
-      onRefresh={() => {}}
-    />,
-  );
-  expect(screen.getByText(hash)).toBeInTheDocument();
-  expect(screen.getByRole("status")).toHaveTextContent("Needs attention");
-  expect(screen.getByRole("button", { name: "Check status" })).toBeEnabled();
-  expect(
-    screen.queryByRole("button", { name: "Refresh route" }),
-  ).not.toBeInTheDocument();
-  expect(
-    screen.queryByRole("button", { name: "Execute recipe" }),
-  ).not.toBeInTheDocument();
-});
+it("presents approval and swap as one atomic activity", () => {
+  render(<ExecutionPanel {...props} prepared={prepared} canExecute />);
 
-it("labels a ready RFQ correctly and has only one execute action", () => {
-  render(
-    <ExecutionPanel
-      {...props}
-      canExecute
-      prepared={{
-        steps: [
-          {
-            kind: "TRADE",
-            nodeId: "trade",
-            action: {
-              executionMode: "RFQ",
-              submissionId: "submission",
-              routeQuoteId: "quote",
-              venue: "inchFusion",
-              typedData: "{}",
-            },
-          },
-        ],
-      }}
-    />,
-  );
-  expect(screen.getByText("RFQ USDT → NVDAB")).toBeVisible();
+  expect(screen.getByText("Swap USDT → NVDAB")).toBeVisible();
+  expect(screen.getByText("Approve USDT")).toBeVisible();
+  expect(screen.getByText("Swap → NVDAB")).toBeVisible();
+  expect(screen.getByText("Atomic")).toBeVisible();
   expect(
     screen.getAllByRole("button", { name: "Execute recipe" }),
   ).toHaveLength(1);
 });
 
-it("does not offer execution after settlement", () => {
+it("checks a referenced pending batch without exposing another submit action", () => {
   render(
     <ExecutionPanel
       {...props}
-      run={{
-        version: 1,
-        id: "run",
-        wallet,
-        chainId: 56,
-        recipe,
-        createdAtMs: 1,
-        updatedAtMs: 1,
-        attempts: [
-          {
-            nodeId: "trade",
-            kind: "TRADE",
-            attempt: 1,
-            phase: "complete",
+      run={run(
+        attempt({
+          reference: {
+            kind: "CALL_BATCH",
+            id: "batch",
+            atomicRequired: true,
+          },
+        }),
+      )}
+    />,
+  );
+
+  fireEvent.click(screen.getByRole("button", { name: "Check status" }));
+  expect(props.onCheck).toHaveBeenCalledOnce();
+  expect(
+    screen.queryByRole("button", { name: /execute recipe/i }),
+  ).not.toBeInTheDocument();
+});
+
+it("shows settlement or a fresh-route retry, never a stale resubmit", () => {
+  const { rerender } = render(
+    <ExecutionPanel
+      {...props}
+      run={run(attempt({ phase: "failed", error: "Atomic batch reverted." }))}
+    />,
+  );
+  fireEvent.click(
+    screen.getByRole("button", { name: "Refresh route to retry" }),
+  );
+  expect(props.onRetryFailed).toHaveBeenCalledWith("trade");
+
+  rerender(
+    <ExecutionPanel
+      {...props}
+      run={run(
+        attempt({
+          phase: "complete",
+          reference: {
+            kind: "CALL_BATCH",
+            id: "batch",
+            atomicRequired: true,
             transactionHash: hash,
           },
-        ],
-      }}
+        }),
+      )}
     />,
   );
   expect(screen.getByText("Recipe complete")).toBeVisible();
   expect(
-    screen.queryByRole("button", { name: "Execute recipe" }),
-  ).not.toBeInTheDocument();
-  expect(
     screen.getByRole("link", { name: "View transaction" }),
   ).toHaveAttribute("href", `https://bscscan.com/tx/${hash}`);
-  expect(screen.getByText(hash)).not.toBeVisible();
 });

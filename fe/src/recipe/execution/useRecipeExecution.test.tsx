@@ -1,44 +1,51 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import type { PropsWithChildren } from "react";
-import { recipe, prepared, wallet, hash } from "./fixtures.test-support";
-import { readRun, writeRun } from "./journal";
+import { useState, type PropsWithChildren } from "react";
+import {
+  encodeAbiParameters,
+  encodeEventTopics,
+  encodeFunctionData,
+  erc20Abi,
+} from "viem";
+import type { PreparedRecipe } from "@/api/generated";
+import { hash, recipe, token, wallet } from "./fixtures.test-support";
+import { readRun } from "./journal";
 import { useRecipeExecution } from "./useRecipeExecution";
-import { useState } from "react";
-import { flushSync } from "react-dom";
-import { StockfrontApiError } from "@/api/client";
 
 const mocks = vi.hoisted(() => ({
-  send: vi.fn(),
-  receipt: vi.fn(),
+  sendCalls: vi.fn(),
+  getCapabilities: vi.fn(),
+  getCallsStatus: vi.fn(),
+  publicRequest: vi.fn(),
   getReceipt: vi.fn(),
   sign: vi.fn(),
   submit: vi.fn(),
-  transaction: vi.fn(),
   order: vi.fn(),
   account: {
     address: "0x1111111111111111111111111111111111111111",
     chainId: 56,
   },
 }));
+
 vi.mock("wagmi", () => ({
   useAccount: () => mocks.account,
   useWalletClient: () => ({
     data: {
       account: { address: mocks.account.address },
-      sendTransaction: mocks.send,
+      sendCalls: mocks.sendCalls,
+      getCapabilities: mocks.getCapabilities,
+      getCallsStatus: mocks.getCallsStatus,
       signTypedData: mocks.sign,
     },
   }),
   usePublicClient: () => ({
-    waitForTransactionReceipt: mocks.receipt,
+    request: mocks.publicRequest,
     getTransactionReceipt: mocks.getReceipt,
   }),
 }));
 vi.mock("@/api/recipes", () => ({
   recipesApi: {
     submitOrder: mocks.submit,
-    transactionStatus: mocks.transaction,
     orderStatus: mocks.order,
   },
 }));
@@ -53,29 +60,30 @@ function Wrapper({ children }: PropsWithChildren) {
   );
   return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
 }
-const wrapper = Wrapper;
-afterEach(() => {
-  vi.useRealTimers();
-});
+
 beforeEach(() => {
-  Object.defineProperty(navigator, "onLine", {
-    configurable: true,
-    value: true,
-  });
   localStorage.clear();
   vi.clearAllMocks();
   mocks.account = { address: wallet, chainId: 56 };
-  mocks.send.mockResolvedValue(hash);
-  mocks.receipt.mockReset();
-  mocks.receipt.mockResolvedValue({ status: "success" });
-  mocks.getReceipt.mockResolvedValue({ status: "success" });
-  mocks.transaction.mockResolvedValue({ state: "pending" });
-  mocks.order.mockResolvedValue({ state: "pendingVendor" });
+  mocks.sendCalls.mockResolvedValue({ id: "batch" });
+  mocks.getCapabilities.mockResolvedValue({ atomic: { status: "supported" } });
+  mocks.getCallsStatus.mockResolvedValue({
+    status: "pending",
+    atomic: true,
+    receipts: [],
+  });
+  mocks.publicRequest.mockResolvedValue("0x0");
+  mocks.getReceipt.mockResolvedValue({ status: "success", logs: [] });
   mocks.sign.mockResolvedValue("0xsigned");
   mocks.submit.mockResolvedValue({
     orderId: "order",
     state: "pendingVendor",
     createdAtMs: 1,
+  });
+  mocks.order.mockResolvedValue({ state: "pendingVendor" });
+  Object.defineProperty(navigator, "onLine", {
+    configurable: true,
+    value: true,
   });
   let locked = false;
   Object.defineProperty(navigator, "locks", {
@@ -94,534 +102,146 @@ beforeEach(() => {
   });
 });
 
-it("invalidates local prepared calldata when another tab changes the execution journal", async () => {
+it("submits approval and swap as one atomic attempt", async () => {
+  const plan = preparedSwap();
   const { result } = renderHook(
-    () => useRecipeExecution({ recipe, prepared }),
-    { wrapper },
+    () => useRecipeExecution({ recipe, prepared: plan }),
+    { wrapper: Wrapper },
   );
-  expect(result.current.canExecute).toBe(true);
-  act(() =>
-    window.dispatchEvent(
-      new StorageEvent("storage", { key: `stockfront:execution:56:${wallet}` }),
-    ),
-  );
+
   await act(() => result.current.execute());
-  expect(mocks.send).not.toHaveBeenCalled();
+
+  expect(mocks.sendCalls).toHaveBeenCalledWith(
+    expect.objectContaining({ forceAtomic: true, calls: expect.any(Array) }),
+  );
+  expect(mocks.sendCalls.mock.calls[0][0].calls).toHaveLength(2);
+  expect(result.current.progress).toEqual([
+    expect.objectContaining({
+      kind: "TRADE",
+      phase: "pending",
+      steps: ["APPROVAL", "TRADE"],
+      reference: { kind: "CALL_BATCH", id: "batch", atomicRequired: true },
+    }),
+  ]);
 });
 
-it("keeps unknown identifier-less recovery labelled as attention, not a live wallet prompt", async () => {
-  writeRun({
-    version: 1,
-    id: "existing",
-    wallet,
-    chainId: 56,
-    recipe,
-    createdAtMs: 1,
-    updatedAtMs: 1,
-    attempts: [
-      { nodeId: "trade", kind: "TRADE", attempt: 1, phase: "awaiting" },
+it("sends nothing when atomic execution is unsupported", async () => {
+  mocks.getCapabilities.mockResolvedValue({
+    atomic: { status: "unsupported" },
+  });
+  const { result } = renderHook(
+    () => useRecipeExecution({ recipe, prepared: preparedSwap() }),
+    { wrapper: Wrapper },
+  );
+
+  await act(() => result.current.execute());
+
+  expect(mocks.sendCalls).not.toHaveBeenCalled();
+  expect(result.current.run).toBeUndefined();
+  expect(result.current.error).toMatch(/Atomic batching is not supported/);
+});
+
+it("settles an atomic batch once and restores the exact output", async () => {
+  const plan = preparedSwap();
+  const { result } = renderHook(
+    () => useRecipeExecution({ recipe, prepared: plan }),
+    { wrapper: Wrapper },
+  );
+  await act(() => result.current.execute());
+  mocks.getCallsStatus.mockResolvedValue({
+    status: "success",
+    atomic: true,
+    receipts: [
+      {
+        transactionHash: hash,
+        logs: [transferLog(wallet, token, wallet, 23n)],
+      },
     ],
   });
-  const { result } = renderHook(() => useRecipeExecution({ recipe }), {
-    wrapper,
-  });
-  expect(result.current.progress[0]?.phase).toBe("attention");
-});
 
-it.each(["failed", "expired", "cancelled"])(
-  "marks a terminal RFQ %s as failed without submitting again",
-  async (state) => {
-    writeRun({
-      version: 1,
-      id: "existing",
-      wallet,
-      chainId: 56,
-      recipe,
-      createdAtMs: 1,
-      updatedAtMs: 1,
-      attempts: [
-        {
-          nodeId: "trade",
-          kind: "TRADE",
-          attempt: 1,
-          phase: "pending",
-          executionMode: "RFQ",
-          orderId: "order",
-        },
-      ],
-    });
-    mocks.order.mockResolvedValue({ state });
-    const { result } = renderHook(() => useRecipeExecution({ recipe }), {
-      wrapper,
-    });
-    await waitFor(() =>
-      expect(result.current.progress[0]?.phase).toBe("failed"),
-    );
-    expect(result.current.completed).toBe(false);
-    expect(mocks.submit).not.toHaveBeenCalled();
-  },
-);
-
-it("keeps an unknown transaction unresolved and refuses resend", async () => {
-  mocks.transaction.mockResolvedValue({ state: "unknown" });
-  const { result } = renderHook(
-    () => useRecipeExecution({ recipe, prepared }),
-    { wrapper },
-  );
-  await act(() => result.current.execute());
   await act(() => result.current.checkStatus());
-  await act(() => result.current.execute());
-  expect(result.current.blocked).toBe(true);
-  expect(mocks.send).toHaveBeenCalledTimes(2);
-});
 
-it("does not start without browser locking", async () => {
-  Object.defineProperty(navigator, "locks", {
-    configurable: true,
-    value: undefined,
-  });
-  const { result } = renderHook(
-    () => useRecipeExecution({ recipe, prepared }),
-    { wrapper },
-  );
-  expect(result.current.canExecute).toBe(false);
-  await act(() => result.current.execute());
-  expect(mocks.send).not.toHaveBeenCalled();
-  expect(result.current.error).toMatch(/browser/i);
-});
-
-it("records a rejected wallet prompt as failed and requires fresh preparation", async () => {
-  mocks.send.mockRejectedValueOnce({ code: 4001 });
-  const { result } = renderHook(
-    () => useRecipeExecution({ recipe, prepared }),
-    { wrapper },
-  );
-  await act(() => result.current.execute());
-  expect(result.current.progress[0]?.phase).toBe("failed");
-  expect(result.current.progress[0]?.error).toMatch(/rejected/i);
-  expect(result.current.blocked).toBe(false);
-  expect(result.current.canExecute).toBe(false);
-  await act(() => result.current.execute());
-  expect(mocks.send).toHaveBeenCalledTimes(1);
-});
-
-it("a second executor cannot send while another tab holds the wallet lock", async () => {
-  Object.defineProperty(navigator, "locks", {
-    configurable: true,
-    value: {
-      request: async (
-        _name: string,
-        _options: object,
-        action: (lock: null) => unknown,
-      ) => action(null),
+  await waitFor(() => expect(result.current.completed).toBe(true));
+  expect(readRun(wallet, 56)?.attempts[0]).toMatchObject({
+    phase: "complete",
+    settledOutput: {
+      port: "buy",
+      asset: { token: wallet, amount: "23" },
     },
   });
+  expect(mocks.sendCalls).toHaveBeenCalledTimes(1);
+});
+
+it("skips a proven allowance and simulates before sending one swap call", async () => {
+  mocks.publicRequest.mockImplementation(async ({ params }) =>
+    params[0].data.startsWith("0xdd62ed3e") ? "0x64" : "0x",
+  );
   const { result } = renderHook(
-    () => useRecipeExecution({ recipe, prepared }),
-    { wrapper },
+    () => useRecipeExecution({ recipe, prepared: preparedSwap() }),
+    { wrapper: Wrapper },
   );
-  await act(() => result.current.execute());
-  expect(mocks.send).not.toHaveBeenCalled();
-  expect(result.current.error).toMatch(/another tab/);
-});
 
-it("retains the broadcast hash in memory if its durable write fails", async () => {
-  const { result } = renderHook(
-    () => useRecipeExecution({ recipe, prepared }),
-    { wrapper },
-  );
-  const spy = vi.spyOn(Storage.prototype, "setItem");
-  mocks.send.mockImplementationOnce(async () => {
-    spy.mockImplementation(() => {
-      throw new Error("quota");
-    });
-    return hash;
+  await act(() => result.current.execute());
+
+  expect(mocks.getCapabilities).not.toHaveBeenCalled();
+  expect(mocks.sendCalls.mock.calls[0][0]).toMatchObject({
+    forceAtomic: false,
   });
-  await act(() => result.current.execute());
-  expect(result.current.progress[0]?.transactionHash).toBe(hash);
-  expect(mocks.send).toHaveBeenCalledTimes(1);
-  expect(result.current.error).toMatch(/Copy/);
-  spy.mockRestore();
-});
-
-it("requires fresh preparation after a reverted trade and rechecks its new approval", async () => {
-  mocks.receipt
-    .mockResolvedValueOnce({ status: "success" })
-    .mockResolvedValueOnce({ status: "reverted" });
-  const { result, rerender } = renderHook(
-    ({ plan }) => useRecipeExecution({ recipe, prepared: plan }),
-    { wrapper, initialProps: { plan: prepared } },
-  );
-  await act(() => result.current.execute());
-  expect(result.current.progress.at(-1)?.phase).toBe("failed");
-  await act(() => result.current.execute());
-  expect(mocks.send).toHaveBeenCalledTimes(2);
-  rerender({ plan: structuredClone(prepared) });
-  await act(() => result.current.execute());
-  expect(mocks.send).toHaveBeenCalledTimes(4);
-  expect(result.current.run?.attempts).toHaveLength(4);
-});
-
-it.each(["cancelled", "replaced", "repriced"])(
-  "handles a %s transaction without treating any successful replacement as the intended action",
-  async (reason) => {
-    const replacementHash = `0x${"cd".repeat(32)}`;
-    mocks.receipt.mockImplementationOnce(async ({ onReplaced }) => {
-      onReplaced({ reason, transaction: { hash: replacementHash } });
-      return { status: "success" };
-    });
-    const { result } = renderHook(
-      () => useRecipeExecution({ recipe, prepared }),
-      { wrapper },
-    );
-    await act(() => result.current.execute());
-    expect(result.current.progress[0]?.replacementHash).toBe(replacementHash);
-    expect(result.current.progress[0]?.phase).toBe(
-      reason === "cancelled"
-        ? "failed"
-        : reason === "replaced"
-          ? "attention"
-          : "complete",
-    );
-    expect(mocks.send).toHaveBeenCalledTimes(reason === "repriced" ? 2 : 1);
-    if (reason === "replaced") {
-      await act(() => result.current.checkStatus());
-      expect(result.current.progress[0]?.phase).toBe("attention");
-    }
-  },
-);
-
-it("does not continue with the next action if the wallet changes during approval", async () => {
-  const { result, rerender } = renderHook(
-    () => useRecipeExecution({ recipe, prepared }),
-    { wrapper },
-  );
-  mocks.receipt.mockImplementationOnce(async () => {
-    mocks.account = {
-      address: "0x3333333333333333333333333333333333333333",
-      chainId: 56,
-    };
-    flushSync(() => rerender());
-    return { status: "success" };
+  expect(mocks.sendCalls.mock.calls[0][0].calls).toHaveLength(1);
+  expect(result.current.progress[0]).toMatchObject({
+    approvalSkipped: true,
+    steps: ["TRADE"],
   });
-  await act(() => result.current.execute());
-  expect(mocks.send).toHaveBeenCalledTimes(1);
 });
 
-it("unmounting during approval must not start the following trade", async () => {
-  const { result, unmount } = renderHook(
-    () => useRecipeExecution({ recipe, prepared }),
-    { wrapper },
-  );
-  mocks.receipt.mockImplementationOnce(async () => {
-    unmount();
-    return { status: "success" };
-  });
-  await act(() => result.current.execute());
-  expect(mocks.send).toHaveBeenCalledTimes(1);
-});
-
-it("waits for SWAP settlement and does not replay a completed cloned preparation", async () => {
-  const { result, rerender } = renderHook(
-    ({ plan }) => useRecipeExecution({ recipe, prepared: plan }),
-    { wrapper, initialProps: { plan: prepared } },
-  );
-  await act(() => result.current.execute());
-  expect(result.current.completed).toBe(false);
-  expect(readRun(wallet, 56)?.attempts.at(-1)?.transactionHash).toBe(hash);
-  mocks.transaction.mockResolvedValue({
-    state: "succeeded",
-    sold: [],
-    bought: [],
-  });
-  await act(() => result.current.checkStatus());
-  await waitFor(() => expect(result.current.completed).toBe(true));
-  rerender({ plan: structuredClone(prepared) });
-  await act(() => result.current.execute());
-  expect(mocks.send).toHaveBeenCalledTimes(2);
-});
-
-it("RFQ submission persists the order but completion requires a fill", async () => {
-  const rfq = {
+function preparedSwap(): PreparedRecipe {
+  return {
     steps: [
       {
-        kind: "TRADE" as const,
+        kind: "APPROVAL",
         nodeId: "trade",
         action: {
-          executionMode: "RFQ" as const,
-          submissionId: "submission",
-          routeQuoteId: "route",
-          venue: "inchFusion" as const,
-          typedData: JSON.stringify({
-            domain: {},
-            types: {},
-            primaryType: "Order",
-            message: {},
+          to: token,
+          spender: wallet,
+          data: encodeFunctionData({
+            abi: erc20Abi,
+            functionName: "approve",
+            args: [wallet, 100n],
           }),
         },
       },
-    ],
-  };
-  const { result } = renderHook(
-    () => useRecipeExecution({ recipe, prepared: rfq }),
-    { wrapper },
-  );
-  await act(() => result.current.execute());
-  expect(result.current.completed).toBe(false);
-  expect(readRun(wallet, 56)?.attempts[0]?.orderId).toBe("order");
-  expect(JSON.stringify(readRun(wallet, 56))).not.toContain("0xsigned");
-  mocks.order.mockResolvedValue({
-    state: "filled",
-    filledBuyAmount: "23",
-    filledSellAmount: "100",
-  });
-  await act(() => result.current.checkStatus());
-  await waitFor(() => expect(result.current.completed).toBe(true));
-});
-
-it.each([true, false])(
-  "recovers a known hash without any wallet prompt (locking: %s)",
-  async (locking) => {
-    if (!locking)
-      Object.defineProperty(navigator, "locks", {
-        configurable: true,
-        value: undefined,
-      });
-    writeRun({
-      version: 1,
-      id: "existing",
-      wallet,
-      chainId: 56,
-      recipe,
-      createdAtMs: 1,
-      updatedAtMs: 1,
-      attempts: [
-        {
-          nodeId: "trade",
-          kind: "TRADE",
-          attempt: 1,
-          phase: "pending",
+      {
+        kind: "TRADE",
+        nodeId: "trade",
+        action: {
           executionMode: "SWAP",
-          transactionHash: hash,
+          transaction: {
+            to: wallet,
+            data: "0x12345678",
+            value: "0",
+            gasLimit: "100000",
+            gasPrice: "1",
+            minReceiveAmount: "1",
+          },
         },
-      ],
-    });
-    mocks.transaction.mockResolvedValue({ state: "succeeded" });
-    const { result } = renderHook(() => useRecipeExecution({ recipe }), {
-      wrapper,
-    });
-    await waitFor(() => expect(result.current.completed).toBe(true));
-    expect(mocks.send).not.toHaveBeenCalled();
-    expect(mocks.sign).not.toHaveBeenCalled();
-    if (!locking)
-      expect(readRun(wallet, 56)?.attempts[0]?.phase).toBe("pending");
-  },
-);
-
-it("blocks resend after a refresh loses a submission reference", async () => {
-  writeRun({
-    version: 1,
-    id: "existing",
-    wallet,
-    chainId: 56,
-    recipe,
-    createdAtMs: 1,
-    updatedAtMs: 1,
-    attempts: [
-      {
-        nodeId: "trade",
-        kind: "TRADE",
-        attempt: 1,
-        phase: "submitting",
-        executionMode: "RFQ",
-        submissionId: "submission",
       },
-    ],
-  });
-  const { result } = renderHook(
-    () => useRecipeExecution({ recipe, prepared }),
-    { wrapper },
-  );
-  await act(() => result.current.execute());
-  expect(result.current.blocked).toBe(true);
-  expect(mocks.send).not.toHaveBeenCalled();
-  expect(mocks.submit).not.toHaveBeenCalled();
-});
-
-it("double-click cannot open a second wallet request", async () => {
-  const { result } = renderHook(
-    () => useRecipeExecution({ recipe, prepared }),
-    { wrapper },
-  );
-  await act(async () => {
-    await Promise.all([result.current.execute(), result.current.execute()]);
-  });
-  expect(mocks.send).toHaveBeenCalledTimes(2);
-});
-
-it("fails closed before submission when persistence is unavailable", async () => {
-  const { result } = renderHook(
-    () => useRecipeExecution({ recipe, prepared }),
-    { wrapper },
-  );
-  const spy = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
-    throw new Error("quota");
-  });
-  await act(() => result.current.execute());
-  expect(mocks.send).not.toHaveBeenCalled();
-  expect(result.current.error).toMatch(/sav|stor|recovery/i);
-  spy.mockRestore();
-});
-
-const rfqPrepared = {
-  steps: [
-    {
-      kind: "TRADE" as const,
-      nodeId: "trade",
-      action: {
-        executionMode: "RFQ" as const,
-        submissionId: "submission",
-        routeQuoteId: "route",
-        venue: "inchFusion" as const,
-        typedData: JSON.stringify({
-          domain: {},
-          types: {},
-          primaryType: "Order",
-          message: {},
-        }),
-      },
-    },
-  ],
-};
-
-it("retries an uncertain RFQ with exactly the original signature and submission ID", async () => {
-  mocks.submit.mockRejectedValueOnce(new Error("connection lost"));
-  const { result } = renderHook(
-    () => useRecipeExecution({ recipe, prepared: rfqPrepared }),
-    { wrapper },
-  );
-  await act(() => result.current.execute());
-  expect(result.current.canRetrySubmission).toBe(true);
-  await act(() => result.current.retrySubmission());
-  expect(mocks.sign).toHaveBeenCalledTimes(1);
-  expect(mocks.submit.mock.calls[1][0]).toEqual({
-    submissionId: "submission",
-    routeQuoteId: "route",
-    venue: "inchFusion",
-    signature: "0xsigned",
-  });
-  expect(result.current.run?.attempts[0]?.orderId).toBe("order");
-});
-
-it("does not retry an uncertain RFQ after the deduplication window", async () => {
-  vi.useFakeTimers();
-  mocks.submit.mockRejectedValueOnce(new Error("connection lost"));
-  const { result } = renderHook(
-    () => useRecipeExecution({ recipe, prepared: rfqPrepared }),
-    { wrapper },
-  );
-  await act(() => result.current.execute());
-  vi.setSystemTime(Date.now() + 30 * 60_000);
-  await act(() => result.current.retrySubmission());
-  expect(mocks.submit).toHaveBeenCalledTimes(1);
-});
-
-it("bounds unknown-status polling and never uses the timeout to resend", async () => {
-  vi.useFakeTimers();
-  const { result } = renderHook(
-    () => useRecipeExecution({ recipe, prepared }),
-    { wrapper },
-  );
-  await act(() => result.current.execute());
-  await act(async () => {
-    await vi.advanceTimersByTimeAsync(121_000);
-  });
-  expect(result.current.paused).toBe(true);
-  const reads = mocks.transaction.mock.calls.length;
-  await act(async () => {
-    await vi.advanceTimersByTimeAsync(30_000);
-  });
-  expect(mocks.transaction).toHaveBeenCalledTimes(reads);
-  expect(mocks.send).toHaveBeenCalledTimes(2);
-});
-
-it("honors Retry-After even if Check status is clicked immediately", async () => {
-  mocks.transaction.mockRejectedValue(
-    new StockfrontApiError("request_failed", "rate limited", [], 60_000),
-  );
-  const { result } = renderHook(
-    () => useRecipeExecution({ recipe, prepared }),
-    { wrapper },
-  );
-  await act(() => result.current.execute());
-  await waitFor(() => expect(mocks.transaction).toHaveBeenCalled());
-  const reads = mocks.transaction.mock.calls.length;
-  await act(() => result.current.checkStatus());
-  expect(mocks.transaction).toHaveBeenCalledTimes(reads);
-});
-
-it("does not continue polling while offline", async () => {
-  const { result } = renderHook(
-    () => useRecipeExecution({ recipe, prepared }),
-    { wrapper },
-  );
-  await act(() => result.current.execute());
-  Object.defineProperty(navigator, "onLine", {
-    configurable: true,
-    value: false,
-  });
-  act(() => window.dispatchEvent(new Event("offline")));
-  const reads = mocks.transaction.mock.calls.length;
-  await act(() => result.current.checkStatus());
-  expect(mocks.transaction).toHaveBeenCalledTimes(reads);
-  Object.defineProperty(navigator, "onLine", {
-    configurable: true,
-    value: true,
-  });
-});
-
-it("does not send completed nodes again when resuming a later independent trade", async () => {
-  const largerRecipe = {
-    ...recipe,
-    nodes: [
-      ...recipe.nodes,
-      { id: "trade2", kind: "TRADE" as const, buyToken: wallet },
     ],
   };
-  writeRun({
-    version: 1,
-    id: "existing",
-    wallet,
-    chainId: 56,
-    recipe: largerRecipe,
-    createdAtMs: 1,
-    updatedAtMs: 1,
-    attempts: [
-      {
-        nodeId: "trade",
-        kind: "TRADE",
-        attempt: 1,
-        phase: "complete",
-        executionMode: "SWAP",
-        transactionHash: hash,
-      },
-    ],
-  });
-  const plan = {
-    steps: [
-      ...prepared.steps,
-      ...prepared.steps.map((step) => ({ ...step, nodeId: "trade2" })),
-    ],
+}
+
+function transferLog(
+  address: `0x${string}`,
+  from: `0x${string}`,
+  to: `0x${string}`,
+  value: bigint,
+) {
+  return {
+    address,
+    topics: encodeEventTopics({
+      abi: erc20Abi,
+      eventName: "Transfer",
+      args: { from, to },
+    }),
+    data: encodeAbiParameters([{ type: "uint256" }], [value]),
   };
-  const { result } = renderHook(
-    () => useRecipeExecution({ recipe: largerRecipe, prepared: plan }),
-    { wrapper },
-  );
-  await act(() => result.current.execute());
-  expect(mocks.send).toHaveBeenCalledTimes(2);
-  expect(result.current.run?.attempts.map((item) => item.nodeId)).toEqual([
-    "trade",
-    "trade2",
-    "trade2",
-  ]);
-});
+}

@@ -215,14 +215,25 @@ export interface components {
       to: `0x${string}`;
       value: string;
     };
+    RecipeAssetTransition: {
+      buy: components["schemas"]["RecipeOptionSource"];
+      sell: components["schemas"]["RecipeOptionSource"];
+    };
     RecipeCatalog: {
       bstocks: components["schemas"]["BstockSummary"][];
       primitives: components["schemas"]["RecipePrimitiveDescriptor"][];
       /** Format: int32 */
       schemaVersion: number;
       settlementTokens: `0x${string}`[];
+      tradePolicy: components["schemas"]["RecipeTradePolicy"];
+    };
+    RecipeCompletedNode: {
+      /** Format: uuid */
+      nodeId: string;
+      outputs: components["schemas"]["RecipeNodeOutput"][];
     };
     RecipeContext: {
+      completedNodes?: components["schemas"]["RecipeCompletedNode"][];
       /** Format: evm-address */
       wallet: `0x${string}`;
     };
@@ -258,7 +269,8 @@ export interface components {
       | "SELF_CONNECTION"
       | "RECIPE_CYCLE"
       | "DISCONNECTED_NODE"
-      | "INVALID_AMOUNT";
+      | "INVALID_AMOUNT"
+      | "UNSUPPORTED_TRADE_PAIR";
     RecipeDiagnosticLocation:
       | {
           /** @enum {string} */
@@ -311,6 +323,10 @@ export interface components {
       /** Format: uuid */
       id: string;
     };
+    RecipeNodeOutput: {
+      asset: components["schemas"]["TokenAmount"];
+      port: string;
+    };
     RecipeNodePreview: {
       /** @enum {string} */
       kind: "TRADE";
@@ -329,7 +345,8 @@ export interface components {
       venue: string;
     };
     /** @enum {string} */
-    RecipeNodeState: "READY" | "WAITING_FOR_UPSTREAM";
+    RecipeNodeState:
+      "READY" | "WAITING_FOR_UPSTREAM" | "COMPLETE" | "OUTPUT_UNAVAILABLE";
     /** @enum {string} */
     RecipeOptionSource: "SETTLEMENT_TOKENS" | "BSTOCKS";
     RecipePortDescriptor: {
@@ -383,6 +400,9 @@ export interface components {
     };
     /** @enum {string} */
     RecipePrimitiveKind: "WALLET_ASSET" | "TRADE";
+    RecipeTradePolicy: {
+      allowedTransitions: components["schemas"]["RecipeAssetTransition"][];
+    };
     RecipeValidationReport: {
       diagnostics: components["schemas"]["RecipeDiagnostic"][];
       valid: boolean;
@@ -407,6 +427,7 @@ export interface components {
         /** Format: int32 */
         schemaVersion: number;
         settlementTokens: `0x${string}`[];
+        tradePolicy: components["schemas"]["RecipeTradePolicy"];
       };
       status: components["schemas"]["Status"];
     };
@@ -556,7 +577,10 @@ export type PreparedRecipe = components["schemas"]["PreparedRecipe"];
 export type PreparedRecipeStep = components["schemas"]["PreparedRecipeStep"];
 export type PreparedTrade = components["schemas"]["PreparedTrade"];
 export type PreparedTransaction = components["schemas"]["PreparedTransaction"];
+export type RecipeAssetTransition =
+  components["schemas"]["RecipeAssetTransition"];
 export type RecipeCatalog = components["schemas"]["RecipeCatalog"];
+export type RecipeCompletedNode = components["schemas"]["RecipeCompletedNode"];
 export type RecipeContext = components["schemas"]["RecipeContext"];
 export type RecipeDefinition = components["schemas"]["RecipeDefinition"];
 export type RecipeDiagnostic = components["schemas"]["RecipeDiagnostic"];
@@ -571,6 +595,7 @@ export type RecipeFieldControl = components["schemas"]["RecipeFieldControl"];
 export type RecipeFieldDescriptor =
   components["schemas"]["RecipeFieldDescriptor"];
 export type RecipeNode = components["schemas"]["RecipeNode"];
+export type RecipeNodeOutput = components["schemas"]["RecipeNodeOutput"];
 export type RecipeNodePreview = components["schemas"]["RecipeNodePreview"];
 export type RecipeNodeSelection = components["schemas"]["RecipeNodeSelection"];
 export type RecipeNodeState = components["schemas"]["RecipeNodeState"];
@@ -588,6 +613,7 @@ export type RecipePrimitive = components["schemas"]["RecipePrimitive"];
 export type RecipePrimitiveDescriptor =
   components["schemas"]["RecipePrimitiveDescriptor"];
 export type RecipePrimitiveKind = components["schemas"]["RecipePrimitiveKind"];
+export type RecipeTradePolicy = components["schemas"]["RecipeTradePolicy"];
 export type RecipeValidationReport =
   components["schemas"]["RecipeValidationReport"];
 export type Response = components["schemas"]["Response"];

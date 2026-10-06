@@ -67,13 +67,19 @@ pub struct SubmitOrderRequest {
     pub signature: String,
 }
 
-#[derive(utoipa::ToSchema, Debug, Serialize)]
+#[derive(utoipa::ToSchema, Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TokenAmount {
-    #[serde(serialize_with = "serialize_as_string")]
+    #[serde(
+        deserialize_with = "deserialize_from_string",
+        serialize_with = "serialize_as_string"
+    )]
     #[schema(value_type = String, format = "evm-address")]
     pub token: Address,
-    #[serde(serialize_with = "serialize_as_string")]
+    #[serde(
+        deserialize_with = "deserialize_from_string",
+        serialize_with = "serialize_as_string"
+    )]
     #[schema(value_type = String)]
     pub amount: U256,
 }

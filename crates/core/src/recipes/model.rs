@@ -43,6 +43,26 @@
 //! }
 //! ```
 //!
+//! After an action settles, the client sends its exact output in the runtime
+//! context. This unlocks only the next dependent action. A completed action
+//! with no output stays recorded, but its dependent action remains blocked:
+//!
+//! ```json
+//! {
+//!   "wallet": "0x0000000000000000000000000000000000000001",
+//!   "completedNodes": [{
+//!     "nodeId": "00000000-0000-0000-0000-000000000002",
+//!     "outputs": [{
+//!       "port": "buy",
+//!       "asset": {
+//!         "token": "0x02Fca66C1D1aFB4E2A7884261eB00F63598a7436",
+//!         "amount": "17456456017850632"
+//!       }
+//!     }]
+//!   }]
+//! }
+//! ```
+//!
 //! Port names are strings in saved recipes so future schema versions can add
 //! ports without changing the JSON shape. The primitive catalog remains the
 //! source of truth for which port names and connections are valid.
@@ -53,7 +73,7 @@ use uuid::Uuid;
 
 use crate::{
     bstock_market::BstockSummary,
-    bstock_trade::{PreparedApproval, PreparedTrade, TradeQuote},
+    bstock_trade::{PreparedApproval, PreparedTrade, TokenAmount, TradeQuote},
     serialization::{deserialize_from_string, serialize_all_as_strings, serialize_as_string},
     wallet_portfolio::WalletAddress,
 };
@@ -81,6 +101,19 @@ pub enum RecipeFieldControl {
 pub enum RecipeOptionSource {
     SettlementTokens,
     Bstocks,
+}
+
+#[derive(utoipa::ToSchema, Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RecipeAssetTransition {
+    pub sell: RecipeOptionSource,
+    pub buy: RecipeOptionSource,
+}
+
+#[derive(utoipa::ToSchema, Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RecipeTradePolicy {
+    pub allowed_transitions: Vec<RecipeAssetTransition>,
 }
 
 #[derive(utoipa::ToSchema, Clone, Copy, Debug, Eq, PartialEq, Serialize)]
@@ -287,11 +320,27 @@ pub struct RecipeDefinition {
     pub edges: Vec<RecipeEdge>,
 }
 
-#[derive(utoipa::ToSchema, Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(utoipa::ToSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RecipeContext {
     #[schema(value_type = String, format = "evm-address")]
     pub wallet: WalletAddress,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub completed_nodes: Vec<RecipeCompletedNode>,
+}
+
+#[derive(utoipa::ToSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RecipeCompletedNode {
+    pub node_id: Uuid,
+    pub outputs: Vec<RecipeNodeOutput>,
+}
+
+#[derive(utoipa::ToSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RecipeNodeOutput {
+    pub port: String,
+    pub asset: TokenAmount,
 }
 
 #[derive(utoipa::ToSchema, Debug, Serialize)]
@@ -303,6 +352,7 @@ pub struct RecipeCatalog {
     #[schema(value_type = Vec<String>, format = "evm-address")]
     pub settlement_tokens: Vec<Address>,
     pub bstocks: Vec<BstockSummary>,
+    pub trade_policy: RecipeTradePolicy,
 }
 
 #[derive(utoipa::ToSchema, Debug, Deserialize)]
@@ -317,6 +367,8 @@ pub struct RecipePreviewRequest {
 pub enum RecipeNodeState {
     Ready,
     WaitingForUpstream,
+    Complete,
+    OutputUnavailable,
 }
 
 #[derive(utoipa::ToSchema, Debug, Serialize)]
@@ -394,7 +446,8 @@ mod tests {
     use serde_json::{from_value, json, to_value};
 
     use super::{
-        PreparedRecipe, PreparedRecipeStep, RecipeNodePreview, RecipeNodeSelection, RecipeNodeState,
+        PreparedRecipe, PreparedRecipeStep, RecipeContext, RecipeNodePreview, RecipeNodeSelection,
+        RecipeNodeState,
     };
     use crate::bstock_trade::PreparedApproval;
 
@@ -465,5 +518,17 @@ mod tests {
         };
         assert_eq!(value.pointer("/steps/0/nodeId"), Some(&json!(node_id)));
         assert!(value.pointer("/steps/0/node_id").is_none());
+    }
+
+    #[test]
+    fn defaults_missing_completed_nodes_for_existing_clients() {
+        let result = from_value::<RecipeContext>(json!({
+            "wallet": "0x0000000000000000000000000000000000000001"
+        }));
+
+        let Ok(context) = result else {
+            panic!("legacy recipe context did not deserialize");
+        };
+        assert!(context.completed_nodes.is_empty());
     }
 }

@@ -29,10 +29,12 @@ export function RecipeCanvas({
   defaults,
   mode,
   onModeChange,
+  onInspectNode,
 }: {
   defaults: { settlementToken?: Address; bstockToken?: Address };
   mode: "builder" | "debug";
   onModeChange(mode: "builder" | "debug"): void;
+  onInspectNode(): void;
 }) {
   const editor = useRecipeEditor();
   const flow = useReactFlow();
@@ -92,7 +94,10 @@ export function RecipeCanvas({
         onEdgesChange={editor.onEdgesChange}
         onConnect={editor.connect}
         isValidConnection={isValidConnection}
-        onNodeClick={(_, node) => editor.selectNode(node.id)}
+        onNodeClick={(_, node) => {
+          editor.selectNode(node.id);
+          onInspectNode();
+        }}
         onPaneClick={() => editor.selectNode(undefined)}
         onDrop={onDrop}
         onDragOver={(event) => {

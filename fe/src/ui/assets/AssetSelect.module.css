@@ -15,6 +15,10 @@
 .field > svg {
   color: var(--muted);
 }
+.field[aria-invalid="true"] {
+  border-color: color-mix(in srgb, #d9473f 62%, white);
+  background: color-mix(in srgb, #d9473f 5%, white);
+}
 .backdrop {
   position: fixed;
   inset: 0;

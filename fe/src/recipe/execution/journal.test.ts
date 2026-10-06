@@ -1,14 +1,17 @@
 import {
+  completedRecipeNodes,
   isRunComplete,
   latestAttempts,
   readRun,
+  runKey,
   writeRun,
+  type ExecutionAttempt,
   type ExecutionRun,
 } from "./journal";
-import { recipe, wallet, hash } from "./fixtures.test-support";
+import { hash, recipe, wallet } from "./fixtures.test-support";
 
 const run: ExecutionRun = {
-  version: 1,
+  version: 2,
   id: "run",
   wallet,
   chainId: 56,
@@ -17,63 +20,101 @@ const run: ExecutionRun = {
   updatedAtMs: 1,
   attempts: [],
 };
+const attempt = (patch: Partial<ExecutionAttempt> = {}): ExecutionAttempt => ({
+  id: "trade:1",
+  nodeId: "trade",
+  kind: "TRADE",
+  attempt: 1,
+  phase: "pending",
+  executionMode: "SWAP",
+  steps: ["APPROVAL", "TRADE"],
+  ...patch,
+});
+
 beforeEach(() => localStorage.clear());
 
-it("isolates runs by wallet and chain and preserves submitted references", () => {
-  writeRun({
-    ...run,
-    attempts: [
-      {
-        nodeId: "trade",
-        kind: "TRADE",
-        attempt: 1,
-        phase: "pending",
-        transactionHash: hash,
-        executionMode: "SWAP",
-      },
-    ],
+it("round-trips the one durable atomic attempt and its exact output", () => {
+  const complete = attempt({
+    phase: "complete",
+    reference: {
+      kind: "CALL_BATCH",
+      id: "batch",
+      atomicRequired: true,
+      transactionHash: hash,
+    },
+    settledOutput: {
+      port: "buy",
+      asset: { token: wallet, amount: "23" },
+    },
   });
-  expect(
-    readRun(wallet.toUpperCase() as typeof wallet, 56)?.attempts[0]
-      ?.transactionHash,
-  ).toBe(hash);
+  writeRun({ ...run, attempts: [complete] });
+
+  const restored = readRun(wallet.toUpperCase(), 56)!;
+  expect(restored.attempts).toEqual([complete]);
+  expect(isRunComplete(restored)).toBe(true);
+  expect(completedRecipeNodes(restored.attempts)).toEqual([
+    { nodeId: "trade", outputs: [complete.settledOutput] },
+  ]);
   expect(readRun(wallet, 1)).toBeUndefined();
 });
-it("requires every trade to settle, not just its approval or submission", () => {
-  expect(isRunComplete(run)).toBe(false);
-  const attempt = {
-    nodeId: "trade",
-    kind: "TRADE",
-    attempt: 1,
-    phase: "pending",
-    orderId: "order",
-  } as const;
-  expect(isRunComplete({ ...run, attempts: [attempt] })).toBe(false);
-  expect(
-    isRunComplete({ ...run, attempts: [{ ...attempt, phase: "complete" }] }),
-  ).toBe(true);
+
+it("migrates version 1 approval and trade rows sharing one batch into one attempt", () => {
+  localStorage.setItem(
+    runKey(wallet, 56),
+    JSON.stringify({
+      ...run,
+      version: 1,
+      attempts: [
+        {
+          nodeId: "trade",
+          kind: "APPROVAL",
+          attempt: 1,
+          phase: "pending",
+          callBatchId: "batch",
+        },
+        {
+          nodeId: "trade",
+          kind: "TRADE",
+          attempt: 1,
+          phase: "pending",
+          executionMode: "SWAP",
+          callBatchId: "batch",
+        },
+      ],
+    }),
+  );
+
+  expect(readRun(wallet, 56)?.attempts).toEqual([
+    expect.objectContaining({
+      nodeId: "trade",
+      kind: "TRADE",
+      steps: ["APPROVAL", "TRADE"],
+      reference: {
+        kind: "CALL_BATCH",
+        id: "batch",
+        atomicRequired: true,
+      },
+    }),
+  ]);
 });
-it("keeps prior attempts but projects only the latest action state", () => {
+
+it("keeps history but exposes only the latest node attempt", () => {
   expect(
     latestAttempts([
-      { nodeId: "trade", kind: "TRADE", attempt: 1, phase: "failed" },
-      { nodeId: "trade", kind: "TRADE", attempt: 2, phase: "pending" },
+      attempt({ phase: "failed" }),
+      attempt({ id: "trade:2", attempt: 2 }),
     ]),
-  ).toHaveLength(1);
+  ).toEqual([expect.objectContaining({ id: "trade:2" })]);
 });
+
 it.each(["{", '{"version":2}', '{"version":1,"attempts":[]}'])(
-  "does not silently discard corrupt recovery data: %s",
+  "rejects corrupt recovery data instead of silently clearing it: %s",
   (value) => {
-    localStorage.setItem(`stockfront:execution:56:${wallet}`, value);
+    localStorage.setItem(runKey(wallet, 56), value);
     expect(() => readRun(wallet, 56)).toThrow(/recovery/i);
   },
 );
-it("does not serialize arbitrary properties or authorizations", () => {
-  writeRun({ ...run, signature: "secret", attempts: [] } as ExecutionRun);
-  expect(
-    localStorage.getItem(`stockfront:execution:56:${wallet}`),
-  ).not.toContain("secret");
-});
+
 it("propagates failed durable writes", () => {
   const spy = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
     throw new Error("quota");
@@ -82,15 +123,26 @@ it("propagates failed durable writes", () => {
   spy.mockRestore();
 });
 
-it("rejects corrupted snapshot amounts instead of crashing when restoring the editor", () => {
+it("does not persist accidental authorization fields", () => {
+  writeRun({ ...run, signature: "secret" } as ExecutionRun);
+  expect(localStorage.getItem(runKey(wallet, 56))).not.toContain("secret");
+});
+
+it("rejects a settled token that cannot be the recipe node output", () => {
   writeRun({
     ...run,
-    recipe: {
-      ...recipe,
-      nodes: [
-        { id: "source", kind: "WALLET_ASSET", token: wallet, rawAmount: "bad" },
-      ],
-    },
+    attempts: [
+      attempt({
+        phase: "complete",
+        settledOutput: {
+          port: "buy",
+          asset: {
+            token: "0x3333333333333333333333333333333333333333",
+            amount: "1",
+          },
+        },
+      }),
+    ],
   });
   expect(() => readRun(wallet, 56)).toThrow(/recovery/i);
 });

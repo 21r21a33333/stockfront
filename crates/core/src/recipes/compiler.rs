@@ -155,6 +155,7 @@ fn lower(graph: &RecipeGraph<'_>) -> Result<LogicalPlan, RecipeDiagnostic> {
                     AssetRef::NodeOutput {
                         node_id,
                         port: "buy".to_owned(),
+                        token: *buy_token,
                     },
                 );
             }

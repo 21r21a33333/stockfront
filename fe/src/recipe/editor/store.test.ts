@@ -33,7 +33,7 @@ it("appends a trade to the selected output once", () => {
   };
   useRecipeEditor.getState().initialize(defaults);
   const source = useRecipeEditor.getState().nodes[1].id;
-  useRecipeEditor.getState().appendTrade(source, defaults);
+  useRecipeEditor.getState().appendTrade(source, defaults.settlementToken);
   const state = useRecipeEditor.getState();
   expect(state.nodes).toHaveLength(3);
   expect(state.edges).toHaveLength(2);
@@ -47,6 +47,25 @@ it("appends a trade to the selected output once", () => {
     kind: "TRADE",
     buyToken: defaults.settlementToken,
   });
-  useRecipeEditor.getState().appendTrade(source, defaults);
+  useRecipeEditor.getState().appendTrade(source, defaults.settlementToken);
   expect(useRecipeEditor.getState().nodes).toHaveLength(3);
+});
+
+it("starts a new recipe with an empty board and removes the saved draft", () => {
+  useRecipeEditor.getState().initialize({
+    settlementToken: "0x55d398326f99059fF775485246999027B3197955",
+    bstockToken: "0x02Fca66C1D1aFB4E2A7884261eB00F63598a7436",
+  });
+  useRecipeEditor.getState().saveDraft();
+
+  useRecipeEditor.getState().startNewRecipe();
+
+  expect(useRecipeEditor.getState()).toMatchObject({
+    nodes: [],
+    edges: [],
+    selectedNodeId: undefined,
+    mode: "builder",
+    initialized: true,
+  });
+  expect(useRecipeEditor.getState().restoreDraft()).toBe(false);
 });

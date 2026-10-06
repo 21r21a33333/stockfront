@@ -19,8 +19,15 @@ use uuid::Uuid;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(super) enum AssetRef {
-    Wallet { token: Address, amount: U256 },
-    NodeOutput { node_id: Uuid, port: String },
+    Wallet {
+        token: Address,
+        amount: U256,
+    },
+    NodeOutput {
+        node_id: Uuid,
+        port: String,
+        token: Address,
+    },
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]

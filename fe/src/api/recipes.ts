@@ -23,11 +23,4 @@ export const recipesApi = {
         signal,
       }),
     ),
-  transactionStatus: (transactionHash: string, signal?: AbortSignal) =>
-    apiResult(
-      api.GET("/v1/bstock-trades/transactions/{transaction_hash}", {
-        params: { path: { transaction_hash: transactionHash } },
-        signal,
-      }),
-    ),
 };

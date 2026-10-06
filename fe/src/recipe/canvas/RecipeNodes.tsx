@@ -189,45 +189,40 @@ function PreparedActionBranch({
   execution: ExecutionAttempt[];
   onOpen(): void;
 }) {
+  const approval = actions.find(({ step }) => step.kind === "APPROVAL")?.step;
+  const trade = actions.find(({ step }) => step.kind === "TRADE")?.step;
+  const state = execution.find((item) => item.nodeId === trade?.nodeId)?.phase;
+  const approvedAsset =
+    approval?.kind === "APPROVAL"
+      ? assets.find(
+          (asset) =>
+            asset.address.toLowerCase() === approval.action.to.toLowerCase(),
+        )
+      : undefined;
+  const label = trade
+    ? approval
+      ? `Approve ${approvedAsset?.symbol ?? "asset"} + swap → ${buySymbol ?? "asset"}`
+      : `${trade.kind === "TRADE" && trade.action.executionMode === "RFQ" ? "Submit RFQ" : "Swap"} → ${buySymbol ?? "asset"}`
+    : `Approve ${approvedAsset?.symbol ?? "asset"}`;
   return (
     <div className={styles.actionBranch} aria-label="Prepared actions">
       <span className={styles.branchLabel}>prepare</span>
       <div className={styles.branchSteps}>
-        {actions.map(({ step, index }) => {
-          const state = execution.find(
-            (item) => item.nodeId === step.nodeId && item.kind === step.kind,
-          )?.phase;
-          const approvedAsset =
-            step.kind === "APPROVAL"
-              ? assets.find(
-                  (asset) =>
-                    asset.address.toLowerCase() ===
-                    step.action.to.toLowerCase(),
-                )
-              : undefined;
-          const label =
-            step.kind === "APPROVAL"
-              ? `Approve ${approvedAsset?.symbol ?? "asset"}`
-              : `${step.action.executionMode === "RFQ" ? "Submit RFQ" : "Swap"} → ${buySymbol ?? "asset"}`;
-          return (
-            <button
-              type="button"
-              className={`${styles.branchStep} nodrag nopan`}
-              key={`${step.kind}-${index}`}
-              onClick={(event) => {
-                event.stopPropagation();
-                onOpen();
-              }}
-            >
-              <span
-                className={`${styles.branchNumber} ${state === "complete" ? styles.branchDone : ""} ${state === "awaiting" || state === "pending" ? styles.branchActive : ""}`}
-              >
-                {state === "complete" ? <Check size={12} /> : index + 1}
-              </span>
-              {label}
-            </button>
-          );
-        })}
+        <button
+          type="button"
+          className={`${styles.branchStep} nodrag nopan`}
+          onClick={(event) => {
+            event.stopPropagation();
+            onOpen();
+          }}
+        >
+          <span
+            className={`${styles.branchNumber} ${state === "complete" ? styles.branchDone : ""} ${state === "awaiting" || state === "pending" ? styles.branchActive : ""}`}
+          >
+            {state === "complete" ? <Check size={12} /> : 1}
+          </span>
+          {label}
+        </button>
       </div>
     </div>
   );

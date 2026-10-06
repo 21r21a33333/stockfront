@@ -4,6 +4,12 @@ import type { RecipeCatalog } from "../src/api/generated";
 const catalog = {
   schemaVersion: 1,
   settlementTokens: ["0x55d398326f99059fF775485246999027B3197955"],
+  tradePolicy: {
+    allowedTransitions: [
+      { sell: "SETTLEMENT_TOKENS", buy: "BSTOCKS" },
+      { sell: "BSTOCKS", buy: "SETTLEMENT_TOKENS" },
+    ],
+  },
   bstocks: [
     {
       chainId: 56,
@@ -112,9 +118,11 @@ test("shows asset flow guides, adds the next action, and searches supported toke
   await expect(
     page.getByRole("dialog", { name: "Select token" }),
   ).toBeVisible();
-  await page.getByRole("textbox", { name: "Search tokens" }).fill("nvda");
-  await expect(page.getByRole("button", { name: /Nvidia Corp/ })).toBeVisible();
-  await expect(page.getByRole("button", { name: /Tether USD/ })).toHaveCount(0);
+  await page.getByRole("textbox", { name: "Search tokens" }).fill("usdt");
+  await expect(page.getByRole("button", { name: /Tether USD/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Nvidia Corp/ })).toHaveCount(
+    0,
+  );
 });
 
 test("keeps the output asset label clear of the trade node and next action", async ({

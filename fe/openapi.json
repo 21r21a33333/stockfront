@@ -419,13 +419,22 @@
           "value": { "type": "string" }
         }
       },
+      "RecipeAssetTransition": {
+        "type": "object",
+        "required": ["sell", "buy"],
+        "properties": {
+          "buy": { "$ref": "#/components/schemas/RecipeOptionSource" },
+          "sell": { "$ref": "#/components/schemas/RecipeOptionSource" }
+        }
+      },
       "RecipeCatalog": {
         "type": "object",
         "required": [
           "schemaVersion",
           "primitives",
           "settlementTokens",
-          "bstocks"
+          "bstocks",
+          "tradePolicy"
         ],
         "properties": {
           "bstocks": {
@@ -446,6 +455,18 @@
           "settlementTokens": {
             "type": "array",
             "items": { "type": "string", "format": "evm-address" }
+          },
+          "tradePolicy": { "$ref": "#/components/schemas/RecipeTradePolicy" }
+        }
+      },
+      "RecipeCompletedNode": {
+        "type": "object",
+        "required": ["nodeId", "outputs"],
+        "properties": {
+          "nodeId": { "type": "string", "format": "uuid" },
+          "outputs": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/RecipeNodeOutput" }
           }
         }
       },
@@ -453,6 +474,10 @@
         "type": "object",
         "required": ["wallet"],
         "properties": {
+          "completedNodes": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/RecipeCompletedNode" }
+          },
           "wallet": { "type": "string", "format": "evm-address" }
         }
       },
@@ -509,7 +534,8 @@
           "SELF_CONNECTION",
           "RECIPE_CYCLE",
           "DISCONNECTED_NODE",
-          "INVALID_AMOUNT"
+          "INVALID_AMOUNT",
+          "UNSUPPORTED_TRADE_PAIR"
         ]
       },
       "RecipeDiagnosticLocation": {
@@ -593,6 +619,14 @@
           }
         ]
       },
+      "RecipeNodeOutput": {
+        "type": "object",
+        "required": ["port", "asset"],
+        "properties": {
+          "asset": { "$ref": "#/components/schemas/TokenAmount" },
+          "port": { "type": "string" }
+        }
+      },
       "RecipeNodePreview": {
         "oneOf": [
           {
@@ -630,7 +664,12 @@
       },
       "RecipeNodeState": {
         "type": "string",
-        "enum": ["READY", "WAITING_FOR_UPSTREAM"]
+        "enum": [
+          "READY",
+          "WAITING_FOR_UPSTREAM",
+          "COMPLETE",
+          "OUTPUT_UNAVAILABLE"
+        ]
       },
       "RecipeOptionSource": {
         "type": "string",
@@ -727,6 +766,16 @@
         "type": "string",
         "enum": ["WALLET_ASSET", "TRADE"]
       },
+      "RecipeTradePolicy": {
+        "type": "object",
+        "required": ["allowedTransitions"],
+        "properties": {
+          "allowedTransitions": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/RecipeAssetTransition" }
+          }
+        }
+      },
       "RecipeValidationReport": {
         "type": "object",
         "required": ["valid", "diagnostics"],
@@ -776,7 +825,8 @@
               "schemaVersion",
               "primitives",
               "settlementTokens",
-              "bstocks"
+              "bstocks",
+              "tradePolicy"
             ],
             "properties": {
               "bstocks": {
@@ -797,6 +847,9 @@
               "settlementTokens": {
                 "type": "array",
                 "items": { "type": "string", "format": "evm-address" }
+              },
+              "tradePolicy": {
+                "$ref": "#/components/schemas/RecipeTradePolicy"
               }
             }
           },

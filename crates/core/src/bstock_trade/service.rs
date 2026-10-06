@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use alloy_primitives::B256;
+use alloy_primitives::{Address, B256};
 use thiserror::Error;
 
 use super::{
@@ -137,6 +137,11 @@ impl BstockTradeService {
             .transaction_status(transaction_hash)
             .await
             .map_err(Into::into)
+    }
+
+    #[must_use]
+    pub fn supports_pair_shape(&self, sell_token: Address, buy_token: Address) -> bool {
+        self.policy.asset_for_pair(sell_token, buy_token).is_some()
     }
 
     async fn validate_trade(&self, request: &TradeQuoteRequest) -> Result<(), TradeError> {

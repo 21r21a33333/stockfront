@@ -7,6 +7,7 @@ import { StockfrontApiError } from "@/api/client";
 import { useRecipeAssets } from "@/recipe/assets";
 import { recipesApi } from "@/api/recipes";
 import { useRecipeExecution } from "./execution/useRecipeExecution";
+import { recipeRuntimeContext } from "./execution/runtimeContext";
 import { ExecutionPanel } from "./execution/ExecutionPanel";
 import type { RecipeFlowNode } from "./editor/types";
 import type {
@@ -23,6 +24,7 @@ import { RecipeCanvas } from "@/recipe/canvas/RecipeCanvas";
 import { RecipeHeader } from "@/recipe/RecipeHeader";
 import { RecipeInspector } from "@/recipe/inspector/RecipeInspector";
 import { useRecipeEditor } from "@/recipe/editor/store";
+import { compatibleTradeAssets } from "@/recipe/editor/tradePolicy";
 import styles from "@/recipe/RecipeBuilder.module.css";
 
 export function RecipeBuilderPage() {
@@ -59,6 +61,7 @@ export function RecipeBuilderPage() {
   const requestScope = `${account.address?.toLowerCase()}:${account.chainId}:${recipeKey}`;
   const scope = useRef(requestScope);
   scope.current = requestScope;
+  const completedContext = useRef("[]");
   const validation = useQuery({
     queryKey: ["recipe-validation", recipeKey],
     queryFn: () => recipesApi.validate(recipe),
@@ -73,12 +76,16 @@ export function RecipeBuilderPage() {
   const [inspectorView, setInspectorView] = useState<"configure" | "activity">(
     "configure",
   );
+  const [executionPreparationError, setExecutionPreparationError] =
+    useState<string>();
   const latestPreviewRequest = useRef<RecipePreviewRequest>();
   const preview = useMutation({
     mutationFn: recipesApi.preview,
     onSuccess: (result, request) => {
       if (
         request !== latestPreviewRequest.current ||
+        JSON.stringify(request.context.completedNodes ?? []) !==
+          completedContext.current ||
         scope.current !==
           `${request.context.wallet.toLowerCase()}:${request.recipe.chainId}:${JSON.stringify(request.recipe)}`
       )
@@ -90,14 +97,22 @@ export function RecipeBuilderPage() {
           ),
         ),
       );
+      const next = result.nodes.find(
+        (node) => node.state === "READY" && (node.routes?.length ?? 0) > 0,
+      );
+      if ((request.context.completedNodes?.length ?? 0) > 0 && next) {
+        editor.selectNode(next.nodeId);
+      }
     },
   });
   const prepare = useMutation({
     mutationFn: recipesApi.prepare,
     onSuccess: (_result, request) => {
       if (
+        JSON.stringify(request.context.completedNodes ?? []) ===
+          completedContext.current &&
         scope.current ===
-        `${request.context.wallet.toLowerCase()}:${request.recipe.chainId}:${JSON.stringify(request.recipe)}`
+          `${request.context.wallet.toLowerCase()}:${request.recipe.chainId}:${JSON.stringify(request.recipe)}`
       )
         setInspectorView("activity");
     },
@@ -111,12 +126,31 @@ export function RecipeBuilderPage() {
     requestScope ===
       `${request.context.wallet.toLowerCase()}:${request.recipe.chainId}:${JSON.stringify(request.recipe)}`;
   const activePrepared = matches(prepare.variables) ? prepare.data : undefined;
-  const activePreview = matches(preview.variables) ? preview.data : undefined;
   const execution = useRecipeExecution({ recipe, prepared: activePrepared });
+  const runtimeContext = account.address
+    ? recipeRuntimeContext(account.address, execution.run?.attempts ?? [])
+    : undefined;
+  const completedContextKey = JSON.stringify(
+    runtimeContext?.completedNodes ?? [],
+  );
+  completedContext.current = completedContextKey;
+  const matchesRuntime = (
+    request?: PrepareRecipeRequest | RecipePreviewRequest,
+  ) =>
+    request !== undefined &&
+    matches(request) &&
+    JSON.stringify(request.context.completedNodes ?? []) ===
+      completedContextKey;
+  const runtimePrepared = matchesRuntime(prepare.variables)
+    ? prepare.data
+    : undefined;
+  const runtimePreview = matchesRuntime(preview.variables)
+    ? preview.data
+    : undefined;
   useEffect(() => {
     if (execution.run?.id) setInspectorView("activity");
   }, [execution.run?.id]);
-  const hasActivity = Boolean(execution.run || activePrepared);
+  const hasActivity = Boolean(execution.run || runtimePrepared);
   const runStatus = execution.completed
     ? "Settled"
     : execution.progress.some(
@@ -136,7 +170,8 @@ export function RecipeBuilderPage() {
     preview.reset();
     prepare.reset();
     setSelectedRoutes({});
-  }, [account.address, account.chainId, recipeKey]); // eslint-disable-line react-hooks/exhaustive-deps
+    setExecutionPreparationError(undefined);
+  }, [account.address, account.chainId, recipeKey, completedContextKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const selectedNode = editor.nodes.find(
     (node) => node.id === editor.selectedNodeId,
@@ -145,6 +180,7 @@ export function RecipeBuilderPage() {
     ? selectedRoutes[selectedNode.id]
     : undefined;
   const requestError =
+    executionPreparationError ??
     readableError(preview.error) ??
     readableError(prepare.error) ??
     execution.error ??
@@ -153,15 +189,17 @@ export function RecipeBuilderPage() {
   function previewRecipe(): void {
     if (
       !account.address ||
+      !runtimeContext ||
       execution.blocked ||
       execution.busy ||
       !execution.sameRecipe ||
       execution.completed
     )
       return;
+    setExecutionPreparationError(undefined);
     prepare.reset();
     setInspectorView("configure");
-    const request = { recipe, context: { wallet: account.address } };
+    const request = { recipe, context: runtimeContext };
     latestPreviewRequest.current = request;
     preview.mutate(request);
   }
@@ -169,17 +207,19 @@ export function RecipeBuilderPage() {
   function prepareRecipe(): void {
     if (
       !account.address ||
-      !activePreview ||
+      !runtimePreview ||
+      !runtimeContext ||
       execution.blocked ||
       execution.busy ||
       !execution.sameRecipe ||
       execution.completed
     )
       return;
+    setExecutionPreparationError(undefined);
     const request: PrepareRecipeRequest = {
       recipe,
-      context: { wallet: account.address },
-      selections: activePreview.nodes.flatMap((node) => {
+      context: runtimeContext,
+      selections: runtimePreview.nodes.flatMap((node) => {
         const route = selectedRoutes[node.nodeId];
         return route
           ? [
@@ -197,7 +237,70 @@ export function RecipeBuilderPage() {
   }
 
   async function executeRecipe(): Promise<void> {
-    if (execution.canExecute) await execution.execute();
+    if (!execution.canPrepareFresh || !account.address || !runtimeContext)
+      return;
+    setExecutionPreparationError(undefined);
+    try {
+      // Provider swap calldata can contain an RFQ that expires in seconds. A
+      // button click always obtains a new quote and prepares new calldata; an
+      // approval confirmed earlier is never followed by its old swap payload.
+      const request: RecipePreviewRequest = {
+        recipe,
+        context: runtimeContext,
+      };
+      latestPreviewRequest.current = request;
+      const freshPreview = await preview.mutateAsync(request);
+      const freshRoutes: Record<string, TradeQuote> = {};
+      for (const node of freshPreview.nodes) {
+        if (node.state !== "READY" || !node.routes?.length) continue;
+        const previous = selectedRoutes[node.nodeId];
+        const route = previous
+          ? node.routes.find(
+              (candidate) =>
+                candidate.venue === previous.venue &&
+                candidate.executionMode === previous.executionMode,
+            )
+          : node.routes[0];
+        if (!route) {
+          throw new Error(
+            "The selected route is no longer available. Review the refreshed routes.",
+          );
+        }
+        freshRoutes[node.nodeId] = route;
+      }
+      setSelectedRoutes(freshRoutes);
+      const freshPrepared = await prepare.mutateAsync({
+        recipe,
+        context: runtimeContext,
+        selections: Object.entries(freshRoutes).map(([nodeId, route]) => ({
+          kind: "TRADE" as const,
+          nodeId,
+          routeQuoteId: route.routeQuoteId,
+          venue: route.venue,
+        })),
+      });
+      await execution.execute(freshPrepared);
+    } catch (cause) {
+      setExecutionPreparationError(
+        readableError(cause) ??
+          "The route could not be refreshed. No transaction was sent.",
+      );
+    }
+  }
+
+  async function startNewRecipe(): Promise<void> {
+    if (
+      !window.confirm(
+        "Start a new recipe? This clears the current board and saved draft. Transaction activity is retained.",
+      )
+    )
+      return;
+    if (execution.completed) await execution.startNewRun();
+    editor.startNewRecipe();
+    preview.reset();
+    prepare.reset();
+    setSelectedRoutes({});
+    setInspectorView("configure");
   }
 
   function restoreExecutionRecipe(): void {
@@ -265,12 +368,23 @@ export function RecipeBuilderPage() {
         assets,
         diagnostics,
         selectedRoutes,
-        prepared: execution.sameRecipe ? activePrepared : undefined,
+        prepared: execution.sameRecipe ? runtimePrepared : undefined,
         execution: execution.sameRecipe ? execution.progress : [],
         connectedOutputs: editor.edges
           .filter((edge) => edge.sourceHandle === "buy")
           .map((edge) => edge.source),
-        appendTrade: (sourceId) => editor.appendTrade(sourceId, defaults),
+        appendTrade: (sourceId) => {
+          const source = editor.nodes.find((node) => node.id === sourceId);
+          const sellToken =
+            source?.data.kind === "TRADE" ? source.data.buyToken : undefined;
+          const buyToken = compatibleTradeAssets(
+            sellToken,
+            assets,
+            catalog.data.tradePolicy,
+          )[0]?.address;
+          editor.appendTrade(sourceId, buyToken);
+          setInspectorView("configure");
+        },
         openActivity: () => {
           editor.setMode("builder");
           setInspectorView("activity");
@@ -283,7 +397,7 @@ export function RecipeBuilderPage() {
             primitives={catalog.data.primitives}
             mode={editor.mode}
             onModeChange={editor.setMode}
-            onAdd={(kind) =>
+            onAdd={(kind) => {
               editor.addNode(
                 kind,
                 {
@@ -291,11 +405,17 @@ export function RecipeBuilderPage() {
                   y: 145 + editor.nodes.length * 35,
                 },
                 defaults,
-              )
-            }
+              );
+              setInspectorView("configure");
+            }}
           />
           <section className={styles.workspace}>
             <RecipeHeader
+              title={
+                editor.nodes.length === 0
+                  ? "Untitled recipe"
+                  : "Wallet asset → Trade"
+              }
               validation={validation.data}
               validating={validation.isFetching}
               previewing={preview.isPending}
@@ -308,6 +428,7 @@ export function RecipeBuilderPage() {
                 execution.sameRecipe,
               )}
               onPreview={previewRecipe}
+              onNewRecipe={() => void startNewRecipe()}
               onDebug={() => editor.setMode("debug")}
               runStatus={
                 runStatus && !execution.sameRecipe
@@ -339,6 +460,7 @@ export function RecipeBuilderPage() {
                   defaults={defaults}
                   mode={editor.mode}
                   onModeChange={editor.setMode}
+                  onInspectNode={() => setInspectorView("configure")}
                 />
               </ReactFlowProvider>
               {editor.mode === "debug" ? (
@@ -351,10 +473,11 @@ export function RecipeBuilderPage() {
                 <RecipeInspector
                   node={selectedNode}
                   assets={assets}
+                  tradePolicy={catalog.data.tradePolicy}
                   diagnostics={diagnostics}
-                  preview={activePreview as RecipePreview | undefined}
+                  preview={runtimePreview as RecipePreview | undefined}
                   selectedRouteId={selectedRoute?.routeQuoteId}
-                  prepared={execution.sameRecipe ? activePrepared : undefined}
+                  prepared={execution.sameRecipe ? runtimePrepared : undefined}
                   completed={execution.sameRecipe && execution.completed}
                   preparing={prepare.isPending}
                   view={inspectorView}
@@ -365,17 +488,27 @@ export function RecipeBuilderPage() {
                         run={execution.run}
                         recipe={recipe}
                         prepared={
-                          execution.sameRecipe ? activePrepared : undefined
+                          execution.sameRecipe ? runtimePrepared : undefined
                         }
                         assets={assets}
                         busy={execution.busy}
                         paused={execution.paused}
                         sameRecipe={execution.sameRecipe}
-                        canExecute={execution.canExecute}
+                        canExecute={
+                          execution.canExecute ||
+                          (execution.requiresFreshRoute &&
+                            execution.canPrepareFresh)
+                        }
+                        requiresFreshRoute={execution.requiresFreshRoute}
                         canRetrySubmission={execution.canRetrySubmission}
                         onExecute={() => void executeRecipe()}
                         onCheck={() => void execution.checkStatus()}
                         onRetry={() => void execution.retrySubmission()}
+                        onRetryFailed={(nodeId) => {
+                          editor.selectNode(nodeId);
+                          if (execution.canPrepareFresh) void executeRecipe();
+                          else previewRecipe();
+                        }}
                         onRefresh={previewRecipe}
                         onRestore={restoreExecutionRecipe}
                       />

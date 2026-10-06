@@ -10,19 +10,25 @@ import styles from "./AssetSelect.module.css";
 export function AssetSelect({
   assets,
   value,
+  selectedAsset,
+  invalid = false,
   onChange,
 }: {
   assets: AssetOption[];
   value?: Address;
+  selectedAsset?: AssetOption;
+  invalid?: boolean;
   onChange(value: Address): void;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const searchRef = useRef<HTMLInputElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
-  const selected = assets.find(
-    (asset) => asset.address.toLowerCase() === value?.toLowerCase(),
-  );
+  const selected =
+    selectedAsset ??
+    assets.find(
+      (asset) => asset.address.toLowerCase() === value?.toLowerCase(),
+    );
   const filtered = useMemo(() => {
     const term = query.trim().toLowerCase();
     return assets
@@ -68,6 +74,7 @@ export function AssetSelect({
         aria-label="Select asset"
         aria-haspopup="dialog"
         aria-expanded={open}
+        aria-invalid={invalid}
         onClick={() => setOpen(true)}
       >
         <AssetIdentity asset={selected} />

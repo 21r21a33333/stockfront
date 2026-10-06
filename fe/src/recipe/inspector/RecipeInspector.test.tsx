@@ -1,11 +1,22 @@
-import { render, screen } from "@testing-library/react";
-import type { PreparedRecipe, RecipePreview } from "@/api/generated";
+import { fireEvent, render, screen, within } from "@testing-library/react";
+import type {
+  PreparedRecipe,
+  RecipePreview,
+  RecipeTradePolicy,
+} from "@/api/generated";
 import { RecipeInspector } from "./RecipeInspector";
 import { useRecipeEditor } from "../editor/store";
 import type { AssetOption, RecipeFlowNode } from "../editor/types";
 
 const usdt = "0x55d398326f99059fF775485246999027B3197955" as const;
+const usdc = "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d" as const;
 const bstock = "0x02Fca66C1D1aFB4E2A7884261eB00F63598a7436" as const;
+const tradePolicy: RecipeTradePolicy = {
+  allowedTransitions: [
+    { sell: "SETTLEMENT_TOKENS", buy: "BSTOCKS" },
+    { sell: "BSTOCKS", buy: "SETTLEMENT_TOKENS" },
+  ],
+};
 const node: RecipeFlowNode = {
   id: "trade-1",
   type: "trade",
@@ -71,6 +82,7 @@ it("shows quote output first, then prepared minimum and actual network estimate"
   const props = {
     node,
     assets,
+    tradePolicy,
     diagnostics: [],
     preview,
     selectedRouteId: "quote-1",
@@ -115,6 +127,7 @@ it("shows the bound wallet asset and amount on a trade input", () => {
     <RecipeInspector
       node={node}
       assets={assets}
+      tradePolicy={tradePolicy}
       diagnostics={[]}
       completed={false}
       preparing={false}
@@ -128,10 +141,81 @@ it("shows the bound wallet asset and amount on a trade input", () => {
   expect(screen.getByText("6 USDT")).toBeInTheDocument();
 });
 
+it("keeps an unsupported saved choice editable and offers only compatible replacements", () => {
+  const invalidTrade: RecipeFlowNode = {
+    ...node,
+    data: { kind: "TRADE", buyToken: usdt },
+  };
+  useRecipeEditor.setState({
+    nodes: [
+      {
+        id: "wallet-1",
+        type: "walletAsset",
+        position: { x: 0, y: 0 },
+        data: { kind: "WALLET_ASSET", token: usdc, amount: "6" },
+      },
+      invalidTrade,
+    ],
+    edges: [
+      {
+        id: "edge-1",
+        type: "asset",
+        source: "wallet-1",
+        sourceHandle: "asset",
+        target: invalidTrade.id,
+        targetHandle: "sell",
+      },
+    ],
+  });
+
+  render(
+    <RecipeInspector
+      node={invalidTrade}
+      assets={[
+        ...assets,
+        {
+          address: usdc,
+          symbol: "USDC",
+          name: "USD Coin",
+          decimals: 18,
+          kind: "settlement",
+        },
+      ]}
+      tradePolicy={tradePolicy}
+      diagnostics={[]}
+      completed={false}
+      preparing={false}
+      onRouteSelect={() => {}}
+      onPrepare={() => {}}
+    />,
+  );
+
+  const selector = screen.getByRole("button", { name: "Select asset" });
+  expect(selector).toHaveAttribute("aria-invalid", "true");
+  expect(
+    screen.getByText(
+      "USDT cannot be bought with USDC. Choose a supported asset.",
+    ),
+  ).toBeVisible();
+
+  fireEvent.click(selector);
+  const dialog = screen.getByRole("dialog", { name: "Select token" });
+  expect(within(dialog).getByText("NVIDIA")).toBeVisible();
+  expect(within(dialog).queryByText("Tether USD")).not.toBeInTheDocument();
+  expect(within(dialog).queryByText("USD Coin")).not.toBeInTheDocument();
+
+  fireEvent.click(within(dialog).getByText("NVIDIA").closest("button")!);
+  const updated = useRecipeEditor
+    .getState()
+    .nodes.find((candidate) => candidate.id === invalidTrade.id);
+  expect(updated?.data).toEqual({ kind: "TRADE", buyToken: bstock });
+});
+
 it("keeps activity accessible without a selected node", () => {
   render(
     <RecipeInspector
       assets={assets}
+      tradePolicy={tradePolicy}
       diagnostics={[]}
       completed={false}
       preparing={false}
@@ -144,5 +228,41 @@ it("keeps activity accessible without a selected node", () => {
   expect(screen.getByText("Recovered order")).toBeVisible();
   expect(
     screen.queryByRole("button", { name: "Remove action" }),
+  ).not.toBeInTheDocument();
+});
+
+it.each([
+  ["WAITING_FOR_UPSTREAM", "Waiting for the previous action to settle"],
+  [
+    "OUTPUT_UNAVAILABLE",
+    "The previous action settled, but its exact output is unavailable",
+  ],
+] as const)("explains a %s dependent trade", (state, message) => {
+  render(
+    <RecipeInspector
+      node={node}
+      assets={assets}
+      tradePolicy={tradePolicy}
+      diagnostics={[]}
+      preview={{
+        nodes: [
+          {
+            kind: "TRADE",
+            nodeId: node.id,
+            state,
+            waitingFor: ["trade-0"],
+          },
+        ],
+      }}
+      completed={false}
+      preparing={false}
+      onRouteSelect={() => {}}
+      onPrepare={() => {}}
+    />,
+  );
+
+  expect(screen.getByText(message)).toBeVisible();
+  expect(
+    screen.queryByRole("button", { name: "Prepare transactions" }),
   ).not.toBeInTheDocument();
 });
