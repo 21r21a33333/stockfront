@@ -7,7 +7,8 @@ use stockfront_core::{
     bstock_borrowing::{
         BorrowCapability, BorrowCapabilityRequest, BorrowingAccount, BorrowingMarket,
         BorrowingMarketUnavailableReason, BorrowingProviderError, BorrowingReader, BorrowingToken,
-        BorrowingVenue, SupplyMarket, SupplyMarketUnavailableReason,
+        BorrowingVenue, RepaymentCapability, RepaymentCapabilityRequest, SupplyMarket,
+        SupplyMarketUnavailableReason,
     },
     bstock_market::{BNB_CHAIN_ID, BstockId},
     wallet_portfolio::WalletAddress,
@@ -159,6 +160,13 @@ impl BorrowingReader for VenusBorrowingAdapter {
         request: &BorrowCapabilityRequest,
     ) -> Result<BorrowCapability, BorrowingProviderError> {
         self.borrow_capability(request).await
+    }
+
+    async fn read_repayment_capability(
+        &self,
+        request: &RepaymentCapabilityRequest,
+    ) -> Result<RepaymentCapability, BorrowingProviderError> {
+        self.repayment_capability(request).await
     }
 
     async fn read_supply_market(

@@ -7,7 +7,7 @@ use crate::{
         BorrowCapability, BorrowCapabilityRequest, BorrowingAccount, BorrowingMarket,
         BorrowingTransactionStatus, PrepareBorrowRequest, PrepareCollateralRequest,
         PrepareRepaymentRequest, PrepareSupplyRequest, PrepareWithdrawalRequest,
-        PreparedBorrowingAction, SupplyMarket,
+        PreparedBorrowingAction, RepaymentCapability, RepaymentCapabilityRequest, SupplyMarket,
     },
     bstock_market::BstockId,
     wallet_portfolio::WalletAddress,
@@ -27,6 +27,10 @@ pub enum BorrowingProviderError {
     RepaymentApprovalRequired,
     #[error("the wallet has insufficient supplied balance")]
     InsufficientSuppliedBalance,
+    #[error("the wallet has insufficient debt-token balance")]
+    InsufficientWalletBalance,
+    #[error("the wallet has no matching debt")]
+    NoDebt,
     #[error("the borrowing transaction was not found")]
     TransactionNotFound,
 }
@@ -58,6 +62,11 @@ pub trait BorrowingActionGateway: Send + Sync {
         request: &PrepareRepaymentRequest,
     ) -> Result<PreparedBorrowingAction, BorrowingProviderError>;
 
+    async fn prepare_full_repayment(
+        &self,
+        request: &PrepareRepaymentRequest,
+    ) -> Result<PreparedBorrowingAction, BorrowingProviderError>;
+
     async fn prepare_withdrawal(
         &self,
         request: &PrepareWithdrawalRequest,
@@ -75,6 +84,11 @@ pub trait BorrowingReader: Send + Sync {
         &self,
         request: &BorrowCapabilityRequest,
     ) -> Result<BorrowCapability, BorrowingProviderError>;
+
+    async fn read_repayment_capability(
+        &self,
+        request: &RepaymentCapabilityRequest,
+    ) -> Result<RepaymentCapability, BorrowingProviderError>;
 
     async fn read_supply_market(
         &self,

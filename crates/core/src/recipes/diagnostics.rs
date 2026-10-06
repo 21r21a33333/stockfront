@@ -43,6 +43,7 @@ pub enum RecipeDiagnosticCode {
     UnsupportedWithdrawalPosition,
     UnsupportedBorrowPosition,
     UnsupportedBorrowAsset,
+    UnsupportedRepaymentPosition,
 }
 
 #[derive(utoipa::ToSchema, Clone, Debug, Eq, PartialEq, Serialize)]

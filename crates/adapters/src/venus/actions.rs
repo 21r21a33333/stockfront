@@ -12,6 +12,7 @@ use super::{
     client::VenusBorrowingAdapter,
     contracts::{IERC20, IVToken, IVenusComptroller},
     conversion::encode_units,
+    repayment::buffered_repayment,
 };
 
 #[async_trait]
@@ -162,6 +163,13 @@ impl BorrowingActionGateway for VenusBorrowingAdapter {
             .await
     }
 
+    async fn prepare_full_repayment(
+        &self,
+        request: &PrepareRepaymentRequest,
+    ) -> Result<PreparedBorrowingAction, BorrowingProviderError> {
+        self.prepare_full_repayment_action(request).await
+    }
+
     async fn prepare_withdrawal(
         &self,
         request: &PrepareWithdrawalRequest,
@@ -230,14 +238,6 @@ impl VenusBorrowingAdapter {
     }
 }
 
-fn buffered_repayment(debt: U256) -> Result<U256, BorrowingProviderError> {
-    const SCALE: u64 = 100_000;
-    debt.checked_mul(U256::from(SCALE + 1))
-        .and_then(|value| value.checked_add(U256::from(SCALE - 1)))
-        .and_then(|value| value.checked_div(U256::from(SCALE)))
-        .ok_or(BorrowingProviderError::InvalidData)
-}
-
 fn empty_action() -> PreparedBorrowingAction {
     PreparedBorrowingAction {
         transactions: Vec::new(),
@@ -277,14 +277,5 @@ mod tests {
         assert_eq!(&repay[..4], &[0x0e, 0x75, 0x27, 0x02]);
         assert_eq!(&redeem[..4], &[0xdb, 0x00, 0x6a, 0x75]);
         assert_eq!(&redeem_underlying[..4], &[0x85, 0x2a, 0x12, 0xe3]);
-    }
-
-    #[test]
-    fn full_repayment_approval_uses_the_venus_buffer() {
-        assert_eq!(
-            buffered_repayment(U256::from(1_000_000)),
-            Ok(U256::from(1_000_010))
-        );
-        assert_eq!(buffered_repayment(U256::from(1)), Ok(U256::from(2)));
     }
 }

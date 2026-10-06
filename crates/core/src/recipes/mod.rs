@@ -18,7 +18,9 @@ mod service;
 
 use compiler::compile;
 use graph::RecipeGraph;
-use plan::{AssetRef, LogicalPlan, LogicalStep, RecipeAction, SuppliedPositionRef};
+use plan::{
+    AssetRef, BorrowedPositionRef, LogicalPlan, LogicalStep, RecipeAction, SuppliedPositionRef,
+};
 
 pub use compiler::SCHEMA_VERSION;
 pub use diagnostics::{
@@ -32,7 +34,8 @@ pub use model::{
     RecipeNodeOutput, RecipeNodePreview, RecipeNodeSelection, RecipeNodeState, RecipeOptionSource,
     RecipePortDescriptor, RecipePortDirection, RecipePortFlow, RecipePortRef, RecipePortValueType,
     RecipePreview, RecipePreviewRequest, RecipePrimitive, RecipePrimitiveDescriptor,
-    RecipePrimitiveKind, RecipeSupplyPolicy, RecipeSupplyRule, RecipeTradePolicy,
-    RecipeWithdrawalPolicy, RecipeWithdrawalRule, RecipeWithdrawalUnavailableReason,
+    RecipePrimitiveKind, RecipeRepayPolicy, RecipeRepayRule, RecipeSupplyPolicy, RecipeSupplyRule,
+    RecipeTradePolicy, RecipeWithdrawalPolicy, RecipeWithdrawalRule,
+    RecipeWithdrawalUnavailableReason,
 };
 pub use service::{RecipeError, RecipeService};

@@ -15,21 +15,21 @@ use thiserror::Error;
 use uuid::Uuid;
 
 use super::{
-    AssetRef, LogicalPlan, PrepareRecipeRequest, PreparedRecipe, PreparedRecipeStep, RecipeAction,
-    RecipeAssetTransition, RecipeBorrowPolicy, RecipeBorrowRule, RecipeCatalog,
-    RecipeCompletedNode, RecipeDefinition, RecipeDiagnostic, RecipeDiagnosticCode,
+    AssetRef, BorrowedPositionRef, LogicalPlan, PrepareRecipeRequest, PreparedRecipe,
+    PreparedRecipeStep, RecipeAction, RecipeAssetTransition, RecipeBorrowPolicy, RecipeBorrowRule,
+    RecipeCatalog, RecipeCompletedNode, RecipeDefinition, RecipeDiagnostic, RecipeDiagnosticCode,
     RecipeDiagnosticLocation, RecipeNodePreview, RecipeNodeSelection, RecipeNodeState,
     RecipeOptionSource, RecipePreview, RecipePreviewRequest, RecipePrimitiveKind,
-    RecipeSupplyPolicy, RecipeSupplyRule, RecipeTradePolicy, RecipeValidationReport,
-    RecipeWithdrawalPolicy, RecipeWithdrawalRule, RecipeWithdrawalUnavailableReason,
-    SCHEMA_VERSION, SuppliedPositionRef, compile,
+    RecipeRepayPolicy, RecipeRepayRule, RecipeSupplyPolicy, RecipeSupplyRule, RecipeTradePolicy,
+    RecipeValidationReport, RecipeWithdrawalPolicy, RecipeWithdrawalRule,
+    RecipeWithdrawalUnavailableReason, SCHEMA_VERSION, SuppliedPositionRef, compile,
 };
 use crate::{
     bstock_borrowing::{
         BorrowCapability, BorrowStage, BorrowingAsset, BorrowingProviderError, BorrowingService,
         BorrowingServiceError, BorrowingTransactionKind, BorrowingVenue, PositionAmount,
-        PrepareBorrowRequest, PrepareCollateralRequest, PrepareSupplyRequest,
-        PrepareWithdrawalRequest,
+        PrepareBorrowRequest, PrepareCollateralRequest, PrepareRepaymentRequest,
+        PrepareSupplyRequest, PrepareWithdrawalRequest, RepaymentCapability,
     },
     bstock_market::{BstockMarketError, BstockMarketService, ListBstocksQuery, MAX_LIST_LIMIT},
     bstock_trade::{
@@ -64,6 +64,7 @@ pub struct RecipeService {
     settlement_tokens: Vec<Address>,
     withdrawal_policy: RecipeWithdrawalPolicy,
     borrow_policy: RecipeBorrowPolicy,
+    repay_policy: RecipeRepayPolicy,
 }
 
 impl RecipeService {
@@ -88,6 +89,14 @@ impl RecipeService {
             debt_tokens: borrowing.supported_debt_tokens().to_vec(),
             minimum_health_factor: borrowing.minimum_health_factor(),
         };
+        let repay_policy = RecipeRepayPolicy {
+            allowed_inputs: vec![RecipeRepayRule {
+                venue: BorrowingVenue::Venus,
+                pool: withdrawal_pool,
+                input: RecipeOptionSource::BorrowedPositions,
+            }],
+            debt_tokens: borrowing.supported_debt_tokens().to_vec(),
+        };
         Self {
             market,
             trade,
@@ -97,6 +106,7 @@ impl RecipeService {
                 allowed_inputs: vec![borrowing_pool_rule],
             },
             borrow_policy,
+            repay_policy,
         }
     }
 
@@ -141,6 +151,7 @@ impl RecipeService {
             },
             withdrawal_policy: self.withdrawal_policy.clone(),
             borrow_policy: self.borrow_policy.clone(),
+            repay_policy: self.repay_policy.clone(),
         })
     }
 
@@ -155,6 +166,7 @@ impl RecipeService {
             &self.settlement_tokens,
             &self.withdrawal_policy,
             &self.borrow_policy,
+            &self.repay_policy,
         )
     }
 
@@ -178,6 +190,7 @@ impl RecipeService {
             &self.settlement_tokens,
             &self.withdrawal_policy,
             &self.borrow_policy,
+            &self.repay_policy,
         )?;
         let completed = validate_completed_context(&plan, &request.context.completed_nodes)?;
         let mut nodes = Vec::with_capacity(plan.steps.len());
@@ -212,6 +225,10 @@ impl RecipeService {
                         request.context.wallet,
                     )
                     .await?
+                }
+                RecipeAction::Repay { debt } => {
+                    self.preview_repayment(step.node_id, *debt, request.context.wallet)
+                        .await?
                 }
             };
             nodes.push(preview);
@@ -353,6 +370,29 @@ impl RecipeService {
         })
     }
 
+    async fn preview_repayment(
+        &self,
+        node_id: Uuid,
+        debt: BorrowedPositionRef,
+        wallet: WalletAddress,
+    ) -> Result<RecipeNodePreview, RecipeError> {
+        let capability = self
+            .borrowing
+            .repayment_capability(wallet, debt.pool, debt.token)
+            .await?;
+        let state = if capability.unavailable_reasons.is_empty() {
+            RecipeNodeState::Ready
+        } else {
+            RecipeNodeState::Unavailable
+        };
+        Ok(RecipeNodePreview::Repay {
+            node_id,
+            state,
+            capability: Some(capability),
+            waiting_for: Vec::new(),
+        })
+    }
+
     /// Resolves selected preview routes into wallet actions.
     ///
     /// # Errors
@@ -369,6 +409,7 @@ impl RecipeService {
             &self.settlement_tokens,
             &self.withdrawal_policy,
             &self.borrow_policy,
+            &self.repay_policy,
         )?;
         let completed = validate_completed_context(&plan, &request.context.completed_nodes)?;
         let ready = self
@@ -437,6 +478,16 @@ impl RecipeService {
                         .await?,
                     );
                 }
+                (RecipeAction::Repay { .. }, ReadyInput::Repay(capability)) => {
+                    prepared.push(
+                        self.prepare_repayment_step(
+                            step.node_id,
+                            *capability,
+                            request.context.wallet,
+                        )
+                        .await?,
+                    );
+                }
                 _ => return Err(RecipeError::InvalidContext),
             }
         }
@@ -484,6 +535,15 @@ impl RecipeService {
                         .await?;
                     if capability.unavailable_reasons.is_empty() {
                         ready.push((step, ReadyInput::Borrow(Box::new(capability), *collateral)));
+                    }
+                }
+                RecipeAction::Repay { debt } => {
+                    let capability = self
+                        .borrowing
+                        .repayment_capability(wallet, debt.pool, debt.token)
+                        .await?;
+                    if capability.unavailable_reasons.is_empty() {
+                        ready.push((step, ReadyInput::Repay(Box::new(capability))));
                     }
                 }
             }
@@ -653,6 +713,37 @@ impl RecipeService {
         Ok(PreparedRecipeStep::Withdraw { node_id, action })
     }
 
+    async fn prepare_repayment_step(
+        &self,
+        node_id: Uuid,
+        capability: RepaymentCapability,
+        wallet: WalletAddress,
+    ) -> Result<PreparedRecipeStep, RecipeError> {
+        let action = self
+            .borrowing
+            .prepare_full_repayment(&PrepareRepaymentRequest {
+                wallet,
+                debt_token: capability.debt.contract,
+                amount: PositionAmount::Full,
+            })
+            .await?;
+        let kinds = action
+            .transactions
+            .iter()
+            .map(|transaction| transaction.kind)
+            .collect::<Vec<_>>();
+        if kinds != [BorrowingTransactionKind::Repay]
+            && kinds
+                != [
+                    BorrowingTransactionKind::Approve,
+                    BorrowingTransactionKind::Repay,
+                ]
+        {
+            return Err(invalid_provider_data());
+        }
+        Ok(PreparedRecipeStep::Repay { node_id, action })
+    }
+
     async fn resolve_withdrawal(
         &self,
         wallet: WalletAddress,
@@ -737,6 +828,12 @@ fn completed_preview(step: &super::LogicalStep) -> RecipeNodePreview {
             capability: None,
             waiting_for: Vec::new(),
         },
+        RecipeAction::Repay { .. } => RecipeNodePreview::Repay {
+            node_id: step.node_id,
+            state: RecipeNodeState::Complete,
+            capability: None,
+            waiting_for: Vec::new(),
+        },
     }
 }
 
@@ -773,6 +870,7 @@ enum ReadyInput {
     Asset(TokenAmount),
     Withdrawal(BorrowingAsset),
     Borrow(Box<BorrowCapability>, SuppliedPositionRef),
+    Repay(Box<RepaymentCapability>),
 }
 
 enum ResolvedWithdrawal {
@@ -839,12 +937,16 @@ fn validate_completed_context<'a>(
                     output_seen = true;
                 }
             }
-            RecipeAction::Supply { .. } | RecipeAction::Withdraw { .. }
+            RecipeAction::Supply { .. }
+            | RecipeAction::Withdraw { .. }
+            | RecipeAction::Repay { .. }
                 if !node.outputs.is_empty() =>
             {
                 return Err(RecipeError::InvalidContext);
             }
-            RecipeAction::Supply { .. } | RecipeAction::Withdraw { .. } => {}
+            RecipeAction::Supply { .. }
+            | RecipeAction::Withdraw { .. }
+            | RecipeAction::Repay { .. } => {}
             RecipeAction::Borrow {
                 debt_token,
                 raw_amount,
@@ -875,7 +977,9 @@ fn validate_completed_context<'a>(
         let input = match &step.action {
             RecipeAction::Trade { sell, .. } => sell,
             RecipeAction::Supply { asset, .. } => asset,
-            RecipeAction::Withdraw { .. } | RecipeAction::Borrow { .. } => continue,
+            RecipeAction::Withdraw { .. }
+            | RecipeAction::Borrow { .. }
+            | RecipeAction::Repay { .. } => continue,
         };
         if let AssetRef::NodeOutput { node_id, port, .. } = input {
             let dependency = completed.get(node_id).ok_or(RecipeError::InvalidContext)?;
@@ -894,6 +998,7 @@ fn compile_plan(
     settlement_tokens: &[Address],
     withdrawal_policy: &RecipeWithdrawalPolicy,
     borrow_policy: &RecipeBorrowPolicy,
+    repay_policy: &RecipeRepayPolicy,
 ) -> Result<LogicalPlan, RecipeError> {
     let compiled = compile(recipe);
     match compiled.plan {
@@ -905,6 +1010,7 @@ fn compile_plan(
                 settlement_tokens,
                 withdrawal_policy,
                 borrow_policy,
+                repay_policy,
             );
             if report.valid {
                 Ok(plan)
@@ -923,6 +1029,7 @@ fn validate_action_policy(
     settlement_tokens: &[Address],
     withdrawal_policy: &RecipeWithdrawalPolicy,
     borrow_policy: &RecipeBorrowPolicy,
+    repay_policy: &RecipeRepayPolicy,
 ) -> RecipeValidationReport {
     let Some(plan) = plan else {
         return report;
@@ -1014,9 +1121,37 @@ fn validate_action_policy(
                     ));
                 }
             }
+            RecipeAction::Repay { debt } => {
+                if let Some(diagnostic) = validate_repay_policy(step.node_id, *debt, repay_policy) {
+                    report.diagnostics.push(diagnostic);
+                }
+            }
         }
     }
     RecipeValidationReport::new(report.diagnostics)
+}
+
+fn validate_repay_policy(
+    node_id: Uuid,
+    debt: BorrowedPositionRef,
+    policy: &RecipeRepayPolicy,
+) -> Option<RecipeDiagnostic> {
+    let supported_position = policy.allowed_inputs.iter().any(|rule| {
+        rule.venue == debt.venue
+            && rule.pool == debt.pool
+            && rule.input == RecipeOptionSource::BorrowedPositions
+    });
+    if supported_position && policy.debt_tokens.contains(&debt.token) {
+        return None;
+    }
+    Some(RecipeDiagnostic::error(
+        RecipeDiagnosticCode::UnsupportedRepaymentPosition,
+        RecipeDiagnosticLocation::Port {
+            node_id,
+            port: "debt".to_owned(),
+        },
+        "repay accepts only configured Venus debt positions",
+    ))
 }
 
 fn asset_token(asset: &AssetRef) -> Address {
@@ -1054,7 +1189,8 @@ mod tests {
             BorrowingTransactionState, BorrowingTransactionStatus, PositionAmount,
             PrepareBorrowRequest, PrepareCollateralRequest, PrepareRepaymentRequest,
             PrepareWithdrawalRequest, PreparedBorrowingAction, PreparedBorrowingTransaction,
-            SupplyMarket, SupplyMarketUnavailableReason,
+            RepaymentCapabilityRequest, RepaymentCapabilityUnavailableReason, SupplyMarket,
+            SupplyMarketUnavailableReason,
         },
         bstock_market::{
             AssetKind, BNB_CHAIN_ID, BstockCatalog, BstockDetails, BstockId, BstockSummary,
@@ -1080,6 +1216,8 @@ mod tests {
     const POSITION_ID: Uuid = Uuid::from_u128(8);
     const WITHDRAW_ID: Uuid = Uuid::from_u128(9);
     const BORROW_ID: Uuid = Uuid::from_u128(10);
+    const DEBT_ID: Uuid = Uuid::from_u128(11);
+    const REPAY_ID: Uuid = Uuid::from_u128(12);
     const SETTLEMENT: Address = Address::with_last_byte(1);
     const BSTOCK: Address = Address::with_last_byte(2);
     const WRONG_TOKEN: Address = Address::with_last_byte(3);
@@ -1252,6 +1390,38 @@ mod tests {
             })
         }
 
+        async fn read_repayment_capability(
+            &self,
+            request: &RepaymentCapabilityRequest,
+        ) -> Result<RepaymentCapability, BorrowingProviderError> {
+            let unfunded_wallet = WalletAddress::try_from(Address::with_last_byte(99))
+                .unwrap_or_else(|error| panic!("test wallet rejected: {error}"));
+            let funded = request.wallet != unfunded_wallet;
+            Ok(RepaymentCapability {
+                venue: BorrowingVenue::Venus,
+                chain_id: BNB_CHAIN_ID,
+                pool: request.pool,
+                debt: BorrowingToken {
+                    contract: request.debt_token,
+                    symbol: "USDT".to_owned(),
+                },
+                debt_amount: Decimal::new(3, 0),
+                wallet_balance: if funded {
+                    Decimal::new(4, 0)
+                } else {
+                    Decimal::new(2, 0)
+                },
+                approval_amount: Decimal::new(31, 1),
+                approval_required: true,
+                unavailable_reasons: if funded {
+                    Vec::new()
+                } else {
+                    vec![RepaymentCapabilityUnavailableReason::InsufficientWalletBalance]
+                },
+                observed_at_ms: 1,
+            })
+        }
+
         async fn read_supply_market(
             &self,
             token: Address,
@@ -1356,6 +1526,20 @@ mod tests {
             unreachable!("repayment preparation is not used by recipes")
         }
 
+        async fn prepare_full_repayment(
+            &self,
+            request: &PrepareRepaymentRequest,
+        ) -> Result<PreparedBorrowingAction, BorrowingProviderError> {
+            assert_eq!(request.amount, PositionAmount::Full);
+            Ok(PreparedBorrowingAction {
+                transactions: vec![
+                    borrowing_transaction(BorrowingTransactionKind::Approve),
+                    borrowing_transaction(BorrowingTransactionKind::Repay),
+                ],
+                preview: BorrowingPreview::default(),
+            })
+        }
+
         async fn prepare_withdrawal(
             &self,
             _request: &PrepareWithdrawalRequest,
@@ -1395,6 +1579,13 @@ mod tests {
             &self,
             _request: &BorrowCapabilityRequest,
         ) -> Result<BorrowCapability, BorrowingProviderError> {
+            Err(BorrowingProviderError::Unavailable)
+        }
+
+        async fn read_repayment_capability(
+            &self,
+            _request: &RepaymentCapabilityRequest,
+        ) -> Result<RepaymentCapability, BorrowingProviderError> {
             Err(BorrowingProviderError::Unavailable)
         }
 
@@ -1472,6 +1663,13 @@ mod tests {
             unreachable!("repayment preparation is not used by withdrawal recipes")
         }
 
+        async fn prepare_full_repayment(
+            &self,
+            _request: &PrepareRepaymentRequest,
+        ) -> Result<PreparedBorrowingAction, BorrowingProviderError> {
+            unreachable!("full repayment preparation is not used by withdrawal recipes")
+        }
+
         async fn prepare_withdrawal(
             &self,
             request: &PrepareWithdrawalRequest,
@@ -1535,6 +1733,15 @@ mod tests {
             }]
         );
         assert_eq!(catalog.borrow_policy.debt_tokens, vec![SETTLEMENT]);
+        assert_eq!(catalog.repay_policy.debt_tokens, vec![SETTLEMENT]);
+        assert_eq!(
+            catalog.repay_policy.allowed_inputs,
+            vec![RecipeRepayRule {
+                venue: BorrowingVenue::Venus,
+                pool: POOL,
+                input: RecipeOptionSource::BorrowedPositions,
+            }]
+        );
         assert_eq!(
             catalog.borrow_policy.minimum_health_factor,
             Decimal::new(15, 1)
@@ -1602,6 +1809,83 @@ mod tests {
                 if *node_id == BORROW_ID
                     && action.transactions.len() == 1
                     && action.transactions[0].kind == BorrowingTransactionKind::EnableCollateral
+        ));
+    }
+
+    #[tokio::test]
+    async fn repayment_preview_reports_an_unfunded_debt_position() {
+        let (service, _) = service();
+        let wallet = WalletAddress::try_from(Address::with_last_byte(99))
+            .unwrap_or_else(|error| panic!("test wallet is invalid: {error}"));
+        let preview = service
+            .preview(&RecipePreviewRequest {
+                recipe: repayment_recipe(POOL, SETTLEMENT),
+                context: RecipeContext {
+                    wallet,
+                    completed_nodes: Vec::new(),
+                },
+            })
+            .await
+            .unwrap_or_else(|error| panic!("repayment preview failed: {error}"));
+
+        assert!(matches!(
+            preview.nodes.as_slice(),
+            [RecipeNodePreview::Repay {
+                node_id,
+                state: RecipeNodeState::Unavailable,
+                capability: Some(RepaymentCapability {
+                    unavailable_reasons,
+                    ..
+                }),
+                ..
+            }] if *node_id == REPAY_ID
+                && unavailable_reasons == &[RepaymentCapabilityUnavailableReason::InsufficientWalletBalance]
+        ));
+    }
+
+    #[tokio::test]
+    async fn repayment_prepare_preserves_approve_then_repay_order() {
+        let (service, _) = service();
+        let prepared = service
+            .prepare(&PrepareRecipeRequest {
+                recipe: repayment_recipe(POOL, SETTLEMENT),
+                context: context(Vec::new()),
+                selections: Vec::new(),
+            })
+            .await
+            .unwrap_or_else(|error| panic!("repayment preparation failed: {error}"));
+
+        assert!(matches!(
+            prepared.steps.as_slice(),
+            [PreparedRecipeStep::Repay { node_id, action }]
+                if *node_id == REPAY_ID
+                    && action.transactions.iter().map(|transaction| transaction.kind).collect::<Vec<_>>()
+                        == [BorrowingTransactionKind::Approve, BorrowingTransactionKind::Repay]
+        ));
+    }
+
+    #[tokio::test]
+    async fn completed_repayment_rejects_runtime_outputs() {
+        let (service, _) = service();
+        let completed = RecipeCompletedNode {
+            node_id: REPAY_ID,
+            outputs: vec![RecipeNodeOutput {
+                port: "unexpected".to_owned(),
+                asset: TokenAmount {
+                    token: SETTLEMENT,
+                    amount: U256::ONE,
+                },
+            }],
+        };
+
+        assert!(matches!(
+            service
+                .preview(&RecipePreviewRequest {
+                    recipe: repayment_recipe(POOL, SETTLEMENT),
+                    context: context(vec![completed]),
+                })
+                .await,
+            Err(RecipeError::InvalidContext)
         ));
     }
 
@@ -1855,7 +2139,8 @@ mod tests {
             PreparedRecipeStep::Supply { .. }
             | PreparedRecipeStep::Withdraw { .. }
             | PreparedRecipeStep::EnableCollateral { .. }
-            | PreparedRecipeStep::Borrow { .. } => false,
+            | PreparedRecipeStep::Borrow { .. }
+            | PreparedRecipeStep::Repay { .. } => false,
         }));
         assert_eq!(
             gateway.prepared(),
@@ -2198,6 +2483,38 @@ mod tests {
         }
     }
 
+    fn repayment_recipe(pool: Address, token: Address) -> RecipeDefinition {
+        RecipeDefinition {
+            schema_version: SCHEMA_VERSION,
+            chain_id: BNB_CHAIN_ID,
+            nodes: vec![
+                RecipeNode {
+                    id: DEBT_ID,
+                    primitive: RecipePrimitive::BorrowedPosition {
+                        venue: BorrowingVenue::Venus,
+                        pool,
+                        token,
+                    },
+                },
+                RecipeNode {
+                    id: REPAY_ID,
+                    primitive: RecipePrimitive::Repay,
+                },
+            ],
+            edges: vec![RecipeEdge {
+                id: Uuid::from_u128(13),
+                from: RecipePortRef {
+                    node_id: DEBT_ID,
+                    port: "debt".to_owned(),
+                },
+                to: RecipePortRef {
+                    node_id: REPAY_ID,
+                    port: "debt".to_owned(),
+                },
+            }],
+        }
+    }
+
     fn withdrawal_account(has_position: bool, total_borrowed_usd: Decimal) -> BorrowingAccount {
         let supplied = has_position
             .then_some(BorrowingAsset {
@@ -2237,7 +2554,8 @@ mod tests {
                 RecipeNodePreview::Trade { state, .. }
                 | RecipeNodePreview::Supply { state, .. }
                 | RecipeNodePreview::Withdraw { state, .. }
-                | RecipeNodePreview::Borrow { state, .. } => *state,
+                | RecipeNodePreview::Borrow { state, .. }
+                | RecipeNodePreview::Repay { state, .. } => *state,
             })
             .collect()
     }
@@ -2247,6 +2565,19 @@ mod tests {
             sell_token: request.sell_token,
             buy_token: request.buy_token,
             sell_amount: request.sell_amount,
+        }
+    }
+
+    fn borrowing_transaction(kind: BorrowingTransactionKind) -> PreparedBorrowingTransaction {
+        PreparedBorrowingTransaction {
+            kind,
+            to: Address::with_last_byte(7),
+            data: Bytes::new(),
+            value: U256::ZERO,
+            gas_limit: None,
+            gas_price: None,
+            max_priority_fee_per_gas: None,
+            max_fee_per_gas: None,
         }
     }
 

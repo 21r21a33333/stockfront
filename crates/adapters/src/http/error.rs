@@ -201,6 +201,16 @@ impl ApiError {
         "insufficient_supplied_balance",
         "the wallet has insufficient supplied balance",
     );
+    const INSUFFICIENT_REPAYMENT_BALANCE: Self = Self::fixed(
+        StatusCode::UNPROCESSABLE_ENTITY,
+        "insufficient_repayment_balance",
+        "the wallet has insufficient balance to repay the current debt",
+    );
+    const REPAYMENT_DEBT_NOT_FOUND: Self = Self::fixed(
+        StatusCode::NOT_FOUND,
+        "repayment_debt_not_found",
+        "the wallet has no matching debt to repay",
+    );
     const CARRY_OPPORTUNITIES_UNAVAILABLE: Self = Self::fixed(
         StatusCode::SERVICE_UNAVAILABLE,
         "carry_opportunities_unavailable",
@@ -614,6 +624,10 @@ impl From<BorrowingProviderError> for ApiError {
             BorrowingProviderError::InsufficientSuppliedBalance => {
                 Self::INSUFFICIENT_SUPPLIED_BALANCE
             }
+            BorrowingProviderError::InsufficientWalletBalance => {
+                Self::INSUFFICIENT_REPAYMENT_BALANCE
+            }
+            BorrowingProviderError::NoDebt => Self::REPAYMENT_DEBT_NOT_FOUND,
         }
     }
 }

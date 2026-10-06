@@ -10,7 +10,7 @@ use crate::{
         BorrowingMarket, BorrowingMarketQuery, BorrowingProviderError, BorrowingReader,
         BorrowingTransactionStatus, PositionAmount, PrepareBorrowRequest, PrepareCollateralRequest,
         PrepareRepaymentRequest, PrepareSupplyRequest, PrepareWithdrawalRequest,
-        PreparedBorrowingAction, SupplyMarket,
+        PreparedBorrowingAction, RepaymentCapability, RepaymentCapabilityRequest, SupplyMarket,
     },
     bstock_market::{BNB_CHAIN_ID, BstockCatalog, BstockId, CatalogError},
     wallet_portfolio::WalletAddress,
@@ -139,6 +139,31 @@ impl BorrowingService {
                 debt_token,
                 raw_amount,
                 minimum_health_factor: minimum_borrow_health_factor(),
+            })
+            .await
+            .map_err(Into::into)
+    }
+
+    /// Returns current wallet funding and approval readiness for a full debt repayment.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`BorrowingServiceError`] when the debt token is unsupported or
+    /// live Venus state cannot be read safely.
+    pub async fn repayment_capability(
+        &self,
+        wallet: WalletAddress,
+        pool: Address,
+        debt_token: Address,
+    ) -> Result<RepaymentCapability, BorrowingServiceError> {
+        if !self.policy.debt_tokens.contains(&debt_token) {
+            return Err(BorrowingServiceError::UnsupportedDebtToken);
+        }
+        self.reader
+            .read_repayment_capability(&RepaymentCapabilityRequest {
+                wallet,
+                pool,
+                debt_token,
             })
             .await
             .map_err(Into::into)
@@ -316,6 +341,28 @@ impl BorrowingService {
             .map_err(Into::into)
     }
 
+    /// Returns one ordered atomic plan for approving and fully repaying Venus debt.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`BorrowingServiceError`] when the request is not full repayment,
+    /// the debt token is unsupported, or refreshed wallet state cannot fund it.
+    pub async fn prepare_full_repayment(
+        &self,
+        request: &PrepareRepaymentRequest,
+    ) -> Result<PreparedBorrowingAction, BorrowingServiceError> {
+        if request.amount != PositionAmount::Full {
+            return Err(BorrowingServiceError::InvalidRepaymentAmount);
+        }
+        if !self.policy.debt_tokens.contains(&request.debt_token) {
+            return Err(BorrowingServiceError::UnsupportedDebtToken);
+        }
+        self.action_gateway
+            .prepare_full_repayment(request)
+            .await
+            .map_err(Into::into)
+    }
+
     /// Returns an unsigned Venus transaction for withdrawing supplied bStock.
     ///
     /// # Errors
@@ -429,6 +476,13 @@ mod tests {
             Err(BorrowingProviderError::Unavailable)
         }
 
+        async fn read_repayment_capability(
+            &self,
+            _request: &RepaymentCapabilityRequest,
+        ) -> Result<RepaymentCapability, BorrowingProviderError> {
+            Err(BorrowingProviderError::Unavailable)
+        }
+
         async fn read_supply_market(
             &self,
             _token: Address,
@@ -518,6 +572,17 @@ mod tests {
         }
 
         async fn prepare_repayment(
+            &self,
+            request: &PrepareRepaymentRequest,
+        ) -> Result<PreparedBorrowingAction, BorrowingProviderError> {
+            assert_eq!(request.debt_token, Address::with_last_byte(2));
+            Ok(PreparedBorrowingAction {
+                transactions: Vec::new(),
+                preview: BorrowingPreview::default(),
+            })
+        }
+
+        async fn prepare_full_repayment(
             &self,
             request: &PrepareRepaymentRequest,
         ) -> Result<PreparedBorrowingAction, BorrowingProviderError> {
@@ -729,6 +794,18 @@ mod tests {
         );
         assert_eq!(
             service
+                .prepare_full_repayment(&PrepareRepaymentRequest {
+                    wallet,
+                    debt_token: Address::with_last_byte(2),
+                    amount: PositionAmount::Exact {
+                        value: Decimal::ONE,
+                    },
+                })
+                .await,
+            Err(BorrowingServiceError::InvalidRepaymentAmount)
+        );
+        assert_eq!(
+            service
                 .prepare_withdrawal(&PrepareWithdrawalRequest {
                     wallet,
                     collateral_token: Address::with_last_byte(9),
@@ -761,6 +838,14 @@ mod tests {
             })
             .await
             .unwrap_or_else(|error| panic!("supported repayment rejected: {error}"));
+        let full_repayment = service
+            .prepare_full_repayment(&PrepareRepaymentRequest {
+                wallet,
+                debt_token: Address::with_last_byte(2),
+                amount: PositionAmount::Full,
+            })
+            .await
+            .unwrap_or_else(|error| panic!("supported full repayment rejected: {error}"));
         let withdrawal = service
             .prepare_withdrawal(&PrepareWithdrawalRequest {
                 wallet,
@@ -772,6 +857,7 @@ mod tests {
 
         assert!(approval.transactions.is_empty());
         assert!(repayment.transactions.is_empty());
+        assert!(full_repayment.transactions.is_empty());
         assert!(withdrawal.transactions.is_empty());
     }
 

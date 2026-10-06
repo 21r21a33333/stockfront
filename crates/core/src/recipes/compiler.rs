@@ -19,8 +19,8 @@ use std::collections::HashMap;
 use uuid::Uuid;
 
 use super::{
-    AssetRef, LogicalPlan, LogicalStep, RecipeAction, RecipeDefinition, RecipeDiagnostic,
-    RecipeDiagnosticCode, RecipeDiagnosticLocation, RecipeGraph, RecipePrimitive,
+    AssetRef, BorrowedPositionRef, LogicalPlan, LogicalStep, RecipeAction, RecipeDefinition,
+    RecipeDiagnostic, RecipeDiagnosticCode, RecipeDiagnosticLocation, RecipeGraph, RecipePrimitive,
     RecipeValidationReport, SuppliedPositionRef,
 };
 use crate::bstock_market::BNB_CHAIN_ID;
@@ -111,6 +111,7 @@ fn validate_node_fields(recipe: &RecipeDefinition, diagnostics: &mut Vec<RecipeD
 fn lower(graph: &RecipeGraph<'_>) -> Result<LogicalPlan, RecipeDiagnostic> {
     let mut values = HashMap::<(Uuid, String), AssetRef>::new();
     let mut positions = HashMap::<(Uuid, String), SuppliedPositionRef>::new();
+    let mut debts = HashMap::<(Uuid, String), BorrowedPositionRef>::new();
     let mut steps = Vec::new();
 
     for node_id in graph.topological_order() {
@@ -128,14 +129,10 @@ fn lower(graph: &RecipeGraph<'_>) -> Result<LogicalPlan, RecipeDiagnostic> {
                 );
             }
             RecipePrimitive::SuppliedPosition { venue, pool, token } => {
-                positions.insert(
-                    (node_id, "position".to_owned()),
-                    SuppliedPositionRef {
-                        venue: *venue,
-                        pool: *pool,
-                        token: *token,
-                    },
-                );
+                register_supplied_position(&mut positions, node_id, *venue, *pool, *token);
+            }
+            RecipePrimitive::BorrowedPosition { venue, pool, token } => {
+                register_borrowed_position(&mut debts, node_id, *venue, *pool, *token);
             }
             RecipePrimitive::Trade { buy_token } => {
                 let (sell, dependency) = input_asset(
@@ -202,9 +199,43 @@ fn lower(graph: &RecipeGraph<'_>) -> Result<LogicalPlan, RecipeDiagnostic> {
                 steps.push(step);
                 values.insert((node_id, "borrowed".to_owned()), output);
             }
+            RecipePrimitive::Repay => {
+                let debt = input_debt(graph, &debts, node_id)?;
+                steps.push(LogicalStep {
+                    node_id,
+                    dependencies: Vec::new(),
+                    action: RecipeAction::Repay { debt },
+                });
+            }
         }
     }
     Ok(LogicalPlan { steps })
+}
+
+fn register_supplied_position(
+    positions: &mut HashMap<(Uuid, String), SuppliedPositionRef>,
+    node_id: Uuid,
+    venue: crate::bstock_borrowing::BorrowingVenue,
+    pool: alloy_primitives::Address,
+    token: alloy_primitives::Address,
+) {
+    positions.insert(
+        (node_id, "position".to_owned()),
+        SuppliedPositionRef { venue, pool, token },
+    );
+}
+
+fn register_borrowed_position(
+    debts: &mut HashMap<(Uuid, String), BorrowedPositionRef>,
+    node_id: Uuid,
+    venue: crate::bstock_borrowing::BorrowingVenue,
+    pool: alloy_primitives::Address,
+    token: alloy_primitives::Address,
+) {
+    debts.insert(
+        (node_id, "debt".to_owned()),
+        BorrowedPositionRef { venue, pool, token },
+    );
 }
 
 fn lower_borrow(
@@ -279,6 +310,24 @@ fn input_position_on(
     })
 }
 
+fn input_debt(
+    graph: &RecipeGraph<'_>,
+    debts: &HashMap<(Uuid, String), BorrowedPositionRef>,
+    node_id: Uuid,
+) -> Result<BorrowedPositionRef, RecipeDiagnostic> {
+    let edge = graph
+        .incoming(node_id, "debt")
+        .ok_or_else(|| missing_input(node_id, "debt"))?;
+    let source_key = (edge.edge.from.node_id, edge.edge.from.port.clone());
+    debts.get(&source_key).copied().ok_or_else(|| {
+        unavailable_input(
+            node_id,
+            "debt",
+            "the borrowed position is not available before this step",
+        )
+    })
+}
+
 fn unavailable_input(node_id: Uuid, port: &str, message: &'static str) -> RecipeDiagnostic {
     RecipeDiagnostic::error(
         RecipeDiagnosticCode::MissingRequiredInput,
@@ -315,6 +364,8 @@ mod tests {
     const POSITION_ID: Uuid = Uuid::from_u128(8);
     const WITHDRAW_ID: Uuid = Uuid::from_u128(9);
     const BORROW_ID: Uuid = Uuid::from_u128(12);
+    const DEBT_ID: Uuid = Uuid::from_u128(13);
+    const REPAY_ID: Uuid = Uuid::from_u128(14);
 
     #[test]
     fn compiles_wallet_asset_trade_into_a_logical_plan() {
@@ -548,6 +599,73 @@ mod tests {
                 debt_token: debt,
                 raw_amount: amount,
             }
+        );
+    }
+
+    #[test]
+    fn compiles_only_a_borrowed_position_into_repayment() {
+        let pool = Address::with_last_byte(8);
+        let debt = Address::with_last_byte(10);
+        let mut recipe = RecipeDefinition {
+            schema_version: SCHEMA_VERSION,
+            chain_id: BNB_CHAIN_ID,
+            nodes: vec![
+                RecipeNode {
+                    id: DEBT_ID,
+                    primitive: RecipePrimitive::BorrowedPosition {
+                        venue: BorrowingVenue::Venus,
+                        pool,
+                        token: debt,
+                    },
+                },
+                RecipeNode {
+                    id: REPAY_ID,
+                    primitive: RecipePrimitive::Repay,
+                },
+            ],
+            edges: vec![RecipeEdge {
+                id: Uuid::from_u128(15),
+                from: RecipePortRef {
+                    node_id: DEBT_ID,
+                    port: "debt".to_owned(),
+                },
+                to: RecipePortRef {
+                    node_id: REPAY_ID,
+                    port: "debt".to_owned(),
+                },
+            }],
+        };
+
+        let compiled = compile(&recipe);
+        let plan = compiled
+            .plan
+            .unwrap_or_else(|| panic!("valid repayment recipe did not produce a plan"));
+        assert!(compiled.report.valid);
+        assert_eq!(
+            plan.steps[0].action,
+            RecipeAction::Repay {
+                debt: BorrowedPositionRef {
+                    venue: BorrowingVenue::Venus,
+                    pool,
+                    token: debt,
+                },
+            }
+        );
+
+        recipe.nodes[0].primitive = RecipePrimitive::SuppliedPosition {
+            venue: BorrowingVenue::Venus,
+            pool,
+            token: debt,
+        };
+        recipe.edges[0].from.port = "position".to_owned();
+        let rejected = compile(&recipe);
+        assert!(rejected.plan.is_none());
+        assert!(
+            rejected
+                .report
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == RecipeDiagnosticCode::PortTypeMismatch)
         );
     }
 

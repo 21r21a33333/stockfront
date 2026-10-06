@@ -73,7 +73,8 @@ use uuid::Uuid;
 
 use crate::{
     bstock_borrowing::{
-        BorrowCapability, BorrowingAsset, BorrowingVenue, PreparedBorrowingAction, SupplyMarket,
+        BorrowCapability, BorrowingAsset, BorrowingVenue, PreparedBorrowingAction,
+        RepaymentCapability, SupplyMarket,
     },
     bstock_market::BstockSummary,
     bstock_trade::{PreparedApproval, PreparedTrade, TokenAmount, TradeQuote},
@@ -86,20 +87,24 @@ use crate::{
 pub enum RecipePrimitiveKind {
     WalletAsset,
     SuppliedPosition,
+    BorrowedPosition,
     Trade,
     Supply,
     Withdraw,
     Borrow,
+    Repay,
 }
 
 impl RecipePrimitiveKind {
-    pub(super) const ALL: [Self; 6] = [
+    pub(super) const ALL: [Self; 8] = [
         Self::WalletAsset,
         Self::SuppliedPosition,
+        Self::BorrowedPosition,
         Self::Trade,
         Self::Supply,
         Self::Withdraw,
         Self::Borrow,
+        Self::Repay,
     ];
 }
 
@@ -118,6 +123,7 @@ pub enum RecipeOptionSource {
     SettlementTokens,
     Bstocks,
     SuppliedPositions,
+    BorrowedPositions,
 }
 
 #[derive(utoipa::ToSchema, Clone, Copy, Debug, Eq, PartialEq, Serialize)]
@@ -182,6 +188,25 @@ pub struct RecipeBorrowPolicy {
 }
 
 #[derive(utoipa::ToSchema, Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RecipeRepayRule {
+    pub venue: BorrowingVenue,
+    #[serde(serialize_with = "serialize_as_string")]
+    #[schema(value_type = String, format = "evm-address")]
+    pub pool: Address,
+    pub input: RecipeOptionSource,
+}
+
+#[derive(utoipa::ToSchema, Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RecipeRepayPolicy {
+    pub allowed_inputs: Vec<RecipeRepayRule>,
+    #[serde(serialize_with = "serialize_all_as_strings")]
+    #[schema(value_type = Vec<String>, format = "evm-address")]
+    pub debt_tokens: Vec<Address>,
+}
+
+#[derive(utoipa::ToSchema, Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum RecipePortDirection {
     Input,
@@ -193,6 +218,7 @@ pub enum RecipePortDirection {
 pub enum RecipePortValueType {
     TokenAmount,
     SuppliedPosition,
+    BorrowedPosition,
 }
 
 #[derive(utoipa::ToSchema, Clone, Copy, Debug, Eq, PartialEq, Serialize)]
@@ -243,10 +269,12 @@ impl RecipePrimitiveKind {
         match self {
             Self::WalletAsset => wallet_asset_descriptor(self),
             Self::SuppliedPosition => supplied_position_descriptor(self),
+            Self::BorrowedPosition => borrowed_position_descriptor(self),
             Self::Trade => trade_descriptor(self),
             Self::Supply => supply_descriptor(self),
             Self::Withdraw => withdraw_descriptor(self),
             Self::Borrow => borrow_descriptor(self),
+            Self::Repay => repay_descriptor(self),
         }
     }
 }
@@ -295,6 +323,22 @@ fn supplied_position_descriptor(kind: RecipePrimitiveKind) -> RecipePrimitiveDes
             "position",
             RecipePortValueType::SuppliedPosition,
         )],
+    }
+}
+
+fn borrowed_position_descriptor(kind: RecipePrimitiveKind) -> RecipePrimitiveDescriptor {
+    RecipePrimitiveDescriptor {
+        kind,
+        name: "Borrowed position",
+        description: "Use a supported debt position held by the running wallet.",
+        fields: vec![RecipeFieldDescriptor {
+            key: "token",
+            name: "Debt position",
+            control: RecipeFieldControl::Position,
+            required: true,
+            option_sources: vec![RecipeOptionSource::BorrowedPositions],
+        }],
+        ports: vec![output_port("debt", RecipePortValueType::BorrowedPosition)],
     }
 }
 
@@ -377,6 +421,16 @@ fn borrow_descriptor(kind: RecipePrimitiveKind) -> RecipePrimitiveDescriptor {
     }
 }
 
+fn repay_descriptor(kind: RecipePrimitiveKind) -> RecipePrimitiveDescriptor {
+    RecipePrimitiveDescriptor {
+        kind,
+        name: "Repay debt",
+        description: "Fully repay the incoming Venus debt position.",
+        fields: Vec::new(),
+        ports: vec![input_port("debt", RecipePortValueType::BorrowedPosition)],
+    }
+}
+
 const fn input_port(key: &'static str, value_type: RecipePortValueType) -> RecipePortDescriptor {
     RecipePortDescriptor {
         key,
@@ -432,6 +486,21 @@ pub enum RecipePrimitive {
         #[schema(value_type = String, format = "evm-address")]
         token: Address,
     },
+    BorrowedPosition {
+        venue: BorrowingVenue,
+        #[serde(
+            deserialize_with = "deserialize_from_string",
+            serialize_with = "serialize_as_string"
+        )]
+        #[schema(value_type = String, format = "evm-address")]
+        pool: Address,
+        #[serde(
+            deserialize_with = "deserialize_from_string",
+            serialize_with = "serialize_as_string"
+        )]
+        #[schema(value_type = String, format = "evm-address")]
+        token: Address,
+    },
     Trade {
         #[serde(
             rename = "buyToken",
@@ -461,6 +530,7 @@ pub enum RecipePrimitive {
         #[schema(value_type = String)]
         raw_amount: U256,
     },
+    Repay,
 }
 
 impl RecipePrimitive {
@@ -468,10 +538,12 @@ impl RecipePrimitive {
         match self {
             Self::WalletAsset { .. } => RecipePrimitiveKind::WalletAsset,
             Self::SuppliedPosition { .. } => RecipePrimitiveKind::SuppliedPosition,
+            Self::BorrowedPosition { .. } => RecipePrimitiveKind::BorrowedPosition,
             Self::Trade { .. } => RecipePrimitiveKind::Trade,
             Self::Supply { .. } => RecipePrimitiveKind::Supply,
             Self::Withdraw => RecipePrimitiveKind::Withdraw,
             Self::Borrow { .. } => RecipePrimitiveKind::Borrow,
+            Self::Repay => RecipePrimitiveKind::Repay,
         }
     }
 }
@@ -550,6 +622,7 @@ pub struct RecipeCatalog {
     pub supply_policy: RecipeSupplyPolicy,
     pub withdrawal_policy: RecipeWithdrawalPolicy,
     pub borrow_policy: RecipeBorrowPolicy,
+    pub repay_policy: RecipeRepayPolicy,
 }
 
 #[derive(utoipa::ToSchema, Debug, Deserialize)]
@@ -615,6 +688,15 @@ pub enum RecipeNodePreview {
         state: RecipeNodeState,
         #[serde(skip_serializing_if = "Option::is_none")]
         capability: Option<BorrowCapability>,
+        #[serde(rename = "waitingFor", skip_serializing_if = "Vec::is_empty")]
+        waiting_for: Vec<Uuid>,
+    },
+    Repay {
+        #[serde(rename = "nodeId")]
+        node_id: Uuid,
+        state: RecipeNodeState,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        capability: Option<RepaymentCapability>,
         #[serde(rename = "waitingFor", skip_serializing_if = "Vec::is_empty")]
         waiting_for: Vec<Uuid>,
     },
@@ -687,6 +769,11 @@ pub enum PreparedRecipeStep {
         node_id: Uuid,
         action: PreparedBorrowingAction,
         output: TokenAmount,
+    },
+    Repay {
+        #[serde(rename = "nodeId")]
+        node_id: Uuid,
+        action: PreparedBorrowingAction,
     },
 }
 

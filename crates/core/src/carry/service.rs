@@ -652,6 +652,13 @@ mod tests {
             Err(BorrowingProviderError::Unavailable)
         }
 
+        async fn read_repayment_capability(
+            &self,
+            _request: &crate::bstock_borrowing::RepaymentCapabilityRequest,
+        ) -> Result<crate::bstock_borrowing::RepaymentCapability, BorrowingProviderError> {
+            Err(BorrowingProviderError::Unavailable)
+        }
+
         async fn read_supply_market(
             &self,
             _token: Address,
@@ -714,6 +721,13 @@ mod tests {
         }
 
         async fn prepare_repayment(
+            &self,
+            _request: &PrepareRepaymentRequest,
+        ) -> Result<PreparedBorrowingAction, BorrowingProviderError> {
+            Err(BorrowingProviderError::Unavailable)
+        }
+
+        async fn prepare_full_repayment(
             &self,
             _request: &PrepareRepaymentRequest,
         ) -> Result<PreparedBorrowingAction, BorrowingProviderError> {

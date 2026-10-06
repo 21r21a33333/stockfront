@@ -159,6 +159,45 @@ pub enum BorrowCapabilityUnavailableReason {
     HealthFactorBelowMinimum,
 }
 
+/// Current ability to repay one complete Venus debt position.
+///
+/// Amounts come from the same live observation. `approval_amount` includes a
+/// small interest buffer so a full repayment does not leave debt dust while the
+/// wallet request is pending.
+#[derive(utoipa::ToSchema, Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RepaymentCapability {
+    pub venue: BorrowingVenue,
+    pub chain_id: u64,
+    #[serde(serialize_with = "serialize_as_string")]
+    #[schema(value_type = String, format = "evm-address")]
+    pub pool: Address,
+    pub debt: BorrowingToken,
+    pub debt_amount: Decimal,
+    pub wallet_balance: Decimal,
+    pub approval_amount: Decimal,
+    pub approval_required: bool,
+    pub unavailable_reasons: Vec<RepaymentCapabilityUnavailableReason>,
+    pub observed_at_ms: i64,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct RepaymentCapabilityRequest {
+    pub wallet: WalletAddress,
+    pub pool: Address,
+    pub debt_token: Address,
+}
+
+#[derive(utoipa::ToSchema, Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum RepaymentCapabilityUnavailableReason {
+    PositionNotFound,
+    UnsupportedPool,
+    UnsupportedDebtToken,
+    NoDebt,
+    InsufficientWalletBalance,
+}
+
 #[derive(utoipa::ToSchema, Clone, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BorrowingAsset {

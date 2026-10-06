@@ -26,6 +26,13 @@ pub(super) struct SuppliedPositionRef {
     pub token: Address,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) struct BorrowedPositionRef {
+    pub venue: BorrowingVenue,
+    pub pool: Address,
+    pub token: Address,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(super) enum AssetRef {
     Wallet {
@@ -56,6 +63,9 @@ pub(super) enum RecipeAction {
         collateral: SuppliedPositionRef,
         debt_token: Address,
         raw_amount: U256,
+    },
+    Repay {
+        debt: BorrowedPositionRef,
     },
 }
 

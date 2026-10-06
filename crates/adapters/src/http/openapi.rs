@@ -48,4 +48,15 @@ mod tests {
         assert!(response.to_string().contains("BorrowingAccount"));
         assert!(document["components"]["schemas"]["BorrowingAccount"].is_object());
     }
+
+    #[test]
+    fn recipe_contract_exports_repayment_types() {
+        let document = to_value(ApiDoc::openapi()).expect("OpenAPI should serialize");
+        let schemas = &document["components"]["schemas"];
+
+        assert!(schemas["RepaymentCapability"].is_object());
+        assert!(schemas["RecipeRepayPolicy"].is_object());
+        assert!(schemas["RecipePrimitive"].to_string().contains("REPAY"));
+        assert!(schemas["PreparedRecipeStep"].to_string().contains("REPAY"));
+    }
 }
