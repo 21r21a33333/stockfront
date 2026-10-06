@@ -1,4 +1,5 @@
 import { ChevronDown, ShieldCheck } from "lucide-react";
+import { parseUnits } from "viem";
 import type {
   BorrowCapabilityUnavailableReason,
   PreparedRecipe,
@@ -11,6 +12,7 @@ import { borrowDebtAssets, canBorrowAgainst } from "../editor/borrowPolicy";
 import { inputForBorrow } from "../editor/flowInput";
 import { useRecipeEditor } from "../editor/store";
 import type { AssetOption, RecipeFlowNode } from "../editor/types";
+import { formatPositionAmount } from "../format";
 import {
   suppliedPositionFor,
   type SuppliedPositionOption,
@@ -54,6 +56,12 @@ export function BorrowFields({
   const candidate = preview?.nodes.find((item) => item.nodeId === node.id);
   const previewNode = candidate?.kind === "BORROW" ? candidate : undefined;
   const capability = previewNode?.capability;
+  const amountError = borrowAmountError(
+    data.amount,
+    capability?.conservativeMaxAmount,
+    debtAsset?.decimals ?? capability?.debtTokenDecimals ?? 18,
+    debtAsset?.symbol ?? "token",
+  );
   const preparedStage = prepared?.steps.find(
     (step) =>
       step.nodeId === node.id &&
@@ -63,7 +71,8 @@ export function BorrowFields({
     previewNode?.state === "READY" &&
     capability?.unavailableReasons.length === 0 &&
     debtSupported &&
-    collateralSupported;
+    collateralSupported &&
+    !amountError;
 
   return (
     <>
@@ -93,31 +102,51 @@ export function BorrowFields({
           />
         </div>
         <label htmlFor={`borrow-amount-${node.id}`}>Amount</label>
-        <div className={styles.amountField}>
+        <div
+          className={`${styles.amountField} ${amountError ? styles.amountFieldInvalid : ""}`}
+        >
           <input
             id={`borrow-amount-${node.id}`}
             aria-label="Borrow amount"
+            aria-invalid={Boolean(amountError)}
             inputMode="decimal"
             value={data.amount}
             onChange={(event) =>
               editor.updateNode(node.id, { amount: event.target.value })
             }
           />
+          {capability ? (
+            <button
+              type="button"
+              className={styles.amountMaxButton}
+              aria-label="Use maximum borrow amount"
+              disabled={
+                !positiveAmount(
+                  capability.conservativeMaxAmount,
+                  debtAsset?.decimals ?? capability.debtTokenDecimals,
+                )
+              }
+              onClick={() =>
+                editor.updateNode(node.id, {
+                  amount: capability.conservativeMaxAmount,
+                })
+              }
+            >
+              MAX
+            </button>
+          ) : null}
           <span>{debtAsset?.symbol ?? "TOKEN"}</span>
         </div>
-        {capability ? (
-          <button
-            type="button"
-            className={styles.safeMaxButton}
-            onClick={() =>
-              editor.updateNode(node.id, {
-                amount: capability.conservativeMaxAmount,
-              })
-            }
-          >
-            Use conservative max · {capability.conservativeMaxAmount}{" "}
+        {amountError ? (
+          <p className={`${styles.runtimeNotice} ${styles.runtimeWarning}`}>
+            {amountError}
+          </p>
+        ) : capability ? (
+          <p className={styles.borrowLimitHint}>
+            Conservative maximum:{" "}
+            {formatPositionAmount(capability.conservativeMaxAmount)}{" "}
             {debtAsset?.symbol}
-          </button>
+          </p>
         ) : null}
       </section>
 
@@ -129,11 +158,13 @@ export function BorrowFields({
             </span>
             <b>{capability.stage === "BORROW" ? "READY" : "ACTIVATE"}</b>
           </div>
-          <div className={styles.marketApy}>{capability.borrowApyPercent}%</div>
+          <div className={styles.marketApy}>
+            {formatPositionAmount(capability.borrowApyPercent)}%
+          </div>
           <dl>
             <div>
               <dt>Borrow APY</dt>
-              <dd>{capability.borrowApyPercent}%</dd>
+              <dd>{formatPositionAmount(capability.borrowApyPercent)}%</dd>
             </div>
             <div>
               <dt>Health factor</dt>
@@ -145,13 +176,15 @@ export function BorrowFields({
             <div>
               <dt>Conservative max</dt>
               <dd>
-                {capability.conservativeMaxAmount} {debtAsset?.symbol}
+                {formatPositionAmount(capability.conservativeMaxAmount)}{" "}
+                {debtAsset?.symbol}
               </dd>
             </div>
             <div>
               <dt>Available liquidity</dt>
               <dd>
-                {capability.availableBorrowLiquidity} {debtAsset?.symbol}
+                {formatPositionAmount(capability.availableBorrowLiquidity)}{" "}
+                {debtAsset?.symbol}
               </dd>
             </div>
             <div>
@@ -206,7 +239,35 @@ export function BorrowFields({
 }
 
 function healthFactor(value?: string | null): string {
-  return value ?? "No debt";
+  return value ? formatPositionAmount(value) : "No debt";
+}
+
+function borrowAmountError(
+  value: string,
+  maximum: string | undefined,
+  decimals: number,
+  symbol: string,
+): string | undefined {
+  const amount = rawAmount(value, decimals);
+  if (amount === undefined || amount <= 0n)
+    return `Enter a valid ${symbol} amount.`;
+  const maximumAmount = maximum ? rawAmount(maximum, decimals) : undefined;
+  if (maximumAmount !== undefined && amount > maximumAmount)
+    return `Maximum safe borrow is ${formatPositionAmount(maximum)} ${symbol}.`;
+  return undefined;
+}
+
+function rawAmount(value: string, decimals: number): bigint | undefined {
+  try {
+    return parseUnits(value.trim(), decimals);
+  } catch {
+    return undefined;
+  }
+}
+
+function positiveAmount(value: string, decimals: number): boolean {
+  const parsed = rawAmount(value, decimals);
+  return parsed !== undefined && parsed > 0n;
 }
 
 function reasonLabel(

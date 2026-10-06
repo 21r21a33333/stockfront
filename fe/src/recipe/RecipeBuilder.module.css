@@ -1077,8 +1077,32 @@
 }
 
 .amountField span {
+  flex: none;
   color: var(--muted);
   font-size: 11px;
+}
+
+.amountFieldInvalid {
+  border-color: #efaaa4;
+  background: #fffafa;
+}
+
+.amountMaxButton {
+  flex: none;
+  padding: 4px 6px;
+  border: 0;
+  border-radius: 5px;
+  background: var(--purple-soft);
+  color: var(--purple);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+}
+
+.amountMaxButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
 }
 
 .percentages {
@@ -1243,11 +1267,15 @@
 }
 
 .marketApy {
+  max-width: 100%;
   margin-bottom: 14px;
+  overflow: hidden;
   color: var(--success);
   font-size: 23px;
   font-weight: 670;
   letter-spacing: -0.03em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .borrowPreviewHeading {
@@ -1274,14 +1302,10 @@
   letter-spacing: 0.05em;
 }
 
-.safeMaxButton {
-  min-height: 28px;
-  border: 1px solid #ddd5ea;
-  border-radius: 7px;
-  background: #faf8fd;
-  color: var(--purple);
+.borrowLimitHint {
+  margin: -2px 0 0;
+  color: var(--muted);
   font-size: 9.5px;
-  cursor: pointer;
 }
 
 .marketPreview dl {
@@ -1292,19 +1316,24 @@
 }
 
 .marketPreview dl div {
+  min-width: 0;
   display: flex;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 8px;
   font-size: 10px;
 }
 
 .marketPreview dt {
+  flex: 0 0 42%;
   color: var(--muted);
 }
 
 .marketPreview dd {
+  min-width: 0;
   margin: 0;
   color: var(--ink);
+  overflow-wrap: anywhere;
   text-align: right;
 }
 

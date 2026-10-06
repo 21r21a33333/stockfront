@@ -254,63 +254,87 @@ it("shows the live health-factor gate before preparing a borrow stage", () => {
   });
   const onPrepare = vi.fn();
 
-  render(
-    <RecipeInspector
-      node={borrow}
-      assets={assets}
-      tradePolicy={tradePolicy}
-      supplyPolicy={supplyPolicy}
-      borrowPolicy={borrowPolicy}
-      suppliedPositions={[
-        {
-          venue: "venus",
-          pool,
-          asset: {
-            token: { contract: bstock, symbol: "NVDAB" },
-            amount: "1.25",
-            valueUsd: "450",
-          },
-          catalogAsset: assets[1],
-        },
-      ]}
-      diagnostics={[]}
-      preview={{
-        nodes: [
+  function LiveBorrowInspector() {
+    const liveBorrow = useRecipeEditor((state) =>
+      state.nodes.find((candidate) => candidate.id === borrow.id),
+    );
+    return (
+      <RecipeInspector
+        node={liveBorrow}
+        assets={assets}
+        tradePolicy={tradePolicy}
+        supplyPolicy={supplyPolicy}
+        borrowPolicy={borrowPolicy}
+        suppliedPositions={[
           {
-            kind: "BORROW",
-            nodeId: borrow.id,
-            state: "READY",
-            capability: {
-              availableBorrowLiquidity: "500000",
-              borrowApyPercent: "4.2",
-              chainId: 56,
-              collateral: { contract: bstock, symbol: "NVDAB" },
-              collateralEnabled: false,
-              conservativeMaxAmount: "120",
-              debt: { contract: usdt, symbol: "USDT" },
-              debtTokenDecimals: 18,
-              healthFactorBefore: null,
-              healthFactorAfter: "2.4",
-              observedAtMs: 1,
-              pool,
-              requestedAmount: "1",
-              requestedRawAmount: "1000000000000000000",
-              stage: "ENABLE_COLLATERAL",
-              unavailableReasons: [],
-              venue: "venus",
+            venue: "venus",
+            pool,
+            asset: {
+              token: { contract: bstock, symbol: "NVDAB" },
+              amount: "1.25",
+              valueUsd: "450",
             },
+            catalogAsset: assets[1],
           },
-        ],
-      }}
-      completed={false}
-      preparing={false}
-      onRouteSelect={() => {}}
-      onPrepare={onPrepare}
-    />,
-  );
+        ]}
+        diagnostics={[]}
+        preview={{
+          nodes: [
+            {
+              kind: "BORROW",
+              nodeId: borrow.id,
+              state: "READY",
+              capability: {
+                availableBorrowLiquidity: "4261891.354607429894030141",
+                borrowApyPercent: "5.091297759133304329",
+                chainId: 56,
+                collateral: { contract: bstock, symbol: "NVDAB" },
+                collateralEnabled: false,
+                conservativeMaxAmount: "3.44876112175573353",
+                debt: { contract: usdt, symbol: "USDT" },
+                debtTokenDecimals: 18,
+                healthFactorBefore: null,
+                healthFactorAfter: "2.724380856087786676",
+                observedAtMs: 1,
+                pool,
+                requestedAmount: "1",
+                requestedRawAmount: "1000000000000000000",
+                stage: "ENABLE_COLLATERAL",
+                unavailableReasons: [],
+                venue: "venus",
+              },
+            },
+          ],
+        }}
+        completed={false}
+        preparing={false}
+        onRouteSelect={() => {}}
+        onPrepare={onPrepare}
+      />
+    );
+  }
 
-  expect(screen.getByText("No debt → 2.4")).toBeVisible();
-  expect(screen.getAllByText("4.2%", { exact: true })).toHaveLength(2);
+  render(<LiveBorrowInspector />);
+
+  expect(screen.getByText("No debt → 2.724")).toBeVisible();
+  expect(screen.getAllByText("5.091%", { exact: true })).toHaveLength(2);
+  expect(
+    screen.queryByText("5.091297759133304329%", { exact: true }),
+  ).toBeNull();
+
+  const amount = screen.getByRole("textbox", { name: "Borrow amount" });
+  fireEvent.click(
+    screen.getByRole("button", { name: "Use maximum borrow amount" }),
+  );
+  expect(amount).toHaveValue("3.44876112175573353");
+
+  fireEvent.change(amount, { target: { value: "4" } });
+  expect(screen.getByText("Maximum safe borrow is 3.449 USDT.")).toBeVisible();
+  expect(
+    screen.getByRole("button", { name: "Prepare collateral activation" }),
+  ).toBeDisabled();
+
+  fireEvent.change(amount, { target: { value: "1" } });
   fireEvent.click(
     screen.getByRole("button", { name: "Prepare collateral activation" }),
   );
