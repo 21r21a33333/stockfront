@@ -1,3 +1,5 @@
+#[path = "support/borrowing.rs"]
+mod borrowing_support;
 mod support;
 #[path = "support/wallet.rs"]
 mod wallet_support;
@@ -6,16 +8,24 @@ use std::{error::Error, io, sync::Arc};
 
 use alloy_primitives::{Address, U256, address};
 use stockfront_core::{
-    bstock_market::{BNB_CHAIN_ID, BstockMarketService},
-    bstock_trade::{BstockTradeService, PreparedTrade, TradeExecutionMode, TradePolicy},
-    recipes::{
-        PrepareRecipeRequest, PreparedRecipeStep, RecipeContext, RecipeDefinition, RecipeEdge,
-        RecipeNode, RecipeNodePreview, RecipeNodeSelection, RecipePortRef, RecipePreviewRequest,
-        RecipePrimitive, RecipeService,
+    bstock_borrowing::{
+        BorrowingPolicy, BorrowingService, BorrowingTransactionKind, BorrowingVenue,
     },
+    bstock_market::{BNB_CHAIN_ID, BstockMarketService},
+    bstock_trade::{
+        BstockTradeService, PreparedTrade, TokenAmount, TradeExecutionMode, TradePolicy,
+    },
+    recipes::{
+        PrepareRecipeRequest, PreparedRecipeStep, RecipeCompletedNode, RecipeContext,
+        RecipeDefinition, RecipeEdge, RecipeNode, RecipeNodeOutput, RecipeNodePreview,
+        RecipeNodeSelection, RecipeNodeState, RecipePortRef, RecipePreviewRequest, RecipePrimitive,
+        RecipeService,
+    },
+    wallet_portfolio::WalletAddress,
 };
 use uuid::Uuid;
 
+use borrowing_support::live_venus_adapter;
 use support::live_client;
 use wallet_support::binance_hot_wallet;
 
@@ -24,19 +34,12 @@ const USDT: Address = address!("55d398326f99059ff775485246999027b3197955");
 const SIX_USDT: &str = "6000000000000000000";
 
 #[tokio::test]
-#[ignore = "requires live Binance Web3 credentials"]
+#[ignore = "requires live Binance Web3 credentials, Venus API, and BNB Chain RPC access"]
 async fn previews_and_prepares_live_bstock_recipe() -> Result<(), Box<dyn Error>> {
-    let client = Arc::new(live_client()?);
-    let market = Arc::new(BstockMarketService::new(client.clone()));
-    let trades = Arc::new(BstockTradeService::new(
-        client.clone(),
-        client,
-        TradePolicy::new([USDT], 100, 50)?,
-    ));
-    let service = RecipeService::new(market, trades, vec![USDT]);
+    let service = live_recipe_service().await?;
 
     let catalog = service.catalog().await?;
-    assert_eq!(catalog.primitives.len(), 2);
+    assert_eq!(catalog.primitives.len(), 3);
     assert_eq!(catalog.settlement_tokens, vec![USDT]);
     assert!(
         catalog
@@ -70,9 +73,10 @@ async fn previews_and_prepares_live_bstock_recipe() -> Result<(), Box<dyn Error>
     assert!(!quote.route_quote_id.is_empty());
     assert!(!quote.venue.is_empty());
 
+    let trade_output = quote.buy;
     let prepared = service
         .prepare(&PrepareRecipeRequest {
-            recipe,
+            recipe: recipe.clone(),
             context: RecipeContext {
                 wallet,
                 completed_nodes: Vec::new(),
@@ -105,6 +109,81 @@ async fn previews_and_prepares_live_bstock_recipe() -> Result<(), Box<dyn Error>
     assert!(!transaction.data.is_empty());
     assert!(!transaction.gas_limit.is_zero());
     assert!(!transaction.min_receive_amount.is_zero());
+
+    assert_supply_preparation(&service, wallet, recipe, trade_output).await?;
+    Ok(())
+}
+
+async fn live_recipe_service() -> Result<RecipeService, Box<dyn Error>> {
+    let client = Arc::new(live_client()?);
+    let market = Arc::new(BstockMarketService::new(client.clone()));
+    let trades = Arc::new(BstockTradeService::new(
+        client.clone(),
+        client.clone(),
+        TradePolicy::new([USDT], 100, 50)?,
+    ));
+    let venus = Arc::new(live_venus_adapter(true).await?);
+    let borrowing = Arc::new(BorrowingService::new(
+        client,
+        venus.clone(),
+        venus,
+        BorrowingPolicy::new(vec![USDT])?,
+    ));
+    Ok(RecipeService::new(market, trades, borrowing, vec![USDT]))
+}
+
+async fn assert_supply_preparation(
+    service: &RecipeService,
+    wallet: WalletAddress,
+    recipe: RecipeDefinition,
+    trade_output: TokenAmount,
+) -> Result<(), Box<dyn Error>> {
+    let supply_context = RecipeContext {
+        wallet,
+        completed_nodes: vec![RecipeCompletedNode {
+            node_id: Uuid::from_u128(2),
+            outputs: vec![RecipeNodeOutput {
+                port: "buy".to_owned(),
+                asset: trade_output,
+            }],
+        }],
+    };
+    let supply_preview = service
+        .preview(&RecipePreviewRequest {
+            recipe: recipe.clone(),
+            context: supply_context.clone(),
+        })
+        .await?;
+    assert!(matches!(
+        supply_preview.nodes.get(1),
+        Some(RecipeNodePreview::Supply {
+            state: RecipeNodeState::Ready,
+            market: Some(market),
+            ..
+        }) if market.supply_available
+    ));
+
+    let supplied = service
+        .prepare(&PrepareRecipeRequest {
+            recipe,
+            context: supply_context,
+            selections: Vec::new(),
+        })
+        .await?;
+    let [PreparedRecipeStep::Supply { action, .. }] = supplied.steps.as_slice() else {
+        return Err(io::Error::other("recipe did not prepare a Venus supply action").into());
+    };
+    assert_eq!(
+        action
+            .transactions
+            .iter()
+            .map(|transaction| transaction.kind)
+            .collect::<Vec<_>>(),
+        vec![
+            BorrowingTransactionKind::Approve,
+            BorrowingTransactionKind::Deposit,
+        ]
+    );
     Ok(())
 }
 
@@ -128,17 +207,36 @@ fn recipe(raw_amount: U256) -> RecipeDefinition {
                     buy_token: NVIDIA_BSTOCK,
                 },
             },
+            RecipeNode {
+                id: Uuid::from_u128(4),
+                primitive: RecipePrimitive::Supply {
+                    venue: BorrowingVenue::Venus,
+                },
+            },
         ],
-        edges: vec![RecipeEdge {
-            id: Uuid::from_u128(3),
-            from: RecipePortRef {
-                node_id: source_id,
-                port: "asset".to_owned(),
+        edges: vec![
+            RecipeEdge {
+                id: Uuid::from_u128(3),
+                from: RecipePortRef {
+                    node_id: source_id,
+                    port: "asset".to_owned(),
+                },
+                to: RecipePortRef {
+                    node_id: trade_id,
+                    port: "sell".to_owned(),
+                },
             },
-            to: RecipePortRef {
-                node_id: trade_id,
-                port: "sell".to_owned(),
+            RecipeEdge {
+                id: Uuid::from_u128(5),
+                from: RecipePortRef {
+                    node_id: trade_id,
+                    port: "buy".to_owned(),
+                },
+                to: RecipePortRef {
+                    node_id: Uuid::from_u128(4),
+                    port: "asset".to_owned(),
+                },
             },
-        }],
+        ],
     }
 }

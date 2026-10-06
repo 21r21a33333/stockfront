@@ -39,6 +39,7 @@ pub enum RecipeDiagnosticCode {
     DisconnectedNode,
     InvalidAmount,
     UnsupportedTradePair,
+    UnsupportedSupplyAsset,
 }
 
 #[derive(utoipa::ToSchema, Clone, Debug, Eq, PartialEq, Serialize)]

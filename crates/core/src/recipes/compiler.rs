@@ -159,6 +159,34 @@ fn lower(graph: &RecipeGraph<'_>) -> Result<LogicalPlan, RecipeDiagnostic> {
                     },
                 );
             }
+            RecipePrimitive::Supply { venue } => {
+                let Some(edge) = graph.incoming(node_id, "asset") else {
+                    return Err(missing_input(node_id, "asset"));
+                };
+                let source_key = (edge.edge.from.node_id, edge.edge.from.port.clone());
+                let asset = values.get(&source_key).cloned().ok_or_else(|| {
+                    RecipeDiagnostic::error(
+                        RecipeDiagnosticCode::MissingRequiredInput,
+                        RecipeDiagnosticLocation::Port {
+                            node_id,
+                            port: "asset".to_owned(),
+                        },
+                        "the supply input is not available before this step",
+                    )
+                })?;
+                let dependency = edge.edge.from.node_id;
+                steps.push(LogicalStep {
+                    node_id,
+                    dependencies: matches!(asset, AssetRef::NodeOutput { .. })
+                        .then_some(dependency)
+                        .into_iter()
+                        .collect(),
+                    action: RecipeAction::Supply {
+                        asset,
+                        venue: *venue,
+                    },
+                });
+            }
         }
     }
     Ok(LogicalPlan { steps })
@@ -180,10 +208,12 @@ mod tests {
     use alloy_primitives::{Address, U256};
 
     use super::*;
+    use crate::bstock_borrowing::BorrowingVenue;
     use crate::recipes::{RecipeEdge, RecipeNode, RecipePortRef};
 
     const SOURCE_ID: Uuid = Uuid::from_u128(1);
     const TRADE_ID: Uuid = Uuid::from_u128(2);
+    const SUPPLY_ID: Uuid = Uuid::from_u128(6);
 
     #[test]
     fn compiles_wallet_asset_trade_into_a_logical_plan() {
@@ -262,6 +292,48 @@ mod tests {
                 .diagnostics
                 .iter()
                 .any(|item| { item.code == RecipeDiagnosticCode::ConsumableOutputReused })
+        );
+    }
+
+    #[test]
+    fn compiles_trade_output_into_a_terminal_supply_dependency() {
+        let mut recipe = recipe();
+        recipe.nodes.push(RecipeNode {
+            id: SUPPLY_ID,
+            primitive: RecipePrimitive::Supply {
+                venue: BorrowingVenue::Venus,
+            },
+        });
+        recipe.edges.push(RecipeEdge {
+            id: Uuid::from_u128(7),
+            from: RecipePortRef {
+                node_id: TRADE_ID,
+                port: "buy".to_owned(),
+            },
+            to: RecipePortRef {
+                node_id: SUPPLY_ID,
+                port: "asset".to_owned(),
+            },
+        });
+
+        let compiled = compile(&recipe);
+        let plan = compiled
+            .plan
+            .unwrap_or_else(|| panic!("valid supply recipe did not produce a plan"));
+
+        assert!(compiled.report.valid);
+        assert_eq!(plan.steps.len(), 2);
+        assert_eq!(plan.steps[1].dependencies, vec![TRADE_ID]);
+        assert_eq!(
+            plan.steps[1].action,
+            RecipeAction::Supply {
+                asset: AssetRef::NodeOutput {
+                    node_id: TRADE_ID,
+                    port: "buy".to_owned(),
+                    token: Address::with_last_byte(2),
+                },
+                venue: BorrowingVenue::Venus,
+            }
         );
     }
 

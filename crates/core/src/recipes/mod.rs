@@ -31,6 +31,7 @@ pub use model::{
     RecipeFieldDescriptor, RecipeNode, RecipeNodeOutput, RecipeNodePreview, RecipeNodeSelection,
     RecipeNodeState, RecipeOptionSource, RecipePortDescriptor, RecipePortDirection, RecipePortFlow,
     RecipePortRef, RecipePortValueType, RecipePreview, RecipePreviewRequest, RecipePrimitive,
-    RecipePrimitiveDescriptor, RecipePrimitiveKind, RecipeTradePolicy,
+    RecipePrimitiveDescriptor, RecipePrimitiveKind, RecipeSupplyPolicy, RecipeSupplyRule,
+    RecipeTradePolicy,
 };
 pub use service::{RecipeError, RecipeService};

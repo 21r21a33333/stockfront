@@ -1,6 +1,6 @@
 mod setting;
 
-use std::{error::Error, sync::Arc, time::Duration};
+use std::{error::Error, net::SocketAddr, sync::Arc, time::Duration};
 
 use setting::Settings;
 use stockfront_adapters::{
@@ -111,8 +111,12 @@ async fn main() -> Result<(), Box<dyn Error>> {
         Duration::from_secs(10),
     )?);
     let managed_portfolios = Arc::new(ManagedPortfolioService::new(glider));
-    let recipes = RecipeService::new(market.clone(), trades.clone(), trade_settlement_tokens);
-    let recipes = Arc::new(recipes);
+    let recipes = Arc::new(RecipeService::new(
+        market.clone(),
+        trades.clone(),
+        borrowing.clone(),
+        trade_settlement_tokens,
+    ));
     let app = bstock_router(market)
         .merge(wallet_router(wallet_portfolio))
         .merge(trade_router(trades))
@@ -122,12 +126,15 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .merge(basket_router(baskets))
         .merge(managed_portfolio_router(managed_portfolios))
         .merge(recipe_router(recipes));
-    let listener = tokio::net::TcpListener::bind(bind_address).await?;
+    serve(bind_address, app).await?;
+    Ok(())
+}
 
+async fn serve(bind_address: SocketAddr, app: axum::Router) -> Result<(), std::io::Error> {
+    let listener = tokio::net::TcpListener::bind(bind_address).await?;
     axum::serve(listener, app)
         .with_graceful_shutdown(shutdown_signal())
-        .await?;
-    Ok(())
+        .await
 }
 
 async fn shutdown_signal() {

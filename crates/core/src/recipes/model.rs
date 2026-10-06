@@ -72,6 +72,7 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::{
+    bstock_borrowing::{BorrowingVenue, PreparedBorrowingAction, SupplyMarket},
     bstock_market::BstockSummary,
     bstock_trade::{PreparedApproval, PreparedTrade, TokenAmount, TradeQuote},
     serialization::{deserialize_from_string, serialize_all_as_strings, serialize_as_string},
@@ -83,10 +84,11 @@ use crate::{
 pub enum RecipePrimitiveKind {
     WalletAsset,
     Trade,
+    Supply,
 }
 
 impl RecipePrimitiveKind {
-    pub(super) const ALL: [Self; 2] = [Self::WalletAsset, Self::Trade];
+    pub(super) const ALL: [Self; 3] = [Self::WalletAsset, Self::Trade, Self::Supply];
 }
 
 #[derive(utoipa::ToSchema, Clone, Copy, Debug, Eq, PartialEq, Serialize)]
@@ -94,6 +96,7 @@ impl RecipePrimitiveKind {
 pub enum RecipeFieldControl {
     Token,
     Amount,
+    Venue,
 }
 
 #[derive(utoipa::ToSchema, Clone, Copy, Debug, Eq, PartialEq, Serialize)]
@@ -114,6 +117,19 @@ pub struct RecipeAssetTransition {
 #[serde(rename_all = "camelCase")]
 pub struct RecipeTradePolicy {
     pub allowed_transitions: Vec<RecipeAssetTransition>,
+}
+
+#[derive(utoipa::ToSchema, Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RecipeSupplyRule {
+    pub venue: BorrowingVenue,
+    pub input: RecipeOptionSource,
+}
+
+#[derive(utoipa::ToSchema, Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RecipeSupplyPolicy {
+    pub allowed_inputs: Vec<RecipeSupplyRule>,
 }
 
 #[derive(utoipa::ToSchema, Clone, Copy, Debug, Eq, PartialEq, Serialize)]
@@ -240,6 +256,26 @@ impl RecipePrimitiveKind {
                     },
                 ],
             },
+            Self::Supply => RecipePrimitiveDescriptor {
+                kind: self,
+                name: "Supply",
+                description: "Supply the incoming bStock to a supported lending market.",
+                fields: vec![RecipeFieldDescriptor {
+                    key: "venue",
+                    name: "Market",
+                    control: RecipeFieldControl::Venue,
+                    required: true,
+                    option_sources: Vec::new(),
+                }],
+                ports: vec![RecipePortDescriptor {
+                    key: "asset",
+                    direction: RecipePortDirection::Input,
+                    value_type: RecipePortValueType::TokenAmount,
+                    min_connections: 1,
+                    max_connections: Some(1),
+                    flow: RecipePortFlow::Consume,
+                }],
+            },
         }
     }
 }
@@ -271,6 +307,9 @@ pub enum RecipePrimitive {
         #[schema(value_type = String, format = "evm-address")]
         buy_token: Address,
     },
+    Supply {
+        venue: BorrowingVenue,
+    },
 }
 
 impl RecipePrimitive {
@@ -278,6 +317,7 @@ impl RecipePrimitive {
         match self {
             Self::WalletAsset { .. } => RecipePrimitiveKind::WalletAsset,
             Self::Trade { .. } => RecipePrimitiveKind::Trade,
+            Self::Supply { .. } => RecipePrimitiveKind::Supply,
         }
     }
 }
@@ -353,6 +393,7 @@ pub struct RecipeCatalog {
     pub settlement_tokens: Vec<Address>,
     pub bstocks: Vec<BstockSummary>,
     pub trade_policy: RecipeTradePolicy,
+    pub supply_policy: RecipeSupplyPolicy,
 }
 
 #[derive(utoipa::ToSchema, Debug, Deserialize)]
@@ -369,6 +410,7 @@ pub enum RecipeNodeState {
     WaitingForUpstream,
     Complete,
     OutputUnavailable,
+    Unavailable,
 }
 
 #[derive(utoipa::ToSchema, Debug, Serialize)]
@@ -380,6 +422,15 @@ pub enum RecipeNodePreview {
         state: RecipeNodeState,
         #[serde(skip_serializing_if = "Vec::is_empty")]
         routes: Vec<TradeQuote>,
+        #[serde(rename = "waitingFor", skip_serializing_if = "Vec::is_empty")]
+        waiting_for: Vec<Uuid>,
+    },
+    Supply {
+        #[serde(rename = "nodeId")]
+        node_id: Uuid,
+        state: RecipeNodeState,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        market: Option<SupplyMarket>,
         #[serde(rename = "waitingFor", skip_serializing_if = "Vec::is_empty")]
         waiting_for: Vec<Uuid>,
     },
@@ -431,6 +482,11 @@ pub enum PreparedRecipeStep {
         #[serde(rename = "nodeId")]
         node_id: Uuid,
         action: PreparedTrade,
+    },
+    Supply {
+        #[serde(rename = "nodeId")]
+        node_id: Uuid,
+        action: PreparedBorrowingAction,
     },
 }
 

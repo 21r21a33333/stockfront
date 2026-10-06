@@ -79,6 +79,7 @@ components:
         - underlyingSymbol
         - underlyingDecimal
         - borrowApy
+        - supplyApy
       properties:
         address:
           type: string
@@ -97,6 +98,9 @@ components:
           format: int32
           nullable: true
         borrowApy:
+          type: string
+          nullable: true
+        supplyApy:
           type: string
           nullable: true
         exchangeRateMantissa:

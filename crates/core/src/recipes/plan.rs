@@ -17,6 +17,8 @@
 use alloy_primitives::{Address, U256};
 use uuid::Uuid;
 
+use crate::bstock_borrowing::BorrowingVenue;
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(super) enum AssetRef {
     Wallet {
@@ -32,7 +34,14 @@ pub(super) enum AssetRef {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(super) enum RecipeAction {
-    Trade { sell: AssetRef, buy_token: Address },
+    Trade {
+        sell: AssetRef,
+        buy_token: Address,
+    },
+    Supply {
+        asset: AssetRef,
+        venue: BorrowingVenue,
+    },
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]

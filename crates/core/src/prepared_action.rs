@@ -7,39 +7,46 @@ use crate::{
     serialization::{serialize_as_string, serialize_bytes, serialize_optional_as_string},
 };
 
-#[derive(Debug, Eq, PartialEq, Serialize)]
+#[derive(utoipa::ToSchema, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PreparedTransaction<K> {
     pub kind: K,
     #[serde(serialize_with = "serialize_as_string")]
+    #[schema(value_type = String, format = "evm-address")]
     pub to: Address,
     #[serde(serialize_with = "serialize_bytes")]
+    #[schema(value_type = String, format = "hex")]
     pub data: Bytes,
     #[serde(serialize_with = "serialize_as_string")]
+    #[schema(value_type = String)]
     pub value: U256,
     #[serde(
         skip_serializing_if = "Option::is_none",
         serialize_with = "serialize_optional_as_string"
     )]
+    #[schema(value_type = Option<String>, nullable = false)]
     pub gas_limit: Option<U256>,
     #[serde(
         skip_serializing_if = "Option::is_none",
         serialize_with = "serialize_optional_as_string"
     )]
+    #[schema(value_type = Option<String>, nullable = false)]
     pub gas_price: Option<U256>,
     #[serde(
         skip_serializing_if = "Option::is_none",
         serialize_with = "serialize_optional_as_string"
     )]
+    #[schema(value_type = Option<String>, nullable = false)]
     pub max_priority_fee_per_gas: Option<U256>,
     #[serde(
         skip_serializing_if = "Option::is_none",
         serialize_with = "serialize_optional_as_string"
     )]
+    #[schema(value_type = Option<String>, nullable = false)]
     pub max_fee_per_gas: Option<U256>,
 }
 
-#[derive(Debug, Eq, PartialEq, Serialize)]
+#[derive(utoipa::ToSchema, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NetworkFee {
     pub amount: Decimal,
@@ -48,7 +55,7 @@ pub struct NetworkFee {
     pub value_usd: Option<Decimal>,
 }
 
-#[derive(Debug, Eq, PartialEq, Serialize)]
+#[derive(utoipa::ToSchema, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ActionWarning {
     pub code: String,

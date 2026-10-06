@@ -9,7 +9,8 @@
 
 use std::{collections::HashMap, sync::Arc};
 
-use alloy_primitives::Address;
+use alloy_primitives::{Address, U256};
+use rust_decimal::Decimal;
 use thiserror::Error;
 use uuid::Uuid;
 
@@ -18,14 +19,20 @@ use super::{
     RecipeAssetTransition, RecipeCatalog, RecipeCompletedNode, RecipeDefinition, RecipeDiagnostic,
     RecipeDiagnosticCode, RecipeDiagnosticLocation, RecipeNodePreview, RecipeNodeSelection,
     RecipeNodeState, RecipeOptionSource, RecipePreview, RecipePreviewRequest, RecipePrimitiveKind,
-    RecipeTradePolicy, RecipeValidationReport, SCHEMA_VERSION, compile,
+    RecipeSupplyPolicy, RecipeSupplyRule, RecipeTradePolicy, RecipeValidationReport,
+    SCHEMA_VERSION, compile,
 };
 use crate::{
+    bstock_borrowing::{
+        BorrowingProviderError, BorrowingService, BorrowingServiceError, BorrowingVenue,
+        PrepareSupplyRequest,
+    },
     bstock_market::{BstockMarketError, BstockMarketService, ListBstocksQuery, MAX_LIST_LIMIT},
     bstock_trade::{
         ApprovalRequest, BstockTradeService, PrepareTradeRequest, TokenAmount, TradeError,
         TradeQuoteRequest,
     },
+    wallet_portfolio::WalletAddress,
 };
 
 #[derive(Debug, Error)]
@@ -42,11 +49,14 @@ pub enum RecipeError {
     Market(#[from] BstockMarketError),
     #[error(transparent)]
     Trade(#[from] TradeError),
+    #[error(transparent)]
+    Borrowing(#[from] BorrowingServiceError),
 }
 
 pub struct RecipeService {
     market: Arc<BstockMarketService>,
     trade: Arc<BstockTradeService>,
+    borrowing: Arc<BorrowingService>,
     settlement_tokens: Vec<Address>,
 }
 
@@ -55,11 +65,13 @@ impl RecipeService {
     pub fn new(
         market: Arc<BstockMarketService>,
         trade: Arc<BstockTradeService>,
+        borrowing: Arc<BorrowingService>,
         settlement_tokens: Vec<Address>,
     ) -> Self {
         Self {
             market,
             trade,
+            borrowing,
             settlement_tokens,
         }
     }
@@ -97,6 +109,12 @@ impl RecipeService {
                     },
                 ],
             },
+            supply_policy: RecipeSupplyPolicy {
+                allowed_inputs: vec![RecipeSupplyRule {
+                    venue: BorrowingVenue::Venus,
+                    input: RecipeOptionSource::Bstocks,
+                }],
+            },
         })
     }
 
@@ -104,7 +122,12 @@ impl RecipeService {
     #[must_use]
     pub fn validate(&self, recipe: &RecipeDefinition) -> RecipeValidationReport {
         let compiled = compile(recipe);
-        validate_trade_pairs(compiled.report, compiled.plan.as_ref(), &self.trade)
+        validate_action_policy(
+            compiled.report,
+            compiled.plan.as_ref(),
+            &self.trade,
+            &self.settlement_tokens,
+        )
     }
 
     /// Compiles a recipe and resolves the steps that can be quoted now.
@@ -121,17 +144,12 @@ impl RecipeService {
         &self,
         request: &RecipePreviewRequest,
     ) -> Result<RecipePreview, RecipeError> {
-        let plan = compile_plan(&request.recipe, &self.trade)?;
+        let plan = compile_plan(&request.recipe, &self.trade, &self.settlement_tokens)?;
         let completed = validate_completed_context(&plan, &request.context.completed_nodes)?;
         let mut nodes = Vec::with_capacity(plan.steps.len());
         for step in &plan.steps {
             if completed.contains_key(&step.node_id) {
-                nodes.push(RecipeNodePreview::Trade {
-                    node_id: step.node_id,
-                    state: RecipeNodeState::Complete,
-                    routes: Vec::new(),
-                    waiting_for: Vec::new(),
-                });
+                nodes.push(completed_preview(step));
                 continue;
             }
 
@@ -171,6 +189,39 @@ impl RecipeService {
                         });
                     }
                 },
+                RecipeAction::Supply { asset, .. } => match resolve_asset(asset, &completed) {
+                    ResolvedAsset::Ready(asset) => {
+                        let market = self.borrowing.supply_market(asset.token).await?;
+                        let state =
+                            market
+                                .as_ref()
+                                .map_or(RecipeNodeState::Unavailable, |market| {
+                                    if market.supply_available {
+                                        RecipeNodeState::Ready
+                                    } else {
+                                        RecipeNodeState::Unavailable
+                                    }
+                                });
+                        nodes.push(RecipeNodePreview::Supply {
+                            node_id: step.node_id,
+                            state,
+                            market,
+                            waiting_for: Vec::new(),
+                        });
+                    }
+                    ResolvedAsset::Waiting => nodes.push(RecipeNodePreview::Supply {
+                        node_id: step.node_id,
+                        state: RecipeNodeState::WaitingForUpstream,
+                        market: None,
+                        waiting_for: step.dependencies.clone(),
+                    }),
+                    ResolvedAsset::Unavailable => nodes.push(RecipeNodePreview::Supply {
+                        node_id: step.node_id,
+                        state: RecipeNodeState::OutputUnavailable,
+                        market: None,
+                        waiting_for: step.dependencies.clone(),
+                    }),
+                },
             }
         }
         Ok(RecipePreview { nodes })
@@ -186,7 +237,7 @@ impl RecipeService {
         &self,
         request: &PrepareRecipeRequest,
     ) -> Result<PreparedRecipe, RecipeError> {
-        let plan = compile_plan(&request.recipe, &self.trade)?;
+        let plan = compile_plan(&request.recipe, &self.trade, &self.settlement_tokens)?;
         let completed = validate_completed_context(&plan, &request.context.completed_nodes)?;
         let ready = plan
             .steps
@@ -200,6 +251,10 @@ impl RecipeService {
                         ResolvedAsset::Ready(asset) => Some((step, asset)),
                         ResolvedAsset::Waiting | ResolvedAsset::Unavailable => None,
                     },
+                    RecipeAction::Supply { asset, .. } => match resolve_asset(asset, &completed) {
+                        ResolvedAsset::Ready(asset) => Some((step, asset)),
+                        ResolvedAsset::Waiting | ResolvedAsset::Unavailable => None,
+                    },
                 }
             })
             .collect::<Vec<_>>();
@@ -207,63 +262,157 @@ impl RecipeService {
             return Err(RecipeError::StepNotReady);
         }
         let selections = selections_by_node(&request.selections)?;
-        if selections.len() != ready.len()
-            || ready
-                .iter()
-                .any(|(step, _)| !selections.contains_key(&step.node_id))
+        let ready_trades = ready
+            .iter()
+            .filter(|(step, _)| matches!(step.action, RecipeAction::Trade { .. }))
+            .count();
+        if selections.len() != ready_trades
+            || ready.iter().any(|(step, _)| {
+                matches!(step.action, RecipeAction::Trade { .. })
+                    && !selections.contains_key(&step.node_id)
+            })
         {
             return Err(RecipeError::InvalidSelection);
         }
 
         let mut prepared = Vec::with_capacity(ready.len() * 2);
-        for (step, sell) in ready {
-            let selection = selections
-                .get(&step.node_id)
-                .copied()
-                .ok_or(RecipeError::InvalidSelection)?;
-            match (&step.action, selection) {
-                (
-                    RecipeAction::Trade { buy_token, .. },
-                    RecipeNodeSelection::Trade {
-                        route_quote_id,
-                        venue,
-                        ..
-                    },
-                ) => {
-                    let trade = TradeQuoteRequest {
-                        wallet: request.context.wallet,
-                        sell_token: sell.token,
-                        buy_token: *buy_token,
-                        sell_amount: sell.amount,
-                    };
-                    let approval = self
-                        .trade
-                        .prepare_approval(&ApprovalRequest {
-                            token: sell.token,
-                            amount: sell.amount,
-                            venue: venue.clone(),
-                        })
-                        .await?;
-                    let trade = self
-                        .trade
-                        .prepare_trade(&PrepareTradeRequest {
-                            trade,
-                            route_quote_id: route_quote_id.clone(),
-                        })
-                        .await?;
-                    prepared.push(PreparedRecipeStep::Approval {
-                        node_id: step.node_id,
-                        action: approval,
-                    });
-                    prepared.push(PreparedRecipeStep::Trade {
-                        node_id: step.node_id,
-                        action: trade,
-                    });
+        for (step, input) in ready {
+            match &step.action {
+                RecipeAction::Trade { buy_token, .. } => {
+                    let selection = selections
+                        .get(&step.node_id)
+                        .copied()
+                        .ok_or(RecipeError::InvalidSelection)?;
+                    prepared.extend(
+                        self.prepare_trade_step(
+                            step.node_id,
+                            input,
+                            *buy_token,
+                            selection,
+                            request.context.wallet,
+                        )
+                        .await?,
+                    );
+                }
+                RecipeAction::Supply { .. } => {
+                    prepared.push(
+                        self.prepare_supply_step(step.node_id, input, request.context.wallet)
+                            .await?,
+                    );
                 }
             }
         }
         Ok(PreparedRecipe { steps: prepared })
     }
+
+    async fn prepare_trade_step(
+        &self,
+        node_id: Uuid,
+        input: TokenAmount,
+        buy_token: Address,
+        selection: &RecipeNodeSelection,
+        wallet: WalletAddress,
+    ) -> Result<[PreparedRecipeStep; 2], RecipeError> {
+        let RecipeNodeSelection::Trade {
+            route_quote_id,
+            venue,
+            ..
+        } = selection;
+        let trade = TradeQuoteRequest {
+            wallet,
+            sell_token: input.token,
+            buy_token,
+            sell_amount: input.amount,
+        };
+        let approval = self
+            .trade
+            .prepare_approval(&ApprovalRequest {
+                token: input.token,
+                amount: input.amount,
+                venue: venue.clone(),
+            })
+            .await?;
+        let trade = self
+            .trade
+            .prepare_trade(&PrepareTradeRequest {
+                trade,
+                route_quote_id: route_quote_id.clone(),
+            })
+            .await?;
+        Ok([
+            PreparedRecipeStep::Approval {
+                node_id,
+                action: approval,
+            },
+            PreparedRecipeStep::Trade {
+                node_id,
+                action: trade,
+            },
+        ])
+    }
+
+    async fn prepare_supply_step(
+        &self,
+        node_id: Uuid,
+        asset: TokenAmount,
+        wallet: WalletAddress,
+    ) -> Result<PreparedRecipeStep, RecipeError> {
+        let market = self
+            .borrowing
+            .supply_market(asset.token)
+            .await?
+            .filter(|market| market.supply_available)
+            .ok_or_else(rejected_by_provider)?;
+        let amount = decimal_from_raw(asset.amount, market.token_decimals)?;
+        let action = self
+            .borrowing
+            .prepare_supply(&PrepareSupplyRequest {
+                wallet,
+                collateral_token: asset.token,
+                amount,
+            })
+            .await?;
+        Ok(PreparedRecipeStep::Supply { node_id, action })
+    }
+}
+
+fn completed_preview(step: &super::LogicalStep) -> RecipeNodePreview {
+    match &step.action {
+        RecipeAction::Trade { .. } => RecipeNodePreview::Trade {
+            node_id: step.node_id,
+            state: RecipeNodeState::Complete,
+            routes: Vec::new(),
+            waiting_for: Vec::new(),
+        },
+        RecipeAction::Supply { .. } => RecipeNodePreview::Supply {
+            node_id: step.node_id,
+            state: RecipeNodeState::Complete,
+            market: None,
+            waiting_for: Vec::new(),
+        },
+    }
+}
+
+fn decimal_from_raw(raw: U256, decimals: u32) -> Result<Decimal, RecipeError> {
+    let digits = raw.to_string();
+    let scale = usize::try_from(decimals).map_err(|_| invalid_provider_data())?;
+    let value = if scale == 0 {
+        digits
+    } else if digits.len() <= scale {
+        format!("0.{}{}", "0".repeat(scale - digits.len()), digits)
+    } else {
+        let decimal_at = digits.len() - scale;
+        format!("{}.{}", &digits[..decimal_at], &digits[decimal_at..])
+    };
+    value.parse().map_err(|_| invalid_provider_data())
+}
+
+fn invalid_provider_data() -> RecipeError {
+    BorrowingServiceError::Provider(BorrowingProviderError::InvalidData).into()
+}
+
+fn rejected_by_provider() -> RecipeError {
+    BorrowingServiceError::Provider(BorrowingProviderError::Rejected).into()
 }
 
 #[derive(Clone, Copy)]
@@ -315,17 +464,24 @@ fn validate_completed_context<'a>(
             return Err(RecipeError::InvalidContext);
         }
 
-        let RecipeAction::Trade { buy_token, .. } = &step.action;
-        let mut output_seen = false;
-        for output in &node.outputs {
-            if output_seen
-                || output.port != "buy"
-                || output.asset.token != *buy_token
-                || output.asset.amount.is_zero()
-            {
+        match &step.action {
+            RecipeAction::Trade { buy_token, .. } => {
+                let mut output_seen = false;
+                for output in &node.outputs {
+                    if output_seen
+                        || output.port != "buy"
+                        || output.asset.token != *buy_token
+                        || output.asset.amount.is_zero()
+                    {
+                        return Err(RecipeError::InvalidContext);
+                    }
+                    output_seen = true;
+                }
+            }
+            RecipeAction::Supply { .. } if !node.outputs.is_empty() => {
                 return Err(RecipeError::InvalidContext);
             }
-            output_seen = true;
+            RecipeAction::Supply { .. } => {}
         }
     }
 
@@ -340,11 +496,11 @@ fn validate_completed_context<'a>(
         {
             return Err(RecipeError::InvalidContext);
         }
-        if let RecipeAction::Trade {
-            sell: AssetRef::NodeOutput { node_id, port, .. },
-            ..
-        } = &step.action
-        {
+        let input = match &step.action {
+            RecipeAction::Trade { sell, .. } => sell,
+            RecipeAction::Supply { asset, .. } => asset,
+        };
+        if let AssetRef::NodeOutput { node_id, port, .. } = input {
             let dependency = completed.get(node_id).ok_or(RecipeError::InvalidContext)?;
             if !dependency.outputs.iter().any(|output| output.port == *port) {
                 return Err(RecipeError::InvalidContext);
@@ -358,11 +514,13 @@ fn validate_completed_context<'a>(
 fn compile_plan(
     recipe: &RecipeDefinition,
     trade: &BstockTradeService,
+    settlement_tokens: &[Address],
 ) -> Result<LogicalPlan, RecipeError> {
     let compiled = compile(recipe);
     match compiled.plan {
         Some(plan) => {
-            let report = validate_trade_pairs(compiled.report, Some(&plan), trade);
+            let report =
+                validate_action_policy(compiled.report, Some(&plan), trade, settlement_tokens);
             if report.valid {
                 Ok(plan)
             } else {
@@ -373,31 +531,52 @@ fn compile_plan(
     }
 }
 
-fn validate_trade_pairs(
+fn validate_action_policy(
     mut report: RecipeValidationReport,
     plan: Option<&LogicalPlan>,
     trade: &BstockTradeService,
+    settlement_tokens: &[Address],
 ) -> RecipeValidationReport {
     let Some(plan) = plan else {
         return report;
     };
     for step in &plan.steps {
-        let RecipeAction::Trade { sell, buy_token } = &step.action;
-        let sell_token = match sell {
-            AssetRef::Wallet { token, .. } | AssetRef::NodeOutput { token, .. } => *token,
-        };
-        if !trade.supports_pair_shape(sell_token, *buy_token) {
-            report.diagnostics.push(RecipeDiagnostic::error(
-                RecipeDiagnosticCode::UnsupportedTradePair,
-                RecipeDiagnosticLocation::Field {
-                    node_id: step.node_id,
-                    field: "buyToken".to_owned(),
-                },
-                "trade supports only settlement token and bStock combinations",
-            ));
+        match &step.action {
+            RecipeAction::Trade { sell, buy_token } => {
+                let sell_token = asset_token(sell);
+                if !trade.supports_pair_shape(sell_token, *buy_token) {
+                    report.diagnostics.push(RecipeDiagnostic::error(
+                        RecipeDiagnosticCode::UnsupportedTradePair,
+                        RecipeDiagnosticLocation::Field {
+                            node_id: step.node_id,
+                            field: "buyToken".to_owned(),
+                        },
+                        "trade supports only settlement token and bStock combinations",
+                    ));
+                }
+            }
+            RecipeAction::Supply { asset, .. }
+                if settlement_tokens.contains(&asset_token(asset)) =>
+            {
+                report.diagnostics.push(RecipeDiagnostic::error(
+                    RecipeDiagnosticCode::UnsupportedSupplyAsset,
+                    RecipeDiagnosticLocation::Port {
+                        node_id: step.node_id,
+                        port: "asset".to_owned(),
+                    },
+                    "supply accepts supported bStocks, not settlement tokens",
+                ));
+            }
+            RecipeAction::Supply { .. } => {}
         }
     }
     RecipeValidationReport::new(report.diagnostics)
+}
+
+fn asset_token(asset: &AssetRef) -> Address {
+    match asset {
+        AssetRef::Wallet { token, .. } | AssetRef::NodeOutput { token, .. } => *token,
+    }
 }
 
 fn selections_by_node(
@@ -422,6 +601,13 @@ mod tests {
 
     use super::*;
     use crate::{
+        bstock_borrowing::{
+            BorrowingAccount, BorrowingActionGateway, BorrowingPolicy, BorrowingPreview,
+            BorrowingReader, BorrowingTransactionState, BorrowingTransactionStatus,
+            PrepareBorrowRequest, PrepareCollateralRequest, PrepareRepaymentRequest,
+            PrepareWithdrawalRequest, PreparedBorrowingAction, SupplyMarket,
+            SupplyMarketUnavailableReason,
+        },
         bstock_market::{
             AssetKind, BNB_CHAIN_ID, BstockCatalog, BstockDetails, BstockId, BstockSummary,
             CatalogError,
@@ -441,6 +627,7 @@ mod tests {
     const SOURCE_ID: Uuid = Uuid::from_u128(1);
     const FIRST_TRADE_ID: Uuid = Uuid::from_u128(2);
     const SECOND_TRADE_ID: Uuid = Uuid::from_u128(3);
+    const SUPPLY_ID: Uuid = Uuid::from_u128(6);
     const SETTLEMENT: Address = Address::with_last_byte(1);
     const BSTOCK: Address = Address::with_last_byte(2);
     const WRONG_TOKEN: Address = Address::with_last_byte(3);
@@ -571,6 +758,106 @@ mod tests {
         }
     }
 
+    struct TestBorrowing;
+
+    #[async_trait]
+    impl BorrowingReader for TestBorrowing {
+        async fn read_supply_market(
+            &self,
+            token: Address,
+        ) -> Result<Option<SupplyMarket>, BorrowingProviderError> {
+            Ok((token == BSTOCK).then_some(SupplyMarket {
+                venue: BorrowingVenue::Venus,
+                chain_id: BNB_CHAIN_ID,
+                token: crate::bstock_borrowing::BorrowingToken {
+                    contract: BSTOCK,
+                    symbol: "TSLAB".to_owned(),
+                },
+                market: Address::with_last_byte(8),
+                token_decimals: 18,
+                supply_apy_percent: Decimal::ONE,
+                remaining_supply_capacity: None,
+                supply_available: true,
+                unavailable_reasons: Vec::<SupplyMarketUnavailableReason>::new(),
+                observed_at_ms: 1,
+            }))
+        }
+
+        async fn read_markets(
+            &self,
+            _collateral_assets: &[BstockId],
+            _debt_tokens: &[Address],
+        ) -> Result<Vec<crate::bstock_borrowing::BorrowingMarket>, BorrowingProviderError> {
+            Ok(Vec::new())
+        }
+
+        async fn read_account(
+            &self,
+            _wallet: WalletAddress,
+        ) -> Result<BorrowingAccount, BorrowingProviderError> {
+            Err(BorrowingProviderError::Unavailable)
+        }
+    }
+
+    #[async_trait]
+    impl BorrowingActionGateway for TestBorrowing {
+        async fn prepare_supply(
+            &self,
+            _request: &PrepareSupplyRequest,
+        ) -> Result<PreparedBorrowingAction, BorrowingProviderError> {
+            Ok(PreparedBorrowingAction {
+                transactions: Vec::new(),
+                preview: BorrowingPreview::default(),
+            })
+        }
+
+        async fn prepare_collateral(
+            &self,
+            _request: &PrepareCollateralRequest,
+        ) -> Result<PreparedBorrowingAction, BorrowingProviderError> {
+            unreachable!("collateral preparation is not used by recipes")
+        }
+
+        async fn prepare_borrow(
+            &self,
+            _request: &PrepareBorrowRequest,
+        ) -> Result<PreparedBorrowingAction, BorrowingProviderError> {
+            unreachable!("borrow preparation is not used by recipes")
+        }
+
+        async fn prepare_repayment_approval(
+            &self,
+            _request: &PrepareRepaymentRequest,
+        ) -> Result<PreparedBorrowingAction, BorrowingProviderError> {
+            unreachable!("repayment preparation is not used by recipes")
+        }
+
+        async fn prepare_repayment(
+            &self,
+            _request: &PrepareRepaymentRequest,
+        ) -> Result<PreparedBorrowingAction, BorrowingProviderError> {
+            unreachable!("repayment preparation is not used by recipes")
+        }
+
+        async fn prepare_withdrawal(
+            &self,
+            _request: &PrepareWithdrawalRequest,
+        ) -> Result<PreparedBorrowingAction, BorrowingProviderError> {
+            unreachable!("withdrawal preparation is not used by recipes")
+        }
+
+        async fn transaction_status(
+            &self,
+            _transaction_hash: B256,
+        ) -> Result<BorrowingTransactionStatus, BorrowingProviderError> {
+            Ok(BorrowingTransactionStatus {
+                state: BorrowingTransactionState::Unknown,
+                block_number: None,
+                executed_at_ms: None,
+            })
+        }
+    }
+
     #[tokio::test]
     async fn catalog_describes_trade_compatibility_with_asset_groups() {
         let (service, _) = service();
@@ -592,6 +879,13 @@ mod tests {
                     buy: RecipeOptionSource::SettlementTokens,
                 },
             ]
+        );
+        assert_eq!(
+            catalog.supply_policy.allowed_inputs,
+            vec![RecipeSupplyRule {
+                venue: BorrowingVenue::Venus,
+                input: RecipeOptionSource::Bstocks,
+            }]
         );
     }
 
@@ -739,6 +1033,7 @@ mod tests {
         assert!(prepared.steps.iter().all(|step| match step {
             PreparedRecipeStep::Approval { node_id, .. }
             | PreparedRecipeStep::Trade { node_id, .. } => *node_id == SECOND_TRADE_ID,
+            PreparedRecipeStep::Supply { .. } => false,
         }));
         assert_eq!(
             gateway.prepared(),
@@ -775,6 +1070,72 @@ mod tests {
         );
     }
 
+    #[tokio::test]
+    async fn rejects_settlement_token_supply_before_provider_io() {
+        let (service, gateway) = service();
+        let recipe = supply_recipe(SETTLEMENT, U256::from(6));
+
+        let report = service.validate(&recipe);
+
+        assert!(!report.valid);
+        assert!(report.diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == RecipeDiagnosticCode::UnsupportedSupplyAsset
+                && diagnostic.location
+                    == RecipeDiagnosticLocation::Port {
+                        node_id: SUPPLY_ID,
+                        port: "asset".to_owned(),
+                    }
+        }));
+        assert!(matches!(
+            service
+                .preview(&RecipePreviewRequest {
+                    recipe,
+                    context: context(Vec::new()),
+                })
+                .await,
+            Err(RecipeError::InvalidRecipe(_))
+        ));
+        assert!(gateway.quoted().is_empty());
+    }
+
+    #[tokio::test]
+    async fn prepares_ready_supply_without_a_route_selection() {
+        let (service, _) = service();
+        let recipe = supply_recipe(BSTOCK, U256::from(1_000_000_000_000_000_000_u128));
+
+        let preview = service
+            .preview(&RecipePreviewRequest {
+                recipe: recipe.clone(),
+                context: context(Vec::new()),
+            })
+            .await
+            .unwrap_or_else(|error| panic!("supply preview failed: {error}"));
+        assert_eq!(states(&preview), vec![RecipeNodeState::Ready]);
+
+        let prepared = service
+            .prepare(&PrepareRecipeRequest {
+                recipe,
+                context: context(Vec::new()),
+                selections: Vec::new(),
+            })
+            .await
+            .unwrap_or_else(|error| panic!("supply preparation failed: {error}"));
+        assert!(matches!(
+            prepared.steps.as_slice(),
+            [PreparedRecipeStep::Supply { node_id, .. }] if *node_id == SUPPLY_ID
+        ));
+    }
+
+    #[test]
+    fn converts_raw_supply_amount_exactly_and_rejects_decimal_overflow() {
+        assert_eq!(
+            decimal_from_raw(U256::from(1_250_001_000_000_000_000_u128), 18)
+                .unwrap_or_else(|error| panic!("exact amount failed: {error}")),
+            Decimal::new(1_250_001, 6)
+        );
+        assert!(decimal_from_raw(U256::MAX, 0).is_err());
+    }
+
     fn service() -> (RecipeService, Arc<RecordingGateway>) {
         let catalog = Arc::new(FixedCatalog(vec![summary()]));
         let gateway = Arc::new(RecordingGateway::default());
@@ -786,7 +1147,18 @@ mod tests {
             policy,
         ));
         let market = Arc::new(BstockMarketService::new(catalog));
-        (RecipeService::new(market, trade, vec![SETTLEMENT]), gateway)
+        let borrowing_gateway = Arc::new(TestBorrowing);
+        let borrowing = Arc::new(BorrowingService::new(
+            Arc::new(FixedCatalog(vec![summary()])),
+            borrowing_gateway.clone(),
+            borrowing_gateway,
+            BorrowingPolicy::new(vec![SETTLEMENT])
+                .unwrap_or_else(|error| panic!("test borrowing policy is invalid: {error}")),
+        ));
+        (
+            RecipeService::new(market, trade, borrowing, vec![SETTLEMENT]),
+            gateway,
+        )
     }
 
     fn preview_request(completed_nodes: Vec<RecipeCompletedNode>) -> RecipePreviewRequest {
@@ -878,12 +1250,43 @@ mod tests {
         }
     }
 
+    fn supply_recipe(token: Address, raw_amount: U256) -> RecipeDefinition {
+        RecipeDefinition {
+            schema_version: SCHEMA_VERSION,
+            chain_id: BNB_CHAIN_ID,
+            nodes: vec![
+                RecipeNode {
+                    id: SOURCE_ID,
+                    primitive: RecipePrimitive::WalletAsset { token, raw_amount },
+                },
+                RecipeNode {
+                    id: SUPPLY_ID,
+                    primitive: RecipePrimitive::Supply {
+                        venue: BorrowingVenue::Venus,
+                    },
+                },
+            ],
+            edges: vec![RecipeEdge {
+                id: Uuid::from_u128(7),
+                from: RecipePortRef {
+                    node_id: SOURCE_ID,
+                    port: "asset".to_owned(),
+                },
+                to: RecipePortRef {
+                    node_id: SUPPLY_ID,
+                    port: "asset".to_owned(),
+                },
+            }],
+        }
+    }
+
     fn states(preview: &RecipePreview) -> Vec<RecipeNodeState> {
         preview
             .nodes
             .iter()
             .map(|node| match node {
-                RecipeNodePreview::Trade { state, .. } => *state,
+                RecipeNodePreview::Trade { state, .. }
+                | RecipeNodePreview::Supply { state, .. } => *state,
             })
             .collect()
     }

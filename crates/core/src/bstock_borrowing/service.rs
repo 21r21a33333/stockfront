@@ -9,7 +9,7 @@ use crate::{
         BorrowingAccount, BorrowingActionGateway, BorrowingMarket, BorrowingMarketQuery,
         BorrowingProviderError, BorrowingReader, BorrowingTransactionStatus, PositionAmount,
         PrepareBorrowRequest, PrepareCollateralRequest, PrepareRepaymentRequest,
-        PrepareSupplyRequest, PrepareWithdrawalRequest, PreparedBorrowingAction,
+        PrepareSupplyRequest, PrepareWithdrawalRequest, PreparedBorrowingAction, SupplyMarket,
     },
     bstock_market::{BNB_CHAIN_ID, BstockCatalog, BstockId, CatalogError},
     wallet_portfolio::WalletAddress,
@@ -135,6 +135,26 @@ impl BorrowingService {
         wallet: WalletAddress,
     ) -> Result<BorrowingAccount, BorrowingServiceError> {
         self.reader.read_account(wallet).await.map_err(Into::into)
+    }
+
+    /// Returns the current Venus supply capability for a supported bStock.
+    ///
+    /// `None` means the token is in Stockfront's bStock catalog but Venus does
+    /// not currently expose a market for it.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`BorrowingServiceError`] when the token is not a supported
+    /// bStock or current Venus market data cannot be read.
+    pub async fn supply_market(
+        &self,
+        token: Address,
+    ) -> Result<Option<SupplyMarket>, BorrowingServiceError> {
+        self.ensure_supported_collateral(token).await?;
+        self.reader
+            .read_supply_market(token)
+            .await
+            .map_err(Into::into)
     }
 
     /// Returns Binance's ordered wallet transactions for supplying a supported bStock to Venus.
@@ -338,6 +358,13 @@ mod tests {
 
     #[async_trait]
     impl BorrowingReader for RecordingReader {
+        async fn read_supply_market(
+            &self,
+            _token: Address,
+        ) -> Result<Option<SupplyMarket>, BorrowingProviderError> {
+            Ok(None)
+        }
+
         async fn read_markets(
             &self,
             collateral_assets: &[BstockId],

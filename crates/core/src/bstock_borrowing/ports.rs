@@ -6,7 +6,7 @@ use crate::{
     bstock_borrowing::{
         BorrowingAccount, BorrowingMarket, BorrowingTransactionStatus, PrepareBorrowRequest,
         PrepareCollateralRequest, PrepareRepaymentRequest, PrepareSupplyRequest,
-        PrepareWithdrawalRequest, PreparedBorrowingAction,
+        PrepareWithdrawalRequest, PreparedBorrowingAction, SupplyMarket,
     },
     bstock_market::BstockId,
     wallet_portfolio::WalletAddress,
@@ -70,6 +70,11 @@ pub trait BorrowingActionGateway: Send + Sync {
 
 #[async_trait]
 pub trait BorrowingReader: Send + Sync {
+    async fn read_supply_market(
+        &self,
+        token: Address,
+    ) -> Result<Option<SupplyMarket>, BorrowingProviderError>;
+
     async fn read_markets(
         &self,
         collateral_assets: &[BstockId],
