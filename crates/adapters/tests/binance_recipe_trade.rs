@@ -31,6 +31,7 @@ use wallet_support::binance_hot_wallet;
 
 const NVIDIA_BSTOCK: Address = address!("02fca66c1d1afb4e2a7884261eb00f63598a7436");
 const USDT: Address = address!("55d398326f99059ff775485246999027b3197955");
+const VENUS_COMPTROLLER: Address = address!("fd36e2c2a6789db23113685031d7f16329158384");
 const SIX_USDT: &str = "6000000000000000000";
 
 #[tokio::test]
@@ -39,7 +40,7 @@ async fn previews_and_prepares_live_bstock_recipe() -> Result<(), Box<dyn Error>
     let service = live_recipe_service().await?;
 
     let catalog = service.catalog().await?;
-    assert_eq!(catalog.primitives.len(), 3);
+    assert_eq!(catalog.primitives.len(), 5);
     assert_eq!(catalog.settlement_tokens, vec![USDT]);
     assert!(
         catalog
@@ -129,7 +130,13 @@ async fn live_recipe_service() -> Result<RecipeService, Box<dyn Error>> {
         venus,
         BorrowingPolicy::new(vec![USDT])?,
     ));
-    Ok(RecipeService::new(market, trades, borrowing, vec![USDT]))
+    Ok(RecipeService::new(
+        market,
+        trades,
+        borrowing,
+        vec![USDT],
+        VENUS_COMPTROLLER,
+    ))
 }
 
 async fn assert_supply_preparation(

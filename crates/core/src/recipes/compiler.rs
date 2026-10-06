@@ -21,7 +21,7 @@ use uuid::Uuid;
 use super::{
     AssetRef, LogicalPlan, LogicalStep, RecipeAction, RecipeDefinition, RecipeDiagnostic,
     RecipeDiagnosticCode, RecipeDiagnosticLocation, RecipeGraph, RecipePrimitive,
-    RecipeValidationReport,
+    RecipeValidationReport, SuppliedPositionRef,
 };
 use crate::bstock_market::BNB_CHAIN_ID;
 
@@ -107,6 +107,7 @@ fn validate_node_fields(recipe: &RecipeDefinition, diagnostics: &mut Vec<RecipeD
 
 fn lower(graph: &RecipeGraph<'_>) -> Result<LogicalPlan, RecipeDiagnostic> {
     let mut values = HashMap::<(Uuid, String), AssetRef>::new();
+    let mut positions = HashMap::<(Uuid, String), SuppliedPositionRef>::new();
     let mut steps = Vec::new();
 
     for node_id in graph.topological_order() {
@@ -123,22 +124,24 @@ fn lower(graph: &RecipeGraph<'_>) -> Result<LogicalPlan, RecipeDiagnostic> {
                     },
                 );
             }
+            RecipePrimitive::SuppliedPosition { venue, pool, token } => {
+                positions.insert(
+                    (node_id, "position".to_owned()),
+                    SuppliedPositionRef {
+                        venue: *venue,
+                        pool: *pool,
+                        token: *token,
+                    },
+                );
+            }
             RecipePrimitive::Trade { buy_token } => {
-                let Some(edge) = graph.incoming(node_id, "sell") else {
-                    return Err(missing_input(node_id, "sell"));
-                };
-                let source_key = (edge.edge.from.node_id, edge.edge.from.port.clone());
-                let sell = values.get(&source_key).cloned().ok_or_else(|| {
-                    RecipeDiagnostic::error(
-                        RecipeDiagnosticCode::MissingRequiredInput,
-                        RecipeDiagnosticLocation::Port {
-                            node_id,
-                            port: "sell".to_owned(),
-                        },
-                        "the trade input is not available before this step",
-                    )
-                })?;
-                let dependency = edge.edge.from.node_id;
+                let (sell, dependency) = input_asset(
+                    graph,
+                    &values,
+                    node_id,
+                    "sell",
+                    "the trade input is not available before this step",
+                )?;
                 steps.push(LogicalStep {
                     node_id,
                     dependencies: matches!(sell, AssetRef::NodeOutput { .. })
@@ -160,21 +163,13 @@ fn lower(graph: &RecipeGraph<'_>) -> Result<LogicalPlan, RecipeDiagnostic> {
                 );
             }
             RecipePrimitive::Supply { venue } => {
-                let Some(edge) = graph.incoming(node_id, "asset") else {
-                    return Err(missing_input(node_id, "asset"));
-                };
-                let source_key = (edge.edge.from.node_id, edge.edge.from.port.clone());
-                let asset = values.get(&source_key).cloned().ok_or_else(|| {
-                    RecipeDiagnostic::error(
-                        RecipeDiagnosticCode::MissingRequiredInput,
-                        RecipeDiagnosticLocation::Port {
-                            node_id,
-                            port: "asset".to_owned(),
-                        },
-                        "the supply input is not available before this step",
-                    )
-                })?;
-                let dependency = edge.edge.from.node_id;
+                let (asset, dependency) = input_asset(
+                    graph,
+                    &values,
+                    node_id,
+                    "asset",
+                    "the supply input is not available before this step",
+                )?;
                 steps.push(LogicalStep {
                     node_id,
                     dependencies: matches!(asset, AssetRef::NodeOutput { .. })
@@ -187,9 +182,65 @@ fn lower(graph: &RecipeGraph<'_>) -> Result<LogicalPlan, RecipeDiagnostic> {
                     },
                 });
             }
+            RecipePrimitive::Withdraw => {
+                let position = input_position(graph, &positions, node_id)?;
+                steps.push(LogicalStep {
+                    node_id,
+                    dependencies: Vec::new(),
+                    action: RecipeAction::Withdraw { position },
+                });
+            }
         }
     }
     Ok(LogicalPlan { steps })
+}
+
+fn input_asset(
+    graph: &RecipeGraph<'_>,
+    values: &HashMap<(Uuid, String), AssetRef>,
+    node_id: Uuid,
+    port: &str,
+    unavailable_message: &'static str,
+) -> Result<(AssetRef, Uuid), RecipeDiagnostic> {
+    let edge = graph
+        .incoming(node_id, port)
+        .ok_or_else(|| missing_input(node_id, port))?;
+    let source_id = edge.edge.from.node_id;
+    let source_key = (source_id, edge.edge.from.port.clone());
+    let asset = values
+        .get(&source_key)
+        .cloned()
+        .ok_or_else(|| unavailable_input(node_id, port, unavailable_message))?;
+    Ok((asset, source_id))
+}
+
+fn input_position(
+    graph: &RecipeGraph<'_>,
+    positions: &HashMap<(Uuid, String), SuppliedPositionRef>,
+    node_id: Uuid,
+) -> Result<SuppliedPositionRef, RecipeDiagnostic> {
+    let edge = graph
+        .incoming(node_id, "position")
+        .ok_or_else(|| missing_input(node_id, "position"))?;
+    let source_key = (edge.edge.from.node_id, edge.edge.from.port.clone());
+    positions.get(&source_key).copied().ok_or_else(|| {
+        unavailable_input(
+            node_id,
+            "position",
+            "the supplied position is not available before this step",
+        )
+    })
+}
+
+fn unavailable_input(node_id: Uuid, port: &str, message: &'static str) -> RecipeDiagnostic {
+    RecipeDiagnostic::error(
+        RecipeDiagnosticCode::MissingRequiredInput,
+        RecipeDiagnosticLocation::Port {
+            node_id,
+            port: port.to_owned(),
+        },
+        message,
+    )
 }
 
 fn missing_input(node_id: Uuid, port: &str) -> RecipeDiagnostic {
@@ -214,6 +265,8 @@ mod tests {
     const SOURCE_ID: Uuid = Uuid::from_u128(1);
     const TRADE_ID: Uuid = Uuid::from_u128(2);
     const SUPPLY_ID: Uuid = Uuid::from_u128(6);
+    const POSITION_ID: Uuid = Uuid::from_u128(8);
+    const WITHDRAW_ID: Uuid = Uuid::from_u128(9);
 
     #[test]
     fn compiles_wallet_asset_trade_into_a_logical_plan() {
@@ -334,6 +387,103 @@ mod tests {
                 },
                 venue: BorrowingVenue::Venus,
             }
+        );
+    }
+
+    #[test]
+    fn compiles_supplied_position_into_terminal_withdrawal() {
+        let pool = Address::with_last_byte(8);
+        let token = Address::with_last_byte(9);
+        let recipe = RecipeDefinition {
+            schema_version: SCHEMA_VERSION,
+            chain_id: BNB_CHAIN_ID,
+            nodes: vec![
+                RecipeNode {
+                    id: POSITION_ID,
+                    primitive: RecipePrimitive::SuppliedPosition {
+                        venue: BorrowingVenue::Venus,
+                        pool,
+                        token,
+                    },
+                },
+                RecipeNode {
+                    id: WITHDRAW_ID,
+                    primitive: RecipePrimitive::Withdraw,
+                },
+            ],
+            edges: vec![RecipeEdge {
+                id: Uuid::from_u128(10),
+                from: RecipePortRef {
+                    node_id: POSITION_ID,
+                    port: "position".to_owned(),
+                },
+                to: RecipePortRef {
+                    node_id: WITHDRAW_ID,
+                    port: "position".to_owned(),
+                },
+            }],
+        };
+
+        let compiled = compile(&recipe);
+        let plan = compiled
+            .plan
+            .unwrap_or_else(|| panic!("valid withdrawal recipe did not produce a plan"));
+
+        assert!(compiled.report.valid);
+        assert_eq!(plan.steps.len(), 1);
+        assert_eq!(plan.steps[0].node_id, WITHDRAW_ID);
+        assert_eq!(
+            plan.steps[0].action,
+            RecipeAction::Withdraw {
+                position: SuppliedPositionRef {
+                    venue: BorrowingVenue::Venus,
+                    pool,
+                    token,
+                },
+            }
+        );
+    }
+
+    #[test]
+    fn rejects_wallet_asset_connected_to_withdrawal() {
+        let recipe = RecipeDefinition {
+            schema_version: SCHEMA_VERSION,
+            chain_id: BNB_CHAIN_ID,
+            nodes: vec![
+                RecipeNode {
+                    id: SOURCE_ID,
+                    primitive: RecipePrimitive::WalletAsset {
+                        token: Address::with_last_byte(1),
+                        raw_amount: U256::from(6),
+                    },
+                },
+                RecipeNode {
+                    id: WITHDRAW_ID,
+                    primitive: RecipePrimitive::Withdraw,
+                },
+            ],
+            edges: vec![RecipeEdge {
+                id: Uuid::from_u128(11),
+                from: RecipePortRef {
+                    node_id: SOURCE_ID,
+                    port: "asset".to_owned(),
+                },
+                to: RecipePortRef {
+                    node_id: WITHDRAW_ID,
+                    port: "position".to_owned(),
+                },
+            }],
+        };
+
+        let compiled = compile(&recipe);
+
+        assert!(compiled.plan.is_none());
+        assert!(
+            compiled
+                .report
+                .diagnostics
+                .iter()
+                .any(|diagnostic| { diagnostic.code == RecipeDiagnosticCode::PortTypeMismatch })
         );
     }
 

@@ -47,7 +47,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
         glider_api_key,
         glider_api_base_url,
     } = Settings::from_env()?;
-
     let binance = BinanceWeb3Client::new(
         &binance_web3_base_url,
         &binance_web3_api_key,
@@ -55,20 +54,17 @@ async fn main() -> Result<(), Box<dyn Error>> {
         Duration::from_secs(10),
     )?;
     drop((binance_web3_api_key, binance_web3_api_secret));
-    let binance = Arc::new(binance);
-    let market = Arc::new(BstockMarketService::new(binance.clone()));
-    let wallet_portfolio = Arc::new(WalletPortfolioService::new(
-        binance.clone(),
-        binance.clone(),
-    ));
+    let client = Arc::new(binance);
+    let market = Arc::new(BstockMarketService::new(client.clone()));
+    let wallet_portfolio = Arc::new(WalletPortfolioService::new(client.clone(), client.clone()));
     let trade_policy = TradePolicy::new(
         trade_settlement_tokens.clone(),
         max_trade_price_impact_bps,
         trade_slippage_bps,
     )?;
     let trades = Arc::new(BstockTradeService::new(
-        binance.clone(),
-        binance.clone(),
+        client.clone(),
+        client.clone(),
         trade_policy.clone(),
     ));
     let venus = Arc::new(
@@ -76,27 +72,27 @@ async fn main() -> Result<(), Box<dyn Error>> {
             &venus_api_base_url,
             &bsc_rpc_url,
             venus_comptroller,
-            binance.clone(),
+            client.clone(),
             Duration::from_secs(10),
         )
         .await?,
     );
     let borrowing = Arc::new(BorrowingService::new(
-        binance.clone(),
+        client.clone(),
         venus.clone(),
         venus,
         BorrowingPolicy::new(borrow_debt_tokens)?,
     ));
     let liquidity = Arc::new(LiquidityService::new(
-        binance.clone(),
-        binance.clone(),
-        binance.clone(),
+        client.clone(),
+        client.clone(),
+        client.clone(),
         LiquidityPolicy::new(liquidity_investment_ids, liquidity_slippage_bps)?,
     ));
     let carry = Arc::new(CarryService::new(
         borrowing.clone(),
-        binance.clone(),
-        binance,
+        client.clone(),
+        client,
         CarryPolicy::new(carry_investment_ids, min_carry_spread_bps),
     ));
     let reserve = Arc::new(ReserveAdapter::new(
@@ -111,12 +107,13 @@ async fn main() -> Result<(), Box<dyn Error>> {
         Duration::from_secs(10),
     )?);
     let managed_portfolios = Arc::new(ManagedPortfolioService::new(glider));
-    let recipes = Arc::new(RecipeService::new(
+    let recipes = RecipeService::new(
         market.clone(),
         trades.clone(),
         borrowing.clone(),
         trade_settlement_tokens,
-    ));
+        venus_comptroller,
+    );
     let app = bstock_router(market)
         .merge(wallet_router(wallet_portfolio))
         .merge(trade_router(trades))
@@ -125,7 +122,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .merge(liquidity_router(liquidity))
         .merge(basket_router(baskets))
         .merge(managed_portfolio_router(managed_portfolios))
-        .merge(recipe_router(recipes));
+        .merge(recipe_router(Arc::new(recipes)));
     serve(bind_address, app).await?;
     Ok(())
 }

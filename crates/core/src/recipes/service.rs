@@ -20,12 +20,13 @@ use super::{
     RecipeDiagnosticCode, RecipeDiagnosticLocation, RecipeNodePreview, RecipeNodeSelection,
     RecipeNodeState, RecipeOptionSource, RecipePreview, RecipePreviewRequest, RecipePrimitiveKind,
     RecipeSupplyPolicy, RecipeSupplyRule, RecipeTradePolicy, RecipeValidationReport,
-    SCHEMA_VERSION, compile,
+    RecipeWithdrawalPolicy, RecipeWithdrawalRule, RecipeWithdrawalUnavailableReason,
+    SCHEMA_VERSION, SuppliedPositionRef, compile,
 };
 use crate::{
     bstock_borrowing::{
-        BorrowingProviderError, BorrowingService, BorrowingServiceError, BorrowingVenue,
-        PrepareSupplyRequest,
+        BorrowingAsset, BorrowingProviderError, BorrowingService, BorrowingServiceError,
+        BorrowingVenue, PositionAmount, PrepareSupplyRequest, PrepareWithdrawalRequest,
     },
     bstock_market::{BstockMarketError, BstockMarketService, ListBstocksQuery, MAX_LIST_LIMIT},
     bstock_trade::{
@@ -58,6 +59,7 @@ pub struct RecipeService {
     trade: Arc<BstockTradeService>,
     borrowing: Arc<BorrowingService>,
     settlement_tokens: Vec<Address>,
+    withdrawal_policy: RecipeWithdrawalPolicy,
 }
 
 impl RecipeService {
@@ -67,12 +69,19 @@ impl RecipeService {
         trade: Arc<BstockTradeService>,
         borrowing: Arc<BorrowingService>,
         settlement_tokens: Vec<Address>,
+        withdrawal_pool: Address,
     ) -> Self {
         Self {
             market,
             trade,
             borrowing,
             settlement_tokens,
+            withdrawal_policy: RecipeWithdrawalPolicy {
+                allowed_inputs: vec![RecipeWithdrawalRule {
+                    venue: BorrowingVenue::Venus,
+                    pool: withdrawal_pool,
+                }],
+            },
         }
     }
 
@@ -115,6 +124,7 @@ impl RecipeService {
                     input: RecipeOptionSource::Bstocks,
                 }],
             },
+            withdrawal_policy: self.withdrawal_policy.clone(),
         })
     }
 
@@ -127,6 +137,7 @@ impl RecipeService {
             compiled.plan.as_ref(),
             &self.trade,
             &self.settlement_tokens,
+            &self.withdrawal_policy,
         )
     }
 
@@ -144,7 +155,12 @@ impl RecipeService {
         &self,
         request: &RecipePreviewRequest,
     ) -> Result<RecipePreview, RecipeError> {
-        let plan = compile_plan(&request.recipe, &self.trade, &self.settlement_tokens)?;
+        let plan = compile_plan(
+            &request.recipe,
+            &self.trade,
+            &self.settlement_tokens,
+            &self.withdrawal_policy,
+        )?;
         let completed = validate_completed_context(&plan, &request.context.completed_nodes)?;
         let mut nodes = Vec::with_capacity(plan.steps.len());
         for step in &plan.steps {
@@ -153,78 +169,125 @@ impl RecipeService {
                 continue;
             }
 
-            match &step.action {
-                RecipeAction::Trade { sell, buy_token } => match resolve_asset(sell, &completed) {
-                    ResolvedAsset::Ready(asset) => {
-                        let routes = self
-                            .trade
-                            .quotes(&TradeQuoteRequest {
-                                wallet: request.context.wallet,
-                                sell_token: asset.token,
-                                buy_token: *buy_token,
-                                sell_amount: asset.amount,
-                            })
-                            .await?;
-                        nodes.push(RecipeNodePreview::Trade {
-                            node_id: step.node_id,
-                            state: RecipeNodeState::Ready,
-                            routes,
-                            waiting_for: Vec::new(),
-                        });
-                    }
-                    ResolvedAsset::Waiting => {
-                        nodes.push(RecipeNodePreview::Trade {
-                            node_id: step.node_id,
-                            state: RecipeNodeState::WaitingForUpstream,
-                            routes: Vec::new(),
-                            waiting_for: step.dependencies.clone(),
-                        });
-                    }
-                    ResolvedAsset::Unavailable => {
-                        nodes.push(RecipeNodePreview::Trade {
-                            node_id: step.node_id,
-                            state: RecipeNodeState::OutputUnavailable,
-                            routes: Vec::new(),
-                            waiting_for: step.dependencies.clone(),
-                        });
-                    }
-                },
-                RecipeAction::Supply { asset, .. } => match resolve_asset(asset, &completed) {
-                    ResolvedAsset::Ready(asset) => {
-                        let market = self.borrowing.supply_market(asset.token).await?;
-                        let state =
-                            market
-                                .as_ref()
-                                .map_or(RecipeNodeState::Unavailable, |market| {
-                                    if market.supply_available {
-                                        RecipeNodeState::Ready
-                                    } else {
-                                        RecipeNodeState::Unavailable
-                                    }
-                                });
-                        nodes.push(RecipeNodePreview::Supply {
-                            node_id: step.node_id,
-                            state,
-                            market,
-                            waiting_for: Vec::new(),
-                        });
-                    }
-                    ResolvedAsset::Waiting => nodes.push(RecipeNodePreview::Supply {
-                        node_id: step.node_id,
-                        state: RecipeNodeState::WaitingForUpstream,
-                        market: None,
-                        waiting_for: step.dependencies.clone(),
-                    }),
-                    ResolvedAsset::Unavailable => nodes.push(RecipeNodePreview::Supply {
-                        node_id: step.node_id,
-                        state: RecipeNodeState::OutputUnavailable,
-                        market: None,
-                        waiting_for: step.dependencies.clone(),
-                    }),
-                },
-            }
+            let preview = match &step.action {
+                RecipeAction::Trade { sell, buy_token } => {
+                    self.preview_trade(step, sell, *buy_token, &completed, request.context.wallet)
+                        .await?
+                }
+                RecipeAction::Supply { asset, .. } => {
+                    self.preview_supply(step, asset, &completed).await?
+                }
+                RecipeAction::Withdraw { position } => {
+                    self.preview_withdrawal(step.node_id, *position, request.context.wallet)
+                        .await?
+                }
+            };
+            nodes.push(preview);
         }
         Ok(RecipePreview { nodes })
+    }
+
+    async fn preview_trade(
+        &self,
+        step: &super::LogicalStep,
+        sell_asset: &AssetRef,
+        buy_token: Address,
+        completed: &HashMap<Uuid, &RecipeCompletedNode>,
+        wallet: WalletAddress,
+    ) -> Result<RecipeNodePreview, RecipeError> {
+        let (state, routes, waiting_for) = match resolve_asset(sell_asset, completed) {
+            ResolvedAsset::Ready(asset) => {
+                let routes = self
+                    .trade
+                    .quotes(&TradeQuoteRequest {
+                        wallet,
+                        sell_token: asset.token,
+                        buy_token,
+                        sell_amount: asset.amount,
+                    })
+                    .await?;
+                (RecipeNodeState::Ready, routes, Vec::new())
+            }
+            ResolvedAsset::Waiting => (
+                RecipeNodeState::WaitingForUpstream,
+                Vec::new(),
+                step.dependencies.clone(),
+            ),
+            ResolvedAsset::Unavailable => (
+                RecipeNodeState::OutputUnavailable,
+                Vec::new(),
+                step.dependencies.clone(),
+            ),
+        };
+        Ok(RecipeNodePreview::Trade {
+            node_id: step.node_id,
+            state,
+            routes,
+            waiting_for,
+        })
+    }
+
+    async fn preview_supply(
+        &self,
+        step: &super::LogicalStep,
+        asset: &AssetRef,
+        completed: &HashMap<Uuid, &RecipeCompletedNode>,
+    ) -> Result<RecipeNodePreview, RecipeError> {
+        let (state, market, waiting_for) = match resolve_asset(asset, completed) {
+            ResolvedAsset::Ready(asset) => {
+                let market = self.borrowing.supply_market(asset.token).await?;
+                let state = market
+                    .as_ref()
+                    .map_or(RecipeNodeState::Unavailable, |market| {
+                        if market.supply_available {
+                            RecipeNodeState::Ready
+                        } else {
+                            RecipeNodeState::Unavailable
+                        }
+                    });
+                (state, market, Vec::new())
+            }
+            ResolvedAsset::Waiting => (
+                RecipeNodeState::WaitingForUpstream,
+                None,
+                step.dependencies.clone(),
+            ),
+            ResolvedAsset::Unavailable => (
+                RecipeNodeState::OutputUnavailable,
+                None,
+                step.dependencies.clone(),
+            ),
+        };
+        Ok(RecipeNodePreview::Supply {
+            node_id: step.node_id,
+            state,
+            market,
+            waiting_for,
+        })
+    }
+
+    async fn preview_withdrawal(
+        &self,
+        node_id: Uuid,
+        position: SuppliedPositionRef,
+        wallet: WalletAddress,
+    ) -> Result<RecipeNodePreview, RecipeError> {
+        Ok(match self.resolve_withdrawal(wallet, position).await? {
+            ResolvedWithdrawal::Ready(position) => RecipeNodePreview::Withdraw {
+                node_id,
+                state: RecipeNodeState::Ready,
+                position: Some(position),
+                unavailable_reason: None,
+                waiting_for: Vec::new(),
+            },
+            ResolvedWithdrawal::Unavailable { position, reason } => RecipeNodePreview::Withdraw {
+                node_id,
+                state: RecipeNodeState::Unavailable,
+                position,
+                unavailable_reason: Some(reason),
+                waiting_for: Vec::new(),
+            },
+        })
     }
 
     /// Resolves selected preview routes into wallet actions.
@@ -237,27 +300,39 @@ impl RecipeService {
         &self,
         request: &PrepareRecipeRequest,
     ) -> Result<PreparedRecipe, RecipeError> {
-        let plan = compile_plan(&request.recipe, &self.trade, &self.settlement_tokens)?;
+        let plan = compile_plan(
+            &request.recipe,
+            &self.trade,
+            &self.settlement_tokens,
+            &self.withdrawal_policy,
+        )?;
         let completed = validate_completed_context(&plan, &request.context.completed_nodes)?;
-        let ready = plan
-            .steps
-            .iter()
-            .filter_map(|step| {
-                if completed.contains_key(&step.node_id) {
-                    return None;
+        let mut ready = Vec::new();
+        for step in &plan.steps {
+            if completed.contains_key(&step.node_id) {
+                continue;
+            }
+            match &step.action {
+                RecipeAction::Trade { sell, .. } => {
+                    if let ResolvedAsset::Ready(asset) = resolve_asset(sell, &completed) {
+                        ready.push((step, ReadyInput::Asset(asset)));
+                    }
                 }
-                match &step.action {
-                    RecipeAction::Trade { sell, .. } => match resolve_asset(sell, &completed) {
-                        ResolvedAsset::Ready(asset) => Some((step, asset)),
-                        ResolvedAsset::Waiting | ResolvedAsset::Unavailable => None,
-                    },
-                    RecipeAction::Supply { asset, .. } => match resolve_asset(asset, &completed) {
-                        ResolvedAsset::Ready(asset) => Some((step, asset)),
-                        ResolvedAsset::Waiting | ResolvedAsset::Unavailable => None,
-                    },
+                RecipeAction::Supply { asset, .. } => {
+                    if let ResolvedAsset::Ready(asset) = resolve_asset(asset, &completed) {
+                        ready.push((step, ReadyInput::Asset(asset)));
+                    }
                 }
-            })
-            .collect::<Vec<_>>();
+                RecipeAction::Withdraw { position } => {
+                    if let ResolvedWithdrawal::Ready(position) = self
+                        .resolve_withdrawal(request.context.wallet, *position)
+                        .await?
+                    {
+                        ready.push((step, ReadyInput::Withdrawal(position)));
+                    }
+                }
+            }
+        }
         if ready.is_empty() {
             return Err(RecipeError::StepNotReady);
         }
@@ -277,8 +352,8 @@ impl RecipeService {
 
         let mut prepared = Vec::with_capacity(ready.len() * 2);
         for (step, input) in ready {
-            match &step.action {
-                RecipeAction::Trade { buy_token, .. } => {
+            match (&step.action, input) {
+                (RecipeAction::Trade { buy_token, .. }, ReadyInput::Asset(input)) => {
                     let selection = selections
                         .get(&step.node_id)
                         .copied()
@@ -294,12 +369,23 @@ impl RecipeService {
                         .await?,
                     );
                 }
-                RecipeAction::Supply { .. } => {
+                (RecipeAction::Supply { .. }, ReadyInput::Asset(input)) => {
                     prepared.push(
                         self.prepare_supply_step(step.node_id, input, request.context.wallet)
                             .await?,
                     );
                 }
+                (RecipeAction::Withdraw { .. }, ReadyInput::Withdrawal(position)) => {
+                    prepared.push(
+                        self.prepare_withdrawal_step(
+                            step.node_id,
+                            position,
+                            request.context.wallet,
+                        )
+                        .await?,
+                    );
+                }
+                _ => return Err(RecipeError::InvalidContext),
             }
         }
         Ok(PreparedRecipe { steps: prepared })
@@ -374,6 +460,79 @@ impl RecipeService {
             .await?;
         Ok(PreparedRecipeStep::Supply { node_id, action })
     }
+
+    async fn prepare_withdrawal_step(
+        &self,
+        node_id: Uuid,
+        position: BorrowingAsset,
+        wallet: WalletAddress,
+    ) -> Result<PreparedRecipeStep, RecipeError> {
+        let action = self
+            .borrowing
+            .prepare_withdrawal(&PrepareWithdrawalRequest {
+                wallet,
+                collateral_token: position.token.contract,
+                amount: PositionAmount::Full,
+            })
+            .await?;
+        Ok(PreparedRecipeStep::Withdraw { node_id, action })
+    }
+
+    async fn resolve_withdrawal(
+        &self,
+        wallet: WalletAddress,
+        position: SuppliedPositionRef,
+    ) -> Result<ResolvedWithdrawal, RecipeError> {
+        if !self
+            .withdrawal_policy
+            .allowed_inputs
+            .iter()
+            .any(|rule| rule.venue == position.venue && rule.pool == position.pool)
+        {
+            return Ok(ResolvedWithdrawal::Unavailable {
+                position: None,
+                reason: RecipeWithdrawalUnavailableReason::UnsupportedPool,
+            });
+        }
+
+        let supported = match self.borrowing.supply_market(position.token).await {
+            Ok(Some(market)) => market.venue == position.venue,
+            Ok(None) | Err(BorrowingServiceError::UnsupportedCollateral) => false,
+            Err(error) => return Err(error.into()),
+        };
+        if !supported {
+            return Ok(ResolvedWithdrawal::Unavailable {
+                position: None,
+                reason: RecipeWithdrawalUnavailableReason::PositionNotFound,
+            });
+        }
+
+        let account = self.borrowing.account(wallet).await?;
+        let supplied = account
+            .positions
+            .iter()
+            .find(|candidate| candidate.pool == position.pool)
+            .and_then(|candidate| {
+                candidate
+                    .supplied
+                    .iter()
+                    .find(|asset| asset.token.contract == position.token)
+            })
+            .cloned();
+        let Some(supplied) = supplied else {
+            return Ok(ResolvedWithdrawal::Unavailable {
+                position: None,
+                reason: RecipeWithdrawalUnavailableReason::PositionNotFound,
+            });
+        };
+        if account.total_borrowed_usd > Decimal::ZERO {
+            return Ok(ResolvedWithdrawal::Unavailable {
+                position: Some(supplied),
+                reason: RecipeWithdrawalUnavailableReason::OutstandingDebt,
+            });
+        }
+        Ok(ResolvedWithdrawal::Ready(supplied))
+    }
 }
 
 fn completed_preview(step: &super::LogicalStep) -> RecipeNodePreview {
@@ -388,6 +547,13 @@ fn completed_preview(step: &super::LogicalStep) -> RecipeNodePreview {
             node_id: step.node_id,
             state: RecipeNodeState::Complete,
             market: None,
+            waiting_for: Vec::new(),
+        },
+        RecipeAction::Withdraw { .. } => RecipeNodePreview::Withdraw {
+            node_id: step.node_id,
+            state: RecipeNodeState::Complete,
+            position: None,
+            unavailable_reason: None,
             waiting_for: Vec::new(),
         },
     }
@@ -420,6 +586,19 @@ enum ResolvedAsset {
     Ready(TokenAmount),
     Waiting,
     Unavailable,
+}
+
+enum ReadyInput {
+    Asset(TokenAmount),
+    Withdrawal(BorrowingAsset),
+}
+
+enum ResolvedWithdrawal {
+    Ready(BorrowingAsset),
+    Unavailable {
+        position: Option<BorrowingAsset>,
+        reason: RecipeWithdrawalUnavailableReason,
+    },
 }
 
 fn resolve_asset(
@@ -478,10 +657,12 @@ fn validate_completed_context<'a>(
                     output_seen = true;
                 }
             }
-            RecipeAction::Supply { .. } if !node.outputs.is_empty() => {
+            RecipeAction::Supply { .. } | RecipeAction::Withdraw { .. }
+                if !node.outputs.is_empty() =>
+            {
                 return Err(RecipeError::InvalidContext);
             }
-            RecipeAction::Supply { .. } => {}
+            RecipeAction::Supply { .. } | RecipeAction::Withdraw { .. } => {}
         }
     }
 
@@ -499,6 +680,7 @@ fn validate_completed_context<'a>(
         let input = match &step.action {
             RecipeAction::Trade { sell, .. } => sell,
             RecipeAction::Supply { asset, .. } => asset,
+            RecipeAction::Withdraw { .. } => continue,
         };
         if let AssetRef::NodeOutput { node_id, port, .. } = input {
             let dependency = completed.get(node_id).ok_or(RecipeError::InvalidContext)?;
@@ -515,12 +697,18 @@ fn compile_plan(
     recipe: &RecipeDefinition,
     trade: &BstockTradeService,
     settlement_tokens: &[Address],
+    withdrawal_policy: &RecipeWithdrawalPolicy,
 ) -> Result<LogicalPlan, RecipeError> {
     let compiled = compile(recipe);
     match compiled.plan {
         Some(plan) => {
-            let report =
-                validate_action_policy(compiled.report, Some(&plan), trade, settlement_tokens);
+            let report = validate_action_policy(
+                compiled.report,
+                Some(&plan),
+                trade,
+                settlement_tokens,
+                withdrawal_policy,
+            );
             if report.valid {
                 Ok(plan)
             } else {
@@ -536,6 +724,7 @@ fn validate_action_policy(
     plan: Option<&LogicalPlan>,
     trade: &BstockTradeService,
     settlement_tokens: &[Address],
+    withdrawal_policy: &RecipeWithdrawalPolicy,
 ) -> RecipeValidationReport {
     let Some(plan) = plan else {
         return report;
@@ -568,6 +757,32 @@ fn validate_action_policy(
                 ));
             }
             RecipeAction::Supply { .. } => {}
+            RecipeAction::Withdraw { position } => {
+                if !withdrawal_policy
+                    .allowed_inputs
+                    .iter()
+                    .any(|rule| rule.venue == position.venue && rule.pool == position.pool)
+                {
+                    report.diagnostics.push(RecipeDiagnostic::error(
+                        RecipeDiagnosticCode::UnsupportedWithdrawalPosition,
+                        RecipeDiagnosticLocation::Field {
+                            node_id: step.node_id,
+                            field: "pool".to_owned(),
+                        },
+                        "withdraw supports only configured lending pools",
+                    ));
+                }
+                if settlement_tokens.contains(&position.token) {
+                    report.diagnostics.push(RecipeDiagnostic::error(
+                        RecipeDiagnosticCode::UnsupportedWithdrawalPosition,
+                        RecipeDiagnosticLocation::Field {
+                            node_id: step.node_id,
+                            field: "token".to_owned(),
+                        },
+                        "withdraw accepts supported supplied bStock positions",
+                    ));
+                }
+            }
         }
     }
     RecipeValidationReport::new(report.diagnostics)
@@ -602,8 +817,9 @@ mod tests {
     use super::*;
     use crate::{
         bstock_borrowing::{
-            BorrowingAccount, BorrowingActionGateway, BorrowingPolicy, BorrowingPreview,
-            BorrowingReader, BorrowingTransactionState, BorrowingTransactionStatus,
+            BorrowingAccount, BorrowingActionGateway, BorrowingAsset, BorrowingPolicy,
+            BorrowingPosition, BorrowingPreview, BorrowingReader, BorrowingToken,
+            BorrowingTransactionState, BorrowingTransactionStatus, PositionAmount,
             PrepareBorrowRequest, PrepareCollateralRequest, PrepareRepaymentRequest,
             PrepareWithdrawalRequest, PreparedBorrowingAction, SupplyMarket,
             SupplyMarketUnavailableReason,
@@ -620,6 +836,7 @@ mod tests {
         recipes::{
             RecipeAssetTransition, RecipeCompletedNode, RecipeContext, RecipeEdge, RecipeNode,
             RecipeNodeOutput, RecipeOptionSource, RecipePortRef, RecipePrimitive,
+            RecipeWithdrawalRule, RecipeWithdrawalUnavailableReason,
         },
         wallet_portfolio::WalletAddress,
     };
@@ -628,9 +845,12 @@ mod tests {
     const FIRST_TRADE_ID: Uuid = Uuid::from_u128(2);
     const SECOND_TRADE_ID: Uuid = Uuid::from_u128(3);
     const SUPPLY_ID: Uuid = Uuid::from_u128(6);
+    const POSITION_ID: Uuid = Uuid::from_u128(8);
+    const WITHDRAW_ID: Uuid = Uuid::from_u128(9);
     const SETTLEMENT: Address = Address::with_last_byte(1);
     const BSTOCK: Address = Address::with_last_byte(2);
     const WRONG_TOKEN: Address = Address::with_last_byte(3);
+    const POOL: Address = Address::with_last_byte(8);
 
     #[derive(Clone, Copy, Debug, Eq, PartialEq)]
     struct RecordedTrade {
@@ -858,6 +1078,122 @@ mod tests {
         }
     }
 
+    struct WithdrawalBorrowing {
+        account: BorrowingAccount,
+        withdrawals: Mutex<Vec<(WalletAddress, Address, PositionAmount)>>,
+    }
+
+    impl WithdrawalBorrowing {
+        fn withdrawals(&self) -> Vec<(WalletAddress, Address, PositionAmount)> {
+            self.withdrawals
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .clone()
+        }
+    }
+
+    #[async_trait]
+    impl BorrowingReader for WithdrawalBorrowing {
+        async fn read_supply_market(
+            &self,
+            token: Address,
+        ) -> Result<Option<SupplyMarket>, BorrowingProviderError> {
+            Ok((token == BSTOCK).then_some(SupplyMarket {
+                venue: BorrowingVenue::Venus,
+                chain_id: BNB_CHAIN_ID,
+                token: BorrowingToken {
+                    contract: BSTOCK,
+                    symbol: "TSLAB".to_owned(),
+                },
+                market: Address::with_last_byte(7),
+                token_decimals: 18,
+                supply_apy_percent: Decimal::ONE,
+                remaining_supply_capacity: None,
+                supply_available: true,
+                unavailable_reasons: Vec::new(),
+                observed_at_ms: 1,
+            }))
+        }
+
+        async fn read_markets(
+            &self,
+            _collateral_assets: &[BstockId],
+            _debt_tokens: &[Address],
+        ) -> Result<Vec<crate::bstock_borrowing::BorrowingMarket>, BorrowingProviderError> {
+            Ok(Vec::new())
+        }
+
+        async fn read_account(
+            &self,
+            _wallet: WalletAddress,
+        ) -> Result<BorrowingAccount, BorrowingProviderError> {
+            Ok(self.account.clone())
+        }
+    }
+
+    #[async_trait]
+    impl BorrowingActionGateway for WithdrawalBorrowing {
+        async fn prepare_supply(
+            &self,
+            _request: &PrepareSupplyRequest,
+        ) -> Result<PreparedBorrowingAction, BorrowingProviderError> {
+            unreachable!("supply preparation is not used by withdrawal recipes")
+        }
+
+        async fn prepare_collateral(
+            &self,
+            _request: &PrepareCollateralRequest,
+        ) -> Result<PreparedBorrowingAction, BorrowingProviderError> {
+            unreachable!("collateral preparation is not used by withdrawal recipes")
+        }
+
+        async fn prepare_borrow(
+            &self,
+            _request: &PrepareBorrowRequest,
+        ) -> Result<PreparedBorrowingAction, BorrowingProviderError> {
+            unreachable!("borrow preparation is not used by withdrawal recipes")
+        }
+
+        async fn prepare_repayment_approval(
+            &self,
+            _request: &PrepareRepaymentRequest,
+        ) -> Result<PreparedBorrowingAction, BorrowingProviderError> {
+            unreachable!("repayment approval is not used by withdrawal recipes")
+        }
+
+        async fn prepare_repayment(
+            &self,
+            _request: &PrepareRepaymentRequest,
+        ) -> Result<PreparedBorrowingAction, BorrowingProviderError> {
+            unreachable!("repayment preparation is not used by withdrawal recipes")
+        }
+
+        async fn prepare_withdrawal(
+            &self,
+            request: &PrepareWithdrawalRequest,
+        ) -> Result<PreparedBorrowingAction, BorrowingProviderError> {
+            self.withdrawals
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .push((
+                    request.wallet,
+                    request.collateral_token,
+                    request.amount.clone(),
+                ));
+            Ok(PreparedBorrowingAction {
+                transactions: Vec::new(),
+                preview: BorrowingPreview::default(),
+            })
+        }
+
+        async fn transaction_status(
+            &self,
+            _transaction_hash: B256,
+        ) -> Result<BorrowingTransactionStatus, BorrowingProviderError> {
+            unreachable!("transaction status is not used by withdrawal recipes")
+        }
+    }
+
     #[tokio::test]
     async fn catalog_describes_trade_compatibility_with_asset_groups() {
         let (service, _) = service();
@@ -886,6 +1222,116 @@ mod tests {
                 venue: BorrowingVenue::Venus,
                 input: RecipeOptionSource::Bstocks,
             }]
+        );
+        assert_eq!(
+            catalog.withdrawal_policy.allowed_inputs,
+            vec![RecipeWithdrawalRule {
+                venue: BorrowingVenue::Venus,
+                pool: POOL,
+            }]
+        );
+    }
+
+    #[tokio::test]
+    async fn withdraw_preview_resolves_the_live_supplied_position() {
+        let (service, _) = withdrawal_service(withdrawal_account(true, Decimal::ZERO), POOL);
+
+        let preview = service
+            .preview(&RecipePreviewRequest {
+                recipe: withdrawal_recipe(POOL, BSTOCK),
+                context: context(Vec::new()),
+            })
+            .await
+            .unwrap_or_else(|error| panic!("withdrawal preview failed: {error}"));
+
+        assert!(matches!(
+            preview.nodes.as_slice(),
+            [RecipeNodePreview::Withdraw {
+                node_id,
+                state: RecipeNodeState::Ready,
+                position: Some(BorrowingAsset { token, amount, .. }),
+                unavailable_reason: None,
+                waiting_for,
+            }] if *node_id == WITHDRAW_ID
+                && token.contract == BSTOCK
+                && *amount == Decimal::new(193, 4)
+                && waiting_for.is_empty()
+        ));
+    }
+
+    #[tokio::test]
+    async fn withdraw_preview_reports_missing_position_and_outstanding_debt() {
+        for (account, expected) in [
+            (
+                withdrawal_account(false, Decimal::ZERO),
+                RecipeWithdrawalUnavailableReason::PositionNotFound,
+            ),
+            (
+                withdrawal_account(true, Decimal::ONE),
+                RecipeWithdrawalUnavailableReason::OutstandingDebt,
+            ),
+        ] {
+            let (service, _) = withdrawal_service(account, POOL);
+            let preview = service
+                .preview(&RecipePreviewRequest {
+                    recipe: withdrawal_recipe(POOL, BSTOCK),
+                    context: context(Vec::new()),
+                })
+                .await
+                .unwrap_or_else(|error| panic!("withdrawal preview failed: {error}"));
+
+            assert!(matches!(
+                preview.nodes.as_slice(),
+                [RecipeNodePreview::Withdraw {
+                    state: RecipeNodeState::Unavailable,
+                    unavailable_reason: Some(reason),
+                    ..
+                }] if *reason == expected
+            ));
+        }
+    }
+
+    #[test]
+    fn withdraw_validation_rejects_a_pool_outside_policy() {
+        let (service, _) = withdrawal_service(withdrawal_account(true, Decimal::ZERO), POOL);
+
+        let report = service.validate(&withdrawal_recipe(Address::with_last_byte(99), BSTOCK));
+
+        assert!(!report.valid);
+        assert!(report.diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == RecipeDiagnosticCode::UnsupportedWithdrawalPosition
+                && diagnostic.location
+                    == RecipeDiagnosticLocation::Field {
+                        node_id: WITHDRAW_ID,
+                        field: "pool".to_owned(),
+                    }
+        }));
+    }
+
+    #[tokio::test]
+    async fn withdraw_prepare_forwards_the_full_live_position() {
+        let (service, gateway) = withdrawal_service(withdrawal_account(true, Decimal::ZERO), POOL);
+        let wallet = context(Vec::new()).wallet;
+
+        let prepared = service
+            .prepare(&PrepareRecipeRequest {
+                recipe: withdrawal_recipe(POOL, BSTOCK),
+                context: RecipeContext {
+                    wallet,
+                    completed_nodes: Vec::new(),
+                },
+                selections: Vec::new(),
+            })
+            .await
+            .unwrap_or_else(|error| panic!("withdrawal preparation failed: {error}"));
+
+        assert!(matches!(
+            prepared.steps.as_slice(),
+            [PreparedRecipeStep::Withdraw { node_id, .. }] if *node_id == WITHDRAW_ID
+        ));
+        assert_eq!(
+            gateway.withdrawals(),
+            vec![(wallet, BSTOCK, PositionAmount::Full)]
         );
     }
 
@@ -1033,7 +1479,7 @@ mod tests {
         assert!(prepared.steps.iter().all(|step| match step {
             PreparedRecipeStep::Approval { node_id, .. }
             | PreparedRecipeStep::Trade { node_id, .. } => *node_id == SECOND_TRADE_ID,
-            PreparedRecipeStep::Supply { .. } => false,
+            PreparedRecipeStep::Supply { .. } | PreparedRecipeStep::Withdraw { .. } => false,
         }));
         assert_eq!(
             gateway.prepared(),
@@ -1156,7 +1602,36 @@ mod tests {
                 .unwrap_or_else(|error| panic!("test borrowing policy is invalid: {error}")),
         ));
         (
-            RecipeService::new(market, trade, borrowing, vec![SETTLEMENT]),
+            RecipeService::new(market, trade, borrowing, vec![SETTLEMENT], POOL),
+            gateway,
+        )
+    }
+
+    fn withdrawal_service(
+        account: BorrowingAccount,
+        withdrawal_pool: Address,
+    ) -> (RecipeService, Arc<WithdrawalBorrowing>) {
+        let catalog = Arc::new(FixedCatalog(vec![summary()]));
+        let trade = Arc::new(BstockTradeService::new(
+            Arc::new(RecordingGateway::default()),
+            catalog.clone(),
+            TradePolicy::new([SETTLEMENT], 100, 50)
+                .unwrap_or_else(|error| panic!("test policy is invalid: {error}")),
+        ));
+        let market = Arc::new(BstockMarketService::new(catalog));
+        let gateway = Arc::new(WithdrawalBorrowing {
+            account,
+            withdrawals: Mutex::new(Vec::new()),
+        });
+        let borrowing = Arc::new(BorrowingService::new(
+            Arc::new(FixedCatalog(vec![summary()])),
+            gateway.clone(),
+            gateway.clone(),
+            BorrowingPolicy::new(vec![SETTLEMENT])
+                .unwrap_or_else(|error| panic!("test borrowing policy is invalid: {error}")),
+        ));
+        (
+            RecipeService::new(market, trade, borrowing, vec![SETTLEMENT], withdrawal_pool),
             gateway,
         )
     }
@@ -1280,13 +1755,77 @@ mod tests {
         }
     }
 
+    fn withdrawal_recipe(pool: Address, token: Address) -> RecipeDefinition {
+        RecipeDefinition {
+            schema_version: SCHEMA_VERSION,
+            chain_id: BNB_CHAIN_ID,
+            nodes: vec![
+                RecipeNode {
+                    id: POSITION_ID,
+                    primitive: RecipePrimitive::SuppliedPosition {
+                        venue: BorrowingVenue::Venus,
+                        pool,
+                        token,
+                    },
+                },
+                RecipeNode {
+                    id: WITHDRAW_ID,
+                    primitive: RecipePrimitive::Withdraw,
+                },
+            ],
+            edges: vec![RecipeEdge {
+                id: Uuid::from_u128(10),
+                from: RecipePortRef {
+                    node_id: POSITION_ID,
+                    port: "position".to_owned(),
+                },
+                to: RecipePortRef {
+                    node_id: WITHDRAW_ID,
+                    port: "position".to_owned(),
+                },
+            }],
+        }
+    }
+
+    fn withdrawal_account(has_position: bool, total_borrowed_usd: Decimal) -> BorrowingAccount {
+        let supplied = has_position
+            .then_some(BorrowingAsset {
+                token: BorrowingToken {
+                    contract: BSTOCK,
+                    symbol: "TSLAB".to_owned(),
+                },
+                amount: Decimal::new(193, 4),
+                value_usd: Decimal::new(734, 2),
+            })
+            .into_iter()
+            .collect::<Vec<_>>();
+        BorrowingAccount {
+            venue: BorrowingVenue::Venus,
+            chain_id: BNB_CHAIN_ID,
+            positions: vec![BorrowingPosition {
+                pool: POOL,
+                supplied,
+                borrowed: Vec::new(),
+            }],
+            total_supplied_usd: if has_position {
+                Decimal::new(734, 2)
+            } else {
+                Decimal::ZERO
+            },
+            total_borrowed_usd,
+            health_factor: None,
+            observed_at_ms: 1,
+        }
+    }
+
     fn states(preview: &RecipePreview) -> Vec<RecipeNodeState> {
         preview
             .nodes
             .iter()
             .map(|node| match node {
                 RecipeNodePreview::Trade { state, .. }
-                | RecipeNodePreview::Supply { state, .. } => *state,
+                | RecipeNodePreview::Supply { state, .. }
+                | RecipeNodePreview::Withdraw { state, .. } => *state,
             })
             .collect()
     }

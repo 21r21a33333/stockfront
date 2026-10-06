@@ -95,7 +95,7 @@ pub struct BorrowingMarket {
     pub observed_at_ms: i64,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[derive(utoipa::ToSchema, Clone, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BorrowingAsset {
     pub token: BorrowingToken,
@@ -103,16 +103,17 @@ pub struct BorrowingAsset {
     pub value_usd: Decimal,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[derive(utoipa::ToSchema, Clone, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BorrowingPosition {
     #[serde(serialize_with = "serialize_as_string")]
+    #[schema(value_type = String, format = "evm-address")]
     pub pool: Address,
     pub supplied: Vec<BorrowingAsset>,
     pub borrowed: Vec<BorrowingAsset>,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[derive(utoipa::ToSchema, Clone, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BorrowingAccount {
     pub venue: BorrowingVenue,

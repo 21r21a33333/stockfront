@@ -19,6 +19,13 @@ use uuid::Uuid;
 
 use crate::bstock_borrowing::BorrowingVenue;
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) struct SuppliedPositionRef {
+    pub venue: BorrowingVenue,
+    pub pool: Address,
+    pub token: Address,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(super) enum AssetRef {
     Wallet {
@@ -41,6 +48,9 @@ pub(super) enum RecipeAction {
     Supply {
         asset: AssetRef,
         venue: BorrowingVenue,
+    },
+    Withdraw {
+        position: SuppliedPositionRef,
     },
 }
 

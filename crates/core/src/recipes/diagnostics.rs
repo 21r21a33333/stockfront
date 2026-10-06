@@ -40,6 +40,7 @@ pub enum RecipeDiagnosticCode {
     InvalidAmount,
     UnsupportedTradePair,
     UnsupportedSupplyAsset,
+    UnsupportedWithdrawalPosition,
 }
 
 #[derive(utoipa::ToSchema, Clone, Debug, Eq, PartialEq, Serialize)]

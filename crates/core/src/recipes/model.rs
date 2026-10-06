@@ -72,7 +72,7 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::{
-    bstock_borrowing::{BorrowingVenue, PreparedBorrowingAction, SupplyMarket},
+    bstock_borrowing::{BorrowingAsset, BorrowingVenue, PreparedBorrowingAction, SupplyMarket},
     bstock_market::BstockSummary,
     bstock_trade::{PreparedApproval, PreparedTrade, TokenAmount, TradeQuote},
     serialization::{deserialize_from_string, serialize_all_as_strings, serialize_as_string},
@@ -83,12 +83,20 @@ use crate::{
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum RecipePrimitiveKind {
     WalletAsset,
+    SuppliedPosition,
     Trade,
     Supply,
+    Withdraw,
 }
 
 impl RecipePrimitiveKind {
-    pub(super) const ALL: [Self; 3] = [Self::WalletAsset, Self::Trade, Self::Supply];
+    pub(super) const ALL: [Self; 5] = [
+        Self::WalletAsset,
+        Self::SuppliedPosition,
+        Self::Trade,
+        Self::Supply,
+        Self::Withdraw,
+    ];
 }
 
 #[derive(utoipa::ToSchema, Clone, Copy, Debug, Eq, PartialEq, Serialize)]
@@ -97,6 +105,7 @@ pub enum RecipeFieldControl {
     Token,
     Amount,
     Venue,
+    Position,
 }
 
 #[derive(utoipa::ToSchema, Clone, Copy, Debug, Eq, PartialEq, Serialize)]
@@ -104,6 +113,7 @@ pub enum RecipeFieldControl {
 pub enum RecipeOptionSource {
     SettlementTokens,
     Bstocks,
+    SuppliedPositions,
 }
 
 #[derive(utoipa::ToSchema, Clone, Copy, Debug, Eq, PartialEq, Serialize)]
@@ -133,6 +143,21 @@ pub struct RecipeSupplyPolicy {
 }
 
 #[derive(utoipa::ToSchema, Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RecipeWithdrawalRule {
+    pub venue: BorrowingVenue,
+    #[serde(serialize_with = "serialize_as_string")]
+    #[schema(value_type = String, format = "evm-address")]
+    pub pool: Address,
+}
+
+#[derive(utoipa::ToSchema, Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RecipeWithdrawalPolicy {
+    pub allowed_inputs: Vec<RecipeWithdrawalRule>,
+}
+
+#[derive(utoipa::ToSchema, Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum RecipePortDirection {
     Input,
@@ -143,6 +168,7 @@ pub enum RecipePortDirection {
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum RecipePortValueType {
     TokenAmount,
+    SuppliedPosition,
 }
 
 #[derive(utoipa::ToSchema, Clone, Copy, Debug, Eq, PartialEq, Serialize)]
@@ -191,92 +217,132 @@ impl RecipePrimitiveKind {
     #[must_use]
     pub fn descriptor(self) -> RecipePrimitiveDescriptor {
         match self {
-            Self::WalletAsset => RecipePrimitiveDescriptor {
-                kind: self,
-                name: "Wallet asset",
-                description: "Use a token amount held by the running wallet.",
-                fields: vec![
-                    RecipeFieldDescriptor {
-                        key: "token",
-                        name: "Asset",
-                        control: RecipeFieldControl::Token,
-                        required: true,
-                        option_sources: vec![
-                            RecipeOptionSource::SettlementTokens,
-                            RecipeOptionSource::Bstocks,
-                        ],
-                    },
-                    RecipeFieldDescriptor {
-                        key: "rawAmount",
-                        name: "Amount",
-                        control: RecipeFieldControl::Amount,
-                        required: true,
-                        option_sources: Vec::new(),
-                    },
-                ],
-                ports: vec![RecipePortDescriptor {
-                    key: "asset",
-                    direction: RecipePortDirection::Output,
-                    value_type: RecipePortValueType::TokenAmount,
-                    min_connections: 0,
-                    max_connections: Some(1),
-                    flow: RecipePortFlow::Consume,
-                }],
-            },
-            Self::Trade => RecipePrimitiveDescriptor {
-                kind: self,
-                name: "Trade",
-                description: "Exchange the incoming asset for another supported asset.",
-                fields: vec![RecipeFieldDescriptor {
-                    key: "buyToken",
-                    name: "Buy asset",
-                    control: RecipeFieldControl::Token,
-                    required: true,
-                    option_sources: vec![
-                        RecipeOptionSource::SettlementTokens,
-                        RecipeOptionSource::Bstocks,
-                    ],
-                }],
-                ports: vec![
-                    RecipePortDescriptor {
-                        key: "sell",
-                        direction: RecipePortDirection::Input,
-                        value_type: RecipePortValueType::TokenAmount,
-                        min_connections: 1,
-                        max_connections: Some(1),
-                        flow: RecipePortFlow::Consume,
-                    },
-                    RecipePortDescriptor {
-                        key: "buy",
-                        direction: RecipePortDirection::Output,
-                        value_type: RecipePortValueType::TokenAmount,
-                        min_connections: 0,
-                        max_connections: Some(1),
-                        flow: RecipePortFlow::Consume,
-                    },
-                ],
-            },
-            Self::Supply => RecipePrimitiveDescriptor {
-                kind: self,
-                name: "Supply",
-                description: "Supply the incoming bStock to a supported lending market.",
-                fields: vec![RecipeFieldDescriptor {
-                    key: "venue",
-                    name: "Market",
-                    control: RecipeFieldControl::Venue,
-                    required: true,
-                    option_sources: Vec::new(),
-                }],
-                ports: vec![RecipePortDescriptor {
-                    key: "asset",
-                    direction: RecipePortDirection::Input,
-                    value_type: RecipePortValueType::TokenAmount,
-                    min_connections: 1,
-                    max_connections: Some(1),
-                    flow: RecipePortFlow::Consume,
-                }],
-            },
+            Self::WalletAsset => wallet_asset_descriptor(self),
+            Self::SuppliedPosition => supplied_position_descriptor(self),
+            Self::Trade => trade_descriptor(self),
+            Self::Supply => supply_descriptor(self),
+            Self::Withdraw => withdraw_descriptor(self),
         }
+    }
+}
+
+fn wallet_asset_descriptor(kind: RecipePrimitiveKind) -> RecipePrimitiveDescriptor {
+    RecipePrimitiveDescriptor {
+        kind,
+        name: "Wallet asset",
+        description: "Use a token amount held by the running wallet.",
+        fields: vec![
+            RecipeFieldDescriptor {
+                key: "token",
+                name: "Asset",
+                control: RecipeFieldControl::Token,
+                required: true,
+                option_sources: vec![
+                    RecipeOptionSource::SettlementTokens,
+                    RecipeOptionSource::Bstocks,
+                ],
+            },
+            RecipeFieldDescriptor {
+                key: "rawAmount",
+                name: "Amount",
+                control: RecipeFieldControl::Amount,
+                required: true,
+                option_sources: Vec::new(),
+            },
+        ],
+        ports: vec![output_port("asset", RecipePortValueType::TokenAmount)],
+    }
+}
+
+fn supplied_position_descriptor(kind: RecipePrimitiveKind) -> RecipePrimitiveDescriptor {
+    RecipePrimitiveDescriptor {
+        kind,
+        name: "Supplied position",
+        description: "Use a supported position already supplied by the running wallet.",
+        fields: vec![RecipeFieldDescriptor {
+            key: "token",
+            name: "Position",
+            control: RecipeFieldControl::Position,
+            required: true,
+            option_sources: vec![RecipeOptionSource::SuppliedPositions],
+        }],
+        ports: vec![output_port(
+            "position",
+            RecipePortValueType::SuppliedPosition,
+        )],
+    }
+}
+
+fn trade_descriptor(kind: RecipePrimitiveKind) -> RecipePrimitiveDescriptor {
+    RecipePrimitiveDescriptor {
+        kind,
+        name: "Trade",
+        description: "Exchange the incoming asset for another supported asset.",
+        fields: vec![RecipeFieldDescriptor {
+            key: "buyToken",
+            name: "Buy asset",
+            control: RecipeFieldControl::Token,
+            required: true,
+            option_sources: vec![
+                RecipeOptionSource::SettlementTokens,
+                RecipeOptionSource::Bstocks,
+            ],
+        }],
+        ports: vec![
+            input_port("sell", RecipePortValueType::TokenAmount),
+            output_port("buy", RecipePortValueType::TokenAmount),
+        ],
+    }
+}
+
+fn supply_descriptor(kind: RecipePrimitiveKind) -> RecipePrimitiveDescriptor {
+    RecipePrimitiveDescriptor {
+        kind,
+        name: "Supply",
+        description: "Supply the incoming bStock to a supported lending market.",
+        fields: vec![RecipeFieldDescriptor {
+            key: "venue",
+            name: "Market",
+            control: RecipeFieldControl::Venue,
+            required: true,
+            option_sources: Vec::new(),
+        }],
+        ports: vec![input_port("asset", RecipePortValueType::TokenAmount)],
+    }
+}
+
+fn withdraw_descriptor(kind: RecipePrimitiveKind) -> RecipePrimitiveDescriptor {
+    RecipePrimitiveDescriptor {
+        kind,
+        name: "Withdraw",
+        description: "Withdraw the complete supplied position to the running wallet.",
+        fields: Vec::new(),
+        ports: vec![input_port(
+            "position",
+            RecipePortValueType::SuppliedPosition,
+        )],
+    }
+}
+
+const fn input_port(key: &'static str, value_type: RecipePortValueType) -> RecipePortDescriptor {
+    RecipePortDescriptor {
+        key,
+        direction: RecipePortDirection::Input,
+        value_type,
+        min_connections: 1,
+        max_connections: Some(1),
+        flow: RecipePortFlow::Consume,
+    }
+}
+
+const fn output_port(key: &'static str, value_type: RecipePortValueType) -> RecipePortDescriptor {
+    RecipePortDescriptor {
+        key,
+        direction: RecipePortDirection::Output,
+        value_type,
+        min_connections: 0,
+        max_connections: Some(1),
+        flow: RecipePortFlow::Consume,
     }
 }
 
@@ -298,6 +364,21 @@ pub enum RecipePrimitive {
         #[schema(value_type = String)]
         raw_amount: U256,
     },
+    SuppliedPosition {
+        venue: BorrowingVenue,
+        #[serde(
+            deserialize_with = "deserialize_from_string",
+            serialize_with = "serialize_as_string"
+        )]
+        #[schema(value_type = String, format = "evm-address")]
+        pool: Address,
+        #[serde(
+            deserialize_with = "deserialize_from_string",
+            serialize_with = "serialize_as_string"
+        )]
+        #[schema(value_type = String, format = "evm-address")]
+        token: Address,
+    },
     Trade {
         #[serde(
             rename = "buyToken",
@@ -310,14 +391,17 @@ pub enum RecipePrimitive {
     Supply {
         venue: BorrowingVenue,
     },
+    Withdraw,
 }
 
 impl RecipePrimitive {
     pub(super) const fn kind(&self) -> RecipePrimitiveKind {
         match self {
             Self::WalletAsset { .. } => RecipePrimitiveKind::WalletAsset,
+            Self::SuppliedPosition { .. } => RecipePrimitiveKind::SuppliedPosition,
             Self::Trade { .. } => RecipePrimitiveKind::Trade,
             Self::Supply { .. } => RecipePrimitiveKind::Supply,
+            Self::Withdraw => RecipePrimitiveKind::Withdraw,
         }
     }
 }
@@ -394,6 +478,7 @@ pub struct RecipeCatalog {
     pub bstocks: Vec<BstockSummary>,
     pub trade_policy: RecipeTradePolicy,
     pub supply_policy: RecipeSupplyPolicy,
+    pub withdrawal_policy: RecipeWithdrawalPolicy,
 }
 
 #[derive(utoipa::ToSchema, Debug, Deserialize)]
@@ -411,6 +496,14 @@ pub enum RecipeNodeState {
     Complete,
     OutputUnavailable,
     Unavailable,
+}
+
+#[derive(utoipa::ToSchema, Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum RecipeWithdrawalUnavailableReason {
+    PositionNotFound,
+    UnsupportedPool,
+    OutstandingDebt,
 }
 
 #[derive(utoipa::ToSchema, Debug, Serialize)]
@@ -431,6 +524,17 @@ pub enum RecipeNodePreview {
         state: RecipeNodeState,
         #[serde(skip_serializing_if = "Option::is_none")]
         market: Option<SupplyMarket>,
+        #[serde(rename = "waitingFor", skip_serializing_if = "Vec::is_empty")]
+        waiting_for: Vec<Uuid>,
+    },
+    Withdraw {
+        #[serde(rename = "nodeId")]
+        node_id: Uuid,
+        state: RecipeNodeState,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        position: Option<BorrowingAsset>,
+        #[serde(rename = "unavailableReason", skip_serializing_if = "Option::is_none")]
+        unavailable_reason: Option<RecipeWithdrawalUnavailableReason>,
         #[serde(rename = "waitingFor", skip_serializing_if = "Vec::is_empty")]
         waiting_for: Vec<Uuid>,
     },
@@ -484,6 +588,11 @@ pub enum PreparedRecipeStep {
         action: PreparedTrade,
     },
     Supply {
+        #[serde(rename = "nodeId")]
+        node_id: Uuid,
+        action: PreparedBorrowingAction,
+    },
+    Withdraw {
         #[serde(rename = "nodeId")]
         node_id: Uuid,
         action: PreparedBorrowingAction,
