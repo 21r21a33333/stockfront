@@ -202,9 +202,6 @@ An unavailable preview contains one or more typed reasons:
 
 - `POSITION_NOT_FOUND`
 - `UNSUPPORTED_POOL`
-- `UNSUPPORTED_COLLATERAL`
-- `UNSUPPORTED_DEBT_TOKEN`
-- `INVALID_AMOUNT`
 - `MARKET_UNLISTED`
 - `COLLATERAL_UNAVAILABLE`
 - `BORROW_PAUSED`
@@ -213,6 +210,10 @@ An unavailable preview contains one or more typed reasons:
 - `INVALID_ORACLE_PRICE`
 - `HEALTH_FACTOR_UNAVAILABLE`
 - `HEALTH_FACTOR_BELOW_MINIMUM`
+
+Unsupported collateral, unsupported debt tokens, and zero amounts are invalid
+recipe definitions. The compiler or policy validator reports them before live
+preview rather than representing them as changing market availability.
 
 The response may expose several market reasons together when they describe the
 same snapshot. It never treats stale preview data as authorization.
