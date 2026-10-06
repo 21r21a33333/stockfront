@@ -30,7 +30,9 @@ export function RecipeAssetEdge({
         ? sourceNode.data.buyToken
         : sourceNode?.data.kind === "SUPPLIED_POSITION"
           ? sourceNode.data.token
-          : undefined;
+          : sourceNode?.data.kind === "BORROWED_POSITION"
+            ? sourceNode.data.token
+            : undefined;
   const symbol = assets.find(
     (asset) => asset.address.toLowerCase() === token?.toLowerCase(),
   )?.symbol;
@@ -46,7 +48,9 @@ export function RecipeAssetEdge({
   const label =
     sourceNode?.data.kind === "SUPPLIED_POSITION"
       ? `All supplied ${symbol ?? "asset"}`
-      : `Asset<${symbol ?? "Asset"}>`;
+      : sourceNode?.data.kind === "BORROWED_POSITION"
+        ? `Debt<${symbol ?? "asset"} · All>`
+        : `Asset<${symbol ?? "Asset"}>`;
   return (
     <>
       <BaseEdge

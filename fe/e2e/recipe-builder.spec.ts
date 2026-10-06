@@ -69,6 +69,13 @@ const catalog = {
       ports: [],
     },
     {
+      kind: "BORROWED_POSITION",
+      name: "Borrowed position",
+      description: "Use an existing borrowed Venus position.",
+      fields: [],
+      ports: [],
+    },
+    {
       kind: "SUPPLY",
       name: "Supply",
       description: "Supply the incoming bStock to Venus.",
@@ -89,7 +96,24 @@ const catalog = {
       fields: [],
       ports: [],
     },
+    {
+      kind: "REPAY",
+      name: "Repay debt",
+      description: "Repay a full Venus debt position.",
+      fields: [],
+      ports: [],
+    },
   ],
+  repayPolicy: {
+    allowedInputs: [
+      {
+        input: "BORROWED_POSITIONS",
+        venue: "venus",
+        pool: "0x1111111111111111111111111111111111111111",
+      },
+    ],
+    debtTokens: ["0x55d398326f99059fF775485246999027B3197955"],
+  },
 } satisfies RecipeCatalog;
 
 test.beforeEach(async ({ page }) => {

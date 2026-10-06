@@ -49,6 +49,18 @@ export function buildRecipe(
         pool: node.data.pool,
         token: node.data.token,
       });
+    } else if (
+      node.data.kind === "BORROWED_POSITION" &&
+      node.data.pool &&
+      node.data.token
+    ) {
+      result.push({
+        id: node.id,
+        kind: node.data.kind,
+        venue: node.data.venue,
+        pool: node.data.pool,
+        token: node.data.token,
+      });
     } else if (node.data.kind === "WITHDRAW") {
       result.push({ id: node.id, kind: node.data.kind });
     } else if (node.data.kind === "BORROW" && node.data.debtToken) {
@@ -59,6 +71,8 @@ export function buildRecipe(
         debtToken: node.data.debtToken,
         rawAmount: parseAmount(node.data.amount, asset?.decimals ?? 18),
       });
+    } else if (node.data.kind === "REPAY") {
+      result.push({ id: node.id, kind: node.data.kind });
     }
     return result;
   }, []);

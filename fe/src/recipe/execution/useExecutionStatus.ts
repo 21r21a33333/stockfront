@@ -168,9 +168,11 @@ async function readStatus({
                 ? "Collateral activation reverted. Prepare it again before borrowing."
                 : attempt.kind === "BORROW"
                   ? "Borrow reverted. Refresh the risk preview before retrying."
-                  : reference.atomicRequired
-                    ? "Atomic approval and swap reverted. Refresh the route before retrying."
-                    : "Transaction failed. Refresh the route before retrying.",
+                  : attempt.kind === "REPAY"
+                    ? "Repayment reverted. Refresh the live debt before retrying."
+                    : reference.atomicRequired
+                      ? "Atomic approval and swap reverted. Refresh the route before retrying."
+                      : "Transaction failed. Refresh the route before retrying.",
       };
     if (result.status !== "success") return undefined;
     if (reference.atomicRequired && !result.atomic)

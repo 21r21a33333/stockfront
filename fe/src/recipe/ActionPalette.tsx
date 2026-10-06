@@ -7,6 +7,7 @@ import {
   Layers3,
   Search,
   ShieldCheck,
+  HandCoins,
   Undo2,
   WalletCards,
   type LucideIcon,
@@ -38,6 +39,11 @@ const primitivePresentation: Record<
     badge: "Source",
     Icon: Landmark,
   },
+  BORROWED_POSITION: {
+    className: styles.positionPalette,
+    badge: "Source",
+    Icon: CircleDollarSign,
+  },
   TRADE: {
     className: styles.tradePalette,
     badge: "Live",
@@ -57,6 +63,11 @@ const primitivePresentation: Record<
     className: styles.borrowPalette,
     badge: "Live",
     Icon: CircleDollarSign,
+  },
+  REPAY: {
+    className: styles.borrowPalette,
+    badge: "Live",
+    Icon: HandCoins,
   },
 };
 

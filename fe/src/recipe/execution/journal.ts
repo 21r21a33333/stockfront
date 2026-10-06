@@ -132,7 +132,12 @@ function validRecipe(
             node.venue === "venus" &&
             address(node.pool) &&
             address(node.token)) ||
+          (node.kind === "BORROWED_POSITION" &&
+            node.venue === "venus" &&
+            address(node.pool) &&
+            address(node.token)) ||
           node.kind === "WITHDRAW" ||
+          node.kind === "REPAY" ||
           (node.kind === "BORROW" &&
             address(node.debtToken) &&
             unsigned(node.rawAmount)) ||
@@ -175,7 +180,8 @@ function validAttempt(value: unknown, recipe: RecipeDefinition): boolean {
       value.kind === "SUPPLY" ||
       value.kind === "WITHDRAW" ||
       value.kind === "ENABLE_COLLATERAL" ||
-      value.kind === "BORROW") &&
+      value.kind === "BORROW" ||
+      value.kind === "REPAY") &&
     PHASES.includes(value.phase as ExecutionPhase) &&
     Number.isInteger(value.attempt) &&
     Number(value.attempt) > 0 &&
@@ -188,7 +194,8 @@ function validAttempt(value: unknown, recipe: RecipeDefinition): boolean {
         step === "SUPPLY" ||
         step === "WITHDRAW" ||
         step === "ENABLE_COLLATERAL" ||
-        step === "BORROW",
+        step === "BORROW" ||
+        step === "REPAY",
     ) &&
     optionalString(value.error) &&
     optionalBoolean(value.approvalSkipped) &&
@@ -199,7 +206,8 @@ function validAttempt(value: unknown, recipe: RecipeDefinition): boolean {
       value.executionMode === "RFQ" ||
       value.executionMode === "SUPPLY" ||
       value.executionMode === "WITHDRAW" ||
-      value.executionMode === "BORROW") &&
+      value.executionMode === "BORROW" ||
+      value.executionMode === "REPAY") &&
     validReference(value.reference) &&
     outputMatchesNode &&
     expectedMatchesNode

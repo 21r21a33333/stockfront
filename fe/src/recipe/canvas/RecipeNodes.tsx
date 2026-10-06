@@ -3,6 +3,7 @@ import {
   ArrowRightLeft,
   Check,
   CircleDollarSign,
+  HandCoins,
   Landmark,
   Plus,
   Undo2,
@@ -15,6 +16,7 @@ import { attemptLabel, type ExecutionAttempt } from "../execution/journal";
 import { diagnosticsForNode } from "../editor/compiler";
 import {
   inputForBorrow,
+  inputForRepay,
   inputForSupply,
   inputForTrade,
   inputForWithdraw,
@@ -23,6 +25,7 @@ import { useRecipeEditor } from "../editor/store";
 import { useBuilderContext } from "../editor/context";
 import type { AssetOption, RecipeFlowNode } from "../editor/types";
 import { suppliedPositionFor } from "../editor/withdrawalPolicy";
+import { borrowedPositionFor } from "../editor/repaymentPolicy";
 import { formatPositionAmount, formatUsd } from "../format";
 import styles from "../RecipeBuilder.module.css";
 
@@ -155,6 +158,72 @@ export function SuppliedPositionNode({
               </button>
             </div>
           ) : null}
+        </div>
+      ) : null}
+    </NodeShell>
+  );
+}
+
+export function BorrowedPositionNode({
+  id,
+  data,
+  selected,
+}: NodeProps<RecipeFlowNode>) {
+  const {
+    diagnostics,
+    borrowedPositions,
+    connectedOutputs,
+    repayablePositions,
+    appendRepay,
+  } = useBuilderContext();
+  if (data.kind !== "BORROWED_POSITION") return null;
+  const position = borrowedPositionFor(
+    borrowedPositions,
+    data.pool,
+    data.token,
+  );
+  const problem = diagnosticsForNode(diagnostics, id)[0];
+  return (
+    <NodeShell
+      title="Borrowed Position"
+      tone="blue"
+      icon={<CircleDollarSign size={13} />}
+      selected={selected}
+      problem={problem?.message}
+    >
+      <p>All {position?.catalogAsset.symbol ?? "debt"} borrowed from Venus</p>
+      <div className={styles.nodeTags}>
+        <span>
+          {position
+            ? `${formatPositionAmount(position.asset.amount)} ${position.catalogAsset.symbol}`
+            : "Select debt"}
+        </span>
+        <span>{position ? formatUsd(position.asset.valueUsd) : "Venus"}</span>
+      </div>
+      <Handle
+        id="debt"
+        type="source"
+        position={Position.Right}
+        className={styles.handle}
+      />
+      {!connectedOutputs.includes(id) && position ? (
+        <div className={styles.nextActionAnchor}>
+          <span className={styles.nextOutputLabel}>
+            Debt&lt;{position.catalogAsset.symbol} · All&gt;
+          </span>
+          <button
+            type="button"
+            className={`${styles.nextActionButton} nodrag nopan`}
+            aria-label="Add debt repayment"
+            disabled={!repayablePositions.includes(id)}
+            onClick={(event) => {
+              event.stopPropagation();
+              appendRepay(id);
+            }}
+          >
+            <Plus size={17} />
+          </button>
+          <span className={styles.nextActionHint}>Repay</span>
         </div>
       ) : null}
     </NodeShell>
@@ -536,6 +605,66 @@ export function BorrowNode({ id, data, selected }: NodeProps<RecipeFlowNode>) {
   );
 }
 
+export function RepayNode({ id, data, selected }: NodeProps<RecipeFlowNode>) {
+  const nodes = useRecipeEditor((state) => state.nodes);
+  const edges = useRecipeEditor((state) => state.edges);
+  const { assets, diagnostics, preview, prepared, execution, openActivity } =
+    useBuilderContext();
+  if (data.kind !== "REPAY") return null;
+  const input = inputForRepay(nodes, edges, id);
+  const debt = assets.find(
+    (asset) => asset.address.toLowerCase() === input?.token?.toLowerCase(),
+  );
+  const candidate = preview?.nodes.find((item) => item.nodeId === id);
+  const previewNode = candidate?.kind === "REPAY" ? candidate : undefined;
+  const progress = execution.find(
+    (item) => item.nodeId === id && item.kind === "REPAY",
+  );
+  const actions =
+    prepared?.steps
+      .map((step, index) => ({ step, index }))
+      .filter(({ step }) => step.nodeId === id) ?? [];
+  const problem = diagnosticsForNode(diagnostics, id)[0];
+  return (
+    <NodeShell
+      title="Repay"
+      tone="orange"
+      icon={<HandCoins size={13} />}
+      selected={selected}
+      problem={problem?.message}
+    >
+      <p>Repay all {debt?.symbol ?? "debt"} to Venus</p>
+      <div className={styles.nodeTags}>
+        <span>Full debt</span>
+        <span>
+          {progress
+            ? attemptLabel(progress)
+            : previewNode?.state === "READY"
+              ? "Ready"
+              : previewNode?.state === "UNAVAILABLE"
+                ? "Unavailable"
+                : "Preview repayment"}
+        </span>
+      </div>
+      <Handle
+        id="debt"
+        type="target"
+        position={Position.Left}
+        className={styles.handle}
+      />
+      {actions.length > 0 ? (
+        <PreparedActionBranch
+          actions={actions}
+          assets={assets}
+          inputSymbol={debt?.symbol}
+          execution={execution}
+          onOpen={openActivity}
+        />
+      ) : null}
+    </NodeShell>
+  );
+}
+
 function PreparedActionBranch({
   actions,
   assets,
@@ -567,12 +696,15 @@ function PreparedActionBranch({
     collateralStep?.kind === "ENABLE_COLLATERAL" ? collateralStep : undefined;
   const borrowStep = actions.find(({ step }) => step.kind === "BORROW")?.step;
   const borrow = borrowStep?.kind === "BORROW" ? borrowStep : undefined;
+  const repayStep = actions.find(({ step }) => step.kind === "REPAY")?.step;
+  const repay = repayStep?.kind === "REPAY" ? repayStep : undefined;
   const nodeId =
     trade?.nodeId ??
     supply?.nodeId ??
     withdrawal?.nodeId ??
     collateral?.nodeId ??
     borrow?.nodeId ??
+    repay?.nodeId ??
     approval?.nodeId;
   const state = execution.find(
     (item) =>
@@ -594,6 +726,7 @@ function PreparedActionBranch({
     withdrawal,
     collateral,
     borrow,
+    repay,
     approvedSymbol: approvedAsset?.symbol,
     buySymbol,
     inputSymbol,
@@ -629,6 +762,7 @@ function preparedActionLabel({
   withdrawal,
   collateral,
   borrow,
+  repay,
   approvedSymbol,
   buySymbol,
   inputSymbol,
@@ -639,10 +773,17 @@ function preparedActionLabel({
   withdrawal?: PreparedRecipeStep;
   collateral?: PreparedRecipeStep;
   borrow?: PreparedRecipeStep;
+  repay?: PreparedRecipeStep;
   approvedSymbol?: string;
   buySymbol?: string;
   inputSymbol?: string;
 }): string {
+  if (repay?.kind === "REPAY") {
+    const needsApproval = repay.action.transactions.some(
+      (transaction) => transaction.kind === "APPROVE",
+    );
+    return `${needsApproval ? `Approve ${inputSymbol ?? "debt"} + ` : ""}repay all ${inputSymbol ?? "debt"}`;
+  }
   if (borrow?.kind === "BORROW") return `Borrow ${buySymbol ?? "stablecoin"}`;
   if (collateral?.kind === "ENABLE_COLLATERAL")
     return `Enable ${inputSymbol ?? "asset"} collateral`;

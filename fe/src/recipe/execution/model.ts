@@ -30,7 +30,7 @@ export interface ExecutionAttempt {
   kind: PreparedRecipeStep["kind"];
   attempt: number;
   phase: ExecutionPhase;
-  executionMode?: "SWAP" | "RFQ" | "SUPPLY" | "WITHDRAW" | "BORROW";
+  executionMode?: "SWAP" | "RFQ" | "SUPPLY" | "WITHDRAW" | "BORROW" | "REPAY";
   steps: PreparedRecipeStep["kind"][];
   reference?: ExecutionReference;
   firstSubmittedAtMs?: number;
@@ -123,7 +123,8 @@ export function isRunComplete(run: ExecutionRun): boolean {
       node.kind === "TRADE" ||
       node.kind === "SUPPLY" ||
       node.kind === "WITHDRAW" ||
-      node.kind === "BORROW",
+      node.kind === "BORROW" ||
+      node.kind === "REPAY",
   );
   const latest = latestAttempts(run.attempts);
   return (
@@ -148,7 +149,8 @@ export function completedRecipeNodes(
         (item.kind === "TRADE" ||
           item.kind === "SUPPLY" ||
           item.kind === "WITHDRAW" ||
-          item.kind === "BORROW") &&
+          item.kind === "BORROW" ||
+          item.kind === "REPAY") &&
         item.phase === "complete",
     )
     .map((item) => ({

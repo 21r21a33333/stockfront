@@ -19,8 +19,9 @@ export type PreparedExecution =
         | "SUPPLY"
         | "WITHDRAW"
         | "ENABLE_COLLATERAL"
-        | "BORROW";
-      executionMode: "SWAP" | "SUPPLY" | "WITHDRAW" | "BORROW";
+        | "BORROW"
+        | "REPAY";
+      executionMode: "SWAP" | "SUPPLY" | "WITHDRAW" | "BORROW" | "REPAY";
       steps: (
         | "APPROVAL"
         | "TRADE"
@@ -28,6 +29,7 @@ export type PreparedExecution =
         | "WITHDRAW"
         | "ENABLE_COLLATERAL"
         | "BORROW"
+        | "REPAY"
       )[];
       calls: { to: Address; data: Hex; value?: bigint }[];
       atomicRequired: boolean;
@@ -66,6 +68,23 @@ export async function preparedExecution(
     (step) => step.kind === "ENABLE_COLLATERAL",
   );
   const borrow = prepared.steps.find((step) => step.kind === "BORROW");
+  const repayment = prepared.steps.find((step) => step.kind === "REPAY");
+
+  if (repayment?.kind === "REPAY") {
+    if (prepared.steps.length !== 1)
+      throw new Error("A repayment preparation must contain one recipe step.");
+    const calls = repaymentCalls(repayment.action.transactions);
+    const approvalRequired = calls.length === 2;
+    return {
+      kind: "CALL_BATCH",
+      nodeId,
+      action: "REPAY",
+      executionMode: "REPAY",
+      steps: approvalRequired ? ["APPROVAL", "REPAY"] : ["REPAY"],
+      calls,
+      atomicRequired: approvalRequired,
+    };
+  }
 
   if (collateral?.kind === "ENABLE_COLLATERAL") {
     const transaction = oneBorrowingTransaction(
@@ -224,6 +243,21 @@ function supplyCalls(
     kinds.length === 2 && kinds[0] === "APPROVE" && kinds[1] === "DEPOSIT";
   if (!validDeposit && !validApprovalAndDeposit)
     throw new Error("The prepared supply action is incomplete.");
+  return transactions.map(call);
+}
+
+function repaymentCalls(
+  transactions: Extract<
+    PreparedRecipe["steps"][number],
+    { kind: "REPAY" }
+  >["action"]["transactions"],
+) {
+  const kinds = transactions.map((transaction) => transaction.kind);
+  const validRepayment = kinds.length === 1 && kinds[0] === "REPAY";
+  const validApprovalAndRepayment =
+    kinds.length === 2 && kinds[0] === "APPROVE" && kinds[1] === "REPAY";
+  if (!validRepayment && !validApprovalAndRepayment)
+    throw new Error("The prepared repayment action is incomplete.");
   return transactions.map(call);
 }
 

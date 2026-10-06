@@ -3,6 +3,7 @@ import type {
   PreparedRecipe,
   RecipeBorrowPolicy,
   RecipePreview,
+  RecipeRepayPolicy,
   RecipeSupplyPolicy,
   RecipeTradePolicy,
 } from "@/api/generated";
@@ -27,6 +28,10 @@ const borrowPolicy: RecipeBorrowPolicy = {
   allowedInputs: [{ input: "SUPPLIED_POSITIONS", venue: "venus", pool }],
   debtTokens: [usdt],
   minimumHealthFactor: "1.5",
+};
+const repayPolicy: RecipeRepayPolicy = {
+  allowedInputs: [{ input: "BORROWED_POSITIONS", venue: "venus", pool }],
+  debtTokens: [usdt],
 };
 const node: RecipeFlowNode = {
   id: "trade-1",
@@ -340,6 +345,103 @@ it("shows the live health-factor gate before preparing a borrow stage", () => {
   );
   expect(onPrepare).toHaveBeenCalledOnce();
 });
+
+it.each([
+  [[], false, "Prepare full repayment"],
+  [
+    ["INSUFFICIENT_WALLET_BALANCE" as const],
+    true,
+    "The connected wallet needs enough stablecoin",
+  ],
+])(
+  "gates a full repayment from the live Venus capability",
+  (unavailableReasons, disabled, expectedText) => {
+    const source: RecipeFlowNode = {
+      id: "debt-1",
+      type: "borrowedPosition",
+      position: { x: 0, y: 0 },
+      data: {
+        kind: "BORROWED_POSITION",
+        venue: "venus",
+        pool,
+        token: usdt,
+      },
+    };
+    const repay: RecipeFlowNode = {
+      id: "repay-1",
+      type: "repay",
+      position: { x: 300, y: 0 },
+      data: { kind: "REPAY" },
+    };
+    useRecipeEditor.setState({
+      nodes: [source, repay],
+      edges: [
+        {
+          id: "edge-repay",
+          type: "asset",
+          source: source.id,
+          sourceHandle: "debt",
+          target: repay.id,
+          targetHandle: "debt",
+        },
+      ],
+    });
+
+    render(
+      <RecipeInspector
+        node={repay}
+        assets={assets}
+        tradePolicy={tradePolicy}
+        supplyPolicy={supplyPolicy}
+        repayPolicy={repayPolicy}
+        borrowedPositions={[
+          {
+            venue: "venus",
+            pool,
+            asset: {
+              token: { contract: usdt, symbol: "USDT" },
+              amount: "3.001",
+              valueUsd: "3.001",
+            },
+            catalogAsset: assets[0],
+          },
+        ]}
+        diagnostics={[]}
+        preview={{
+          nodes: [
+            {
+              kind: "REPAY",
+              nodeId: repay.id,
+              state: unavailableReasons.length ? "UNAVAILABLE" : "READY",
+              capability: {
+                chainId: 56,
+                venue: "venus",
+                pool,
+                debt: { contract: usdt, symbol: "USDT" },
+                debtAmount: "3.001",
+                walletBalance: unavailableReasons.length ? "2" : "5",
+                approvalAmount: "3.00103001",
+                approvalRequired: true,
+                unavailableReasons,
+                observedAtMs: 1,
+              },
+            },
+          ],
+        }}
+        completed={false}
+        preparing={false}
+        onRouteSelect={() => {}}
+        onPrepare={() => {}}
+      />,
+    );
+
+    const button = screen.getByRole("button", {
+      name: "Prepare full repayment",
+    });
+    expect(button).toHaveProperty("disabled", disabled);
+    expect(screen.getByText(expectedText, { exact: false })).toBeVisible();
+  },
+);
 
 it("keeps an unsupported saved choice editable and offers only compatible replacements", () => {
   const invalidTrade: RecipeFlowNode = {

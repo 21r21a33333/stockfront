@@ -640,6 +640,17 @@
               "nodeId": { "type": "string", "format": "uuid" },
               "output": { "$ref": "#/components/schemas/TokenAmount" }
             }
+          },
+          {
+            "type": "object",
+            "required": ["nodeId", "action", "kind"],
+            "properties": {
+              "action": {
+                "$ref": "#/components/schemas/PreparedBorrowingAction"
+              },
+              "kind": { "type": "string", "enum": ["REPAY"] },
+              "nodeId": { "type": "string", "format": "uuid" }
+            }
           }
         ]
       },
@@ -736,7 +747,8 @@
           "tradePolicy",
           "supplyPolicy",
           "withdrawalPolicy",
-          "borrowPolicy"
+          "borrowPolicy",
+          "repayPolicy"
         ],
         "properties": {
           "borrowPolicy": { "$ref": "#/components/schemas/RecipeBorrowPolicy" },
@@ -750,6 +762,7 @@
               "$ref": "#/components/schemas/RecipePrimitiveDescriptor"
             }
           },
+          "repayPolicy": { "$ref": "#/components/schemas/RecipeRepayPolicy" },
           "schemaVersion": {
             "type": "integer",
             "format": "int32",
@@ -846,7 +859,8 @@
           "UNSUPPORTED_SUPPLY_ASSET",
           "UNSUPPORTED_WITHDRAWAL_POSITION",
           "UNSUPPORTED_BORROW_POSITION",
-          "UNSUPPORTED_BORROW_ASSET"
+          "UNSUPPORTED_BORROW_ASSET",
+          "UNSUPPORTED_REPAYMENT_POSITION"
         ]
       },
       "RecipeDiagnosticLocation": {
@@ -1024,6 +1038,25 @@
                 "items": { "type": "string", "format": "uuid" }
               }
             }
+          },
+          {
+            "type": "object",
+            "required": ["nodeId", "state", "kind"],
+            "properties": {
+              "capability": {
+                "oneOf": [
+                  { "type": "null" },
+                  { "$ref": "#/components/schemas/RepaymentCapability" }
+                ]
+              },
+              "kind": { "type": "string", "enum": ["REPAY"] },
+              "nodeId": { "type": "string", "format": "uuid" },
+              "state": { "$ref": "#/components/schemas/RecipeNodeState" },
+              "waitingFor": {
+                "type": "array",
+                "items": { "type": "string", "format": "uuid" }
+              }
+            }
           }
         ]
       },
@@ -1053,7 +1086,12 @@
       },
       "RecipeOptionSource": {
         "type": "string",
-        "enum": ["SETTLEMENT_TOKENS", "BSTOCKS", "SUPPLIED_POSITIONS"]
+        "enum": [
+          "SETTLEMENT_TOKENS",
+          "BSTOCKS",
+          "SUPPLIED_POSITIONS",
+          "BORROWED_POSITIONS"
+        ]
       },
       "RecipePortDescriptor": {
         "type": "object",
@@ -1087,7 +1125,7 @@
       },
       "RecipePortValueType": {
         "type": "string",
-        "enum": ["TOKEN_AMOUNT", "SUPPLIED_POSITION"]
+        "enum": ["TOKEN_AMOUNT", "SUPPLIED_POSITION", "BORROWED_POSITION"]
       },
       "RecipePreview": {
         "type": "object",
@@ -1130,6 +1168,16 @@
           },
           {
             "type": "object",
+            "required": ["venue", "pool", "token", "kind"],
+            "properties": {
+              "kind": { "type": "string", "enum": ["BORROWED_POSITION"] },
+              "pool": { "type": "string", "format": "evm-address" },
+              "token": { "type": "string", "format": "evm-address" },
+              "venue": { "$ref": "#/components/schemas/BorrowingVenue" }
+            }
+          },
+          {
+            "type": "object",
             "required": ["buyToken", "kind"],
             "properties": {
               "buyToken": { "type": "string", "format": "evm-address" },
@@ -1157,6 +1205,11 @@
               "kind": { "type": "string", "enum": ["BORROW"] },
               "rawAmount": { "type": "string" }
             }
+          },
+          {
+            "type": "object",
+            "required": ["kind"],
+            "properties": { "kind": { "type": "string", "enum": ["REPAY"] } }
           }
         ]
       },
@@ -1182,11 +1235,36 @@
         "enum": [
           "WALLET_ASSET",
           "SUPPLIED_POSITION",
+          "BORROWED_POSITION",
           "TRADE",
           "SUPPLY",
           "WITHDRAW",
-          "BORROW"
+          "BORROW",
+          "REPAY"
         ]
+      },
+      "RecipeRepayPolicy": {
+        "type": "object",
+        "required": ["allowedInputs", "debtTokens"],
+        "properties": {
+          "allowedInputs": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/RecipeRepayRule" }
+          },
+          "debtTokens": {
+            "type": "array",
+            "items": { "type": "string", "format": "evm-address" }
+          }
+        }
+      },
+      "RecipeRepayRule": {
+        "type": "object",
+        "required": ["venue", "pool", "input"],
+        "properties": {
+          "input": { "$ref": "#/components/schemas/RecipeOptionSource" },
+          "pool": { "type": "string", "format": "evm-address" },
+          "venue": { "$ref": "#/components/schemas/BorrowingVenue" }
+        }
       },
       "RecipeSupplyPolicy": {
         "type": "object",
@@ -1248,6 +1326,49 @@
       "RecipeWithdrawalUnavailableReason": {
         "type": "string",
         "enum": ["POSITION_NOT_FOUND", "UNSUPPORTED_POOL", "OUTSTANDING_DEBT"]
+      },
+      "RepaymentCapability": {
+        "type": "object",
+        "description": "Current ability to repay one complete Venus debt position.\n\nAmounts come from the same live observation. `approval_amount` includes a\nsmall interest buffer so a full repayment does not leave debt dust while the\nwallet request is pending.",
+        "required": [
+          "venue",
+          "chainId",
+          "pool",
+          "debt",
+          "debtAmount",
+          "walletBalance",
+          "approvalAmount",
+          "approvalRequired",
+          "unavailableReasons",
+          "observedAtMs"
+        ],
+        "properties": {
+          "approvalAmount": { "type": "string" },
+          "approvalRequired": { "type": "boolean" },
+          "chainId": { "type": "integer", "format": "int64", "minimum": 0 },
+          "debt": { "$ref": "#/components/schemas/BorrowingToken" },
+          "debtAmount": { "type": "string" },
+          "observedAtMs": { "type": "integer", "format": "int64" },
+          "pool": { "type": "string", "format": "evm-address" },
+          "unavailableReasons": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RepaymentCapabilityUnavailableReason"
+            }
+          },
+          "venue": { "$ref": "#/components/schemas/BorrowingVenue" },
+          "walletBalance": { "type": "string" }
+        }
+      },
+      "RepaymentCapabilityUnavailableReason": {
+        "type": "string",
+        "enum": [
+          "POSITION_NOT_FOUND",
+          "UNSUPPORTED_POOL",
+          "UNSUPPORTED_DEBT_TOKEN",
+          "NO_DEBT",
+          "INSUFFICIENT_WALLET_BALANCE"
+        ]
       },
       "Response": {
         "type": "object",
@@ -1322,7 +1443,8 @@
               "tradePolicy",
               "supplyPolicy",
               "withdrawalPolicy",
-              "borrowPolicy"
+              "borrowPolicy",
+              "repayPolicy"
             ],
             "properties": {
               "borrowPolicy": {
@@ -1337,6 +1459,9 @@
                 "items": {
                   "$ref": "#/components/schemas/RecipePrimitiveDescriptor"
                 }
+              },
+              "repayPolicy": {
+                "$ref": "#/components/schemas/RecipeRepayPolicy"
               },
               "schemaVersion": {
                 "type": "integer",

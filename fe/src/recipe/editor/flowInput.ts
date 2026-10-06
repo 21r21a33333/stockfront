@@ -40,6 +40,18 @@ export function inputForBorrow(
   return source?.data.kind === "SUPPLIED_POSITION" ? source.data : undefined;
 }
 
+export function inputForRepay(
+  nodes: RecipeFlowNode[],
+  edges: RecipeFlowEdge[],
+  repayId: string,
+) {
+  const edge = edges.find(
+    (item) => item.target === repayId && item.targetHandle === "debt",
+  );
+  const source = nodes.find((node) => node.id === edge?.source);
+  return source?.data.kind === "BORROWED_POSITION" ? source.data : undefined;
+}
+
 function inputForAction(
   nodes: RecipeFlowNode[],
   edges: RecipeFlowEdge[],

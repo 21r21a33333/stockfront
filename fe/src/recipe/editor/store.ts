@@ -29,6 +29,11 @@ export interface EditorDefaults {
     pool: Address;
     token: Address;
   };
+  borrowedPosition?: {
+    venue: "venus";
+    pool: Address;
+    token: Address;
+  };
 }
 
 interface RecipeEditorState {
@@ -47,6 +52,7 @@ interface RecipeEditorState {
   appendSupply(sourceId: string): void;
   appendWithdraw(sourceId: string): void;
   appendBorrow(sourceId: string, debtToken?: Address): void;
+  appendRepay(sourceId: string): void;
   updateNode(id: string, patch: Partial<RecipeNodeData>): void;
   selectNode(id?: string): void;
   removeSelected(): void;
@@ -55,6 +61,9 @@ interface RecipeEditorState {
   onEdgesChange(changes: EdgeChange<RecipeFlowEdge>[]): void;
   setMode(mode: "builder" | "debug"): void;
   startNewRecipe(): void;
+  startWithdrawalRecipe(
+    position: NonNullable<EditorDefaults["suppliedPosition"]>,
+  ): void;
   saveDraft(): void;
   restoreDraft(): boolean;
 }
@@ -99,6 +108,18 @@ function nodeFor(
           token: defaults.suppliedPosition?.token,
         },
       };
+    case "BORROWED_POSITION":
+      return {
+        id,
+        type: flowType(kind),
+        position,
+        data: {
+          kind,
+          venue: defaults.borrowedPosition?.venue ?? "venus",
+          pool: defaults.borrowedPosition?.pool,
+          token: defaults.borrowedPosition?.token,
+        },
+      };
     case "WITHDRAW":
       return {
         id,
@@ -116,6 +137,13 @@ function nodeFor(
           debtToken: defaults.debtToken ?? defaults.settlementToken,
           amount: "1",
         },
+      };
+    case "REPAY":
+      return {
+        id,
+        type: flowType(kind),
+        position,
+        data: { kind },
       };
   }
 }
@@ -301,6 +329,39 @@ export const useRecipeEditor = create<RecipeEditorState>((set, get) => ({
         selectedNodeId: node.id,
       };
     }),
+  appendRepay: (sourceId) =>
+    set((state) => {
+      const source = state.nodes.find((node) => node.id === sourceId);
+      if (
+        source?.data.kind !== "BORROWED_POSITION" ||
+        state.edges.some(
+          (edge) => edge.source === sourceId && edge.sourceHandle === "debt",
+        )
+      ) {
+        return state;
+      }
+      const node: RecipeFlowNode = {
+        id: crypto.randomUUID(),
+        type: "repay",
+        position: { x: source.position.x + 300, y: source.position.y },
+        data: { kind: "REPAY" },
+      };
+      return {
+        nodes: [...state.nodes, node],
+        edges: [
+          ...state.edges,
+          {
+            id: crypto.randomUUID(),
+            source: sourceId,
+            sourceHandle: "debt",
+            target: node.id,
+            targetHandle: "debt",
+            type: "asset",
+          },
+        ],
+        selectedNodeId: node.id,
+      };
+    }),
   updateNode: (id, patch) =>
     set((state) => ({
       nodes: state.nodes.map((node) =>
@@ -339,6 +400,35 @@ export const useRecipeEditor = create<RecipeEditorState>((set, get) => ({
       nodes: [],
       edges: [],
       selectedNodeId: undefined,
+      mode: "builder",
+      initialized: true,
+    });
+  },
+  startWithdrawalRecipe: (position) => {
+    localStorage.removeItem(DRAFT_KEY);
+    const source = nodeFor(
+      "SUPPLIED_POSITION",
+      { x: 70, y: 180 },
+      { suppliedPosition: position },
+    );
+    const withdrawal = nodeFor(
+      "WITHDRAW",
+      { x: 370, y: 180 },
+      { suppliedPosition: position },
+    );
+    set({
+      nodes: [source, withdrawal],
+      edges: [
+        {
+          id: crypto.randomUUID(),
+          source: source.id,
+          sourceHandle: "position",
+          target: withdrawal.id,
+          targetHandle: "position",
+          type: "asset",
+        },
+      ],
+      selectedNodeId: withdrawal.id,
       mode: "builder",
       initialized: true,
     });

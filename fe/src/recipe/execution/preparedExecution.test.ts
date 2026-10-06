@@ -106,3 +106,46 @@ it.each([
     expect(request).toHaveBeenCalledOnce();
   },
 );
+
+it("keeps approval before full repayment in one atomic wallet batch", async () => {
+  const prepared: PreparedRecipe = {
+    steps: [
+      {
+        kind: "REPAY",
+        nodeId: "repay",
+        action: {
+          transactions: [
+            {
+              kind: "APPROVE",
+              to: market,
+              data: "0x095ea7b3",
+              value: "0",
+            },
+            {
+              kind: "REPAY",
+              to: owner,
+              data: "0x12345678",
+              value: "0",
+            },
+          ],
+          preview: {},
+        },
+      },
+    ],
+  };
+
+  await expect(
+    preparedExecution(prepared, {} as never, owner),
+  ).resolves.toEqual({
+    kind: "CALL_BATCH",
+    nodeId: "repay",
+    action: "REPAY",
+    executionMode: "REPAY",
+    steps: ["APPROVAL", "REPAY"],
+    calls: [
+      { to: market, data: "0x095ea7b3", value: 0n },
+      { to: owner, data: "0x12345678", value: 0n },
+    ],
+    atomicRequired: true,
+  });
+});

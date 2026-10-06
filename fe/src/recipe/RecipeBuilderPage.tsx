@@ -38,6 +38,11 @@ import {
   selectableSuppliedPositions,
   suppliedPositionFor,
 } from "@/recipe/editor/withdrawalPolicy";
+import {
+  borrowedPositionFor,
+  canRepayPosition,
+  selectableBorrowedPositions,
+} from "@/recipe/editor/repaymentPolicy";
 import styles from "@/recipe/RecipeBuilder.module.css";
 
 export function RecipeBuilderPage() {
@@ -76,6 +81,17 @@ export function RecipeBuilderPage() {
         : [],
     [assets, borrowingData, catalog.data],
   );
+  const borrowedPositions = useMemo(
+    () =>
+      catalog.data
+        ? selectableBorrowedPositions(
+            borrowingData,
+            catalog.data.repayPolicy,
+            assets,
+          )
+        : [],
+    [assets, borrowingData, catalog.data],
+  );
   const defaults = useMemo(
     () => ({
       settlementToken: catalog.data?.settlementTokens[0],
@@ -88,8 +104,15 @@ export function RecipeBuilderPage() {
             token: suppliedPositions[0].asset.token.contract,
           }
         : undefined,
+      borrowedPosition: borrowedPositions[0]
+        ? {
+            venue: borrowedPositions[0].venue,
+            pool: borrowedPositions[0].pool,
+            token: borrowedPositions[0].asset.token.contract,
+          }
+        : undefined,
     }),
-    [catalog.data, suppliedPositions],
+    [borrowedPositions, catalog.data, suppliedPositions],
   );
 
   useEffect(() => {
@@ -177,6 +200,7 @@ export function RecipeBuilderPage() {
   const activePrepared = matches(prepare.variables) ? prepare.data : undefined;
   const execution = useRecipeExecution({ recipe, prepared: activePrepared });
   const refreshedRun = useRef<string>();
+  const [refreshedAccountRun, setRefreshedAccountRun] = useState<string>();
   useEffect(() => {
     if (
       !execution.completed ||
@@ -185,8 +209,12 @@ export function RecipeBuilderPage() {
     )
       return;
     refreshedRun.current = execution.run.id;
-    void refetchBorrowingAccount();
-    void refetchBalances();
+    const runId = execution.run.id;
+    void Promise.all([refetchBorrowingAccount(), refetchBalances()]).then(
+      ([accountResult]) => {
+        if (accountResult.data) setRefreshedAccountRun(runId);
+      },
+    );
   }, [
     execution.completed,
     execution.run?.id,
@@ -217,6 +245,22 @@ export function RecipeBuilderPage() {
     if (execution.run?.id) setInspectorView("activity");
   }, [execution.run?.id]);
   const hasActivity = Boolean(execution.run || runtimePrepared);
+  const repaymentSource = execution.run?.recipe.nodes.find(
+    (node) => node.kind === "BORROWED_POSITION",
+  );
+  const withdrawalHandoff =
+    execution.completed &&
+    execution.run?.id === refreshedAccountRun &&
+    execution.run?.recipe.nodes.some((node) => node.kind === "REPAY") &&
+    isZeroDecimal(borrowingData?.totalBorrowedUsd)
+      ? (suppliedPositions.find(
+          (position) =>
+            position.pool.toLowerCase() ===
+            (repaymentSource?.kind === "BORROWED_POSITION"
+              ? repaymentSource.pool.toLowerCase()
+              : ""),
+        ) ?? suppliedPositions[0])
+      : undefined;
   const runStatus = execution.completed
     ? "Settled"
     : execution.progress.some(
@@ -374,6 +418,20 @@ export function RecipeBuilderPage() {
     setInspectorView("configure");
   }
 
+  async function startCollateralWithdrawal(): Promise<void> {
+    if (!withdrawalHandoff) return;
+    await execution.startNewRun();
+    editor.startWithdrawalRecipe({
+      venue: withdrawalHandoff.venue,
+      pool: withdrawalHandoff.pool,
+      token: withdrawalHandoff.asset.token.contract,
+    });
+    preview.reset();
+    prepare.reset();
+    setSelectedRoutes({});
+    setInspectorView("configure");
+  }
+
   function restoreExecutionRecipe(): void {
     const snapshot = execution.run?.recipe;
     if (!snapshot) return;
@@ -426,6 +484,7 @@ export function RecipeBuilderPage() {
       value={{
         assets,
         suppliedPositions,
+        borrowedPositions,
         diagnostics,
         selectedRoutes,
         preview: runtimePreview,
@@ -461,6 +520,17 @@ export function RecipeBuilderPage() {
             node.data.token,
           );
           return canWithdrawPosition(position, catalog.data.withdrawalPolicy)
+            ? [node.id]
+            : [];
+        }),
+        repayablePositions: editor.nodes.flatMap((node) => {
+          if (node.data.kind !== "BORROWED_POSITION") return [];
+          const position = borrowedPositionFor(
+            borrowedPositions,
+            node.data.pool,
+            node.data.token,
+          );
+          return canRepayPosition(position, catalog.data.repayPolicy)
             ? [node.id]
             : [];
         }),
@@ -503,6 +573,10 @@ export function RecipeBuilderPage() {
             sourceId,
             catalog.data.borrowPolicy.debtTokens[0],
           );
+          setInspectorView("configure");
+        },
+        appendRepay: (sourceId) => {
+          editor.appendRepay(sourceId);
           setInspectorView("configure");
         },
         openActivity: () => {
@@ -598,7 +672,9 @@ export function RecipeBuilderPage() {
                   tradePolicy={catalog.data.tradePolicy}
                   supplyPolicy={catalog.data.supplyPolicy}
                   borrowPolicy={catalog.data.borrowPolicy}
+                  repayPolicy={catalog.data.repayPolicy}
                   suppliedPositions={suppliedPositions}
+                  borrowedPositions={borrowedPositions}
                   diagnostics={diagnostics}
                   preview={runtimePreview as RecipePreview | undefined}
                   selectedRouteId={selectedRoute?.routeQuoteId}
@@ -638,14 +714,20 @@ export function RecipeBuilderPage() {
                         }}
                         onRefresh={previewRecipe}
                         onRestore={restoreExecutionRecipe}
+                        canStartWithdrawal={Boolean(withdrawalHandoff)}
+                        onStartWithdrawal={() =>
+                          void startCollateralWithdrawal()
+                        }
                       />
                     ) : undefined
                   }
                   error={
                     requestError ??
                     (selectedNode?.data.kind === "SUPPLIED_POSITION" ||
+                    selectedNode?.data.kind === "BORROWED_POSITION" ||
                     selectedNode?.data.kind === "WITHDRAW" ||
-                    selectedNode?.data.kind === "BORROW"
+                    selectedNode?.data.kind === "BORROW" ||
+                    selectedNode?.data.kind === "REPAY"
                       ? readableError(borrowingError)
                       : undefined)
                   }
@@ -751,6 +833,10 @@ function readableError(error: unknown): string | undefined {
   return error instanceof Error ? error.message : undefined;
 }
 
+function isZeroDecimal(value: string | undefined): boolean {
+  return value !== undefined && /^0(?:\.0+)?$/.test(value);
+}
+
 function restoredNodeData(
   node: RecipeNode,
   assets: AssetOption[],
@@ -761,6 +847,13 @@ function restoredNodeData(
     case "SUPPLY":
       return { kind: node.kind, venue: node.venue };
     case "SUPPLIED_POSITION":
+      return {
+        kind: node.kind,
+        venue: node.venue,
+        pool: node.pool,
+        token: node.token,
+      };
+    case "BORROWED_POSITION":
       return {
         kind: node.kind,
         venue: node.venue,
@@ -781,6 +874,8 @@ function restoredNodeData(
         amount: formatUnits(BigInt(node.rawAmount), asset.decimals),
       };
     }
+    case "REPAY":
+      return { kind: node.kind };
     case "WALLET_ASSET": {
       const asset = assets.find(
         (candidate) =>
@@ -802,6 +897,8 @@ function nodeTitle(kind: RecipeNodeData["kind"]): string {
       return "Wallet asset";
     case "SUPPLIED_POSITION":
       return "Supplied position";
+    case "BORROWED_POSITION":
+      return "Borrowed position";
     case "TRADE":
       return "Trade";
     case "SUPPLY":
@@ -810,5 +907,7 @@ function nodeTitle(kind: RecipeNodeData["kind"]): string {
       return "Withdraw";
     case "BORROW":
       return "Borrow";
+    case "REPAY":
+      return "Repay";
   }
 }

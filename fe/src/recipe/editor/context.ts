@@ -8,10 +8,12 @@ import type {
 import type { ExecutionAttempt } from "../execution/journal";
 import type { AssetOption } from "./types";
 import type { SuppliedPositionOption } from "./withdrawalPolicy";
+import type { BorrowedPositionOption } from "./repaymentPolicy";
 
 export interface BuilderContextValue {
   assets: AssetOption[];
   suppliedPositions: SuppliedPositionOption[];
+  borrowedPositions: BorrowedPositionOption[];
   diagnostics: RecipeDiagnostic[];
   selectedRoutes: Record<string, TradeQuote>;
   preview?: RecipePreview;
@@ -21,10 +23,12 @@ export interface BuilderContextValue {
   supplyableOutputs: string[];
   borrowablePositions: string[];
   withdrawablePositions: string[];
+  repayablePositions: string[];
   appendTrade(sourceId: string): void;
   appendSupply(sourceId: string): void;
   appendWithdraw(sourceId: string): void;
   appendBorrow(sourceId: string): void;
+  appendRepay(sourceId: string): void;
   openActivity(): void;
 }
 

@@ -2,6 +2,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { ExecutionPanel } from "./ExecutionPanel";
 import { hash, prepared, recipe, token, wallet } from "./fixtures.test-support";
 import type { ExecutionAttempt, ExecutionRun } from "./model";
+import { useRecipeEditor } from "../editor/store";
 
 const assets = [
   {
@@ -122,4 +123,78 @@ it("shows settlement or a fresh-route retry, never a stale resubmit", () => {
   expect(
     screen.getByRole("link", { name: "View transaction" }),
   ).toHaveAttribute("href", `https://bscscan.com/tx/${hash}`);
+});
+
+it("hands a settled repayment into a clean withdrawal recipe", () => {
+  const pool = "0x3333333333333333333333333333333333333333" as const;
+  const repaymentRecipe = {
+    schemaVersion: 1,
+    chainId: 56,
+    nodes: [
+      {
+        id: "debt",
+        kind: "BORROWED_POSITION" as const,
+        venue: "venus" as const,
+        pool,
+        token,
+      },
+      { id: "repay", kind: "REPAY" as const },
+    ],
+    edges: [
+      {
+        id: "repay-edge",
+        from: { nodeId: "debt", port: "debt" },
+        to: { nodeId: "repay", port: "debt" },
+      },
+    ],
+  };
+  const repaymentRun: ExecutionRun = {
+    version: 2,
+    id: "repayment-run",
+    wallet,
+    chainId: 56,
+    recipe: repaymentRecipe,
+    createdAtMs: 1,
+    updatedAtMs: 1,
+    attempts: [
+      {
+        id: "repay:1",
+        nodeId: "repay",
+        kind: "REPAY",
+        attempt: 1,
+        phase: "complete",
+        executionMode: "REPAY",
+        steps: ["APPROVAL", "REPAY"],
+      },
+    ],
+  };
+
+  render(
+    <ExecutionPanel
+      {...props}
+      recipe={repaymentRecipe}
+      run={repaymentRun}
+      canStartWithdrawal
+      onStartWithdrawal={() =>
+        useRecipeEditor.getState().startWithdrawalRecipe({
+          venue: "venus",
+          pool,
+          token,
+        })
+      }
+    />,
+  );
+  fireEvent.click(
+    screen.getByRole("button", { name: "Start collateral withdrawal" }),
+  );
+
+  const state = useRecipeEditor.getState();
+  expect(state.nodes.map((node) => node.data.kind)).toEqual([
+    "SUPPLIED_POSITION",
+    "WITHDRAW",
+  ]);
+  expect(state.edges[0]).toMatchObject({
+    sourceHandle: "position",
+    targetHandle: "position",
+  });
 });

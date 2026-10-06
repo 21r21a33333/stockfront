@@ -39,6 +39,8 @@ export function ExecutionPanel({
   onRetryFailed,
   onRefresh,
   onRestore,
+  canStartWithdrawal = false,
+  onStartWithdrawal,
 }: {
   run?: ExecutionRun;
   recipe: RecipeDefinition;
@@ -56,6 +58,8 @@ export function ExecutionPanel({
   onRetryFailed(nodeId: string): void;
   onRefresh(): void;
   onRestore(): void;
+  canStartWithdrawal?: boolean;
+  onStartWithdrawal?(): void;
 }) {
   const [copyMessage, setCopyMessage] = useState("");
   const attempts = executionProgress(run?.attempts ?? [], busy);
@@ -90,7 +94,8 @@ export function ExecutionPanel({
                 node.kind === "TRADE" ||
                 node.kind === "SUPPLY" ||
                 node.kind === "WITHDRAW" ||
-                node.kind === "BORROW",
+                node.kind === "BORROW" ||
+                node.kind === "REPAY",
             ).length
           }
         </span>
@@ -158,7 +163,11 @@ export function ExecutionPanel({
               {item.steps.length > 1 && (
                 <div className={styles.steps}>
                   <span>Approve {symbol(sellToken)}</span>
-                  <span>Swap → {symbol(buyToken)}</span>
+                  <span>
+                    {item.kind === "REPAY"
+                      ? `Repay all ${symbol(sellToken)}`
+                      : `Swap → ${symbol(buyToken)}`}
+                  </span>
                   <b>Atomic</b>
                 </div>
               )}
@@ -187,6 +196,12 @@ export function ExecutionPanel({
                 <div className={styles.steps}>
                   <span>Borrow {symbol(buyToken)} from Venus</span>
                   <span>Receive in connected wallet</span>
+                </div>
+              )}
+              {item.kind === "REPAY" && item.steps.length === 1 && (
+                <div className={styles.steps}>
+                  <span>Repay full live debt</span>
+                  <span>Release debt after settlement</span>
                 </div>
               )}
               {item.error && <p className={styles.notice}>{item.error}</p>}
@@ -235,7 +250,9 @@ export function ExecutionPanel({
                         ? "Prepare collateral again"
                         : item.kind === "BORROW"
                           ? "Refresh risk and retry"
-                          : "Refresh route to retry"}
+                          : item.kind === "REPAY"
+                            ? "Refresh debt and retry"
+                            : "Refresh route to retry"}
                 </button>
               )}
             </li>
@@ -259,9 +276,21 @@ export function ExecutionPanel({
           </button>
         )}
         {complete ? (
-          <p className={styles.success}>
-            <Check size={15} /> Recipe complete
-          </p>
+          <>
+            <p className={styles.success}>
+              <Check size={15} /> Recipe complete
+            </p>
+            {canStartWithdrawal && onStartWithdrawal ? (
+              <button
+                type="button"
+                className={styles.primary}
+                onClick={onStartWithdrawal}
+                disabled={busy}
+              >
+                Start collateral withdrawal
+              </button>
+            ) : null}
+          </>
         ) : pending ? (
           <p className={styles.notice}>
             {busy
@@ -301,6 +330,7 @@ function mergePreparedActions(
   for (const nodeId of new Set(prepared.steps.map((step) => step.nodeId))) {
     const steps = prepared.steps.filter((step) => step.nodeId === nodeId);
     const supply = steps.find((step) => step.kind === "SUPPLY");
+    const repayment = steps.find((step) => step.kind === "REPAY");
     const action = steps.find((step) => step.kind !== "APPROVAL");
     const kind = action?.kind ?? "APPROVAL";
     if (actions.some((item) => item.nodeId === nodeId && item.kind === kind))
@@ -312,10 +342,16 @@ function mergePreparedActions(
       attempt: 0,
       phase: "ready",
       executionMode: preparedExecutionMode(action),
-      steps: steps.map((step) => step.kind),
+      steps:
+        repayment?.kind === "REPAY" &&
+        repayment.action.transactions.some(
+          (transaction) => transaction.kind === "APPROVE",
+        )
+          ? ["APPROVAL", "REPAY"]
+          : steps.map((step) => step.kind),
       approvalSkipped:
-        supply?.kind === "SUPPLY" &&
-        !supply.action.transactions.some(
+        (supply?.kind === "SUPPLY" || repayment?.kind === "REPAY") &&
+        !(supply ?? repayment)?.action.transactions.some(
           (transaction) => transaction.kind === "APPROVE",
         ),
     });
@@ -354,7 +390,11 @@ function referenceLabel(
 function sourceToken(
   node: RecipeDefinition["nodes"][number] | undefined,
 ): string | undefined {
-  if (node?.kind === "WALLET_ASSET" || node?.kind === "SUPPLIED_POSITION")
+  if (
+    node?.kind === "WALLET_ASSET" ||
+    node?.kind === "SUPPLIED_POSITION" ||
+    node?.kind === "BORROWED_POSITION"
+  )
     return node.token;
   return node?.kind === "TRADE" ? node.buyToken : undefined;
 }
@@ -374,6 +414,8 @@ function actionLabel(
       return `Enable ${symbol(sellToken)} as Venus collateral`;
     case "BORROW":
       return `Borrow ${symbol(buyToken)} from Venus`;
+    case "REPAY":
+      return `Repay all ${symbol(sellToken)} to Venus`;
     case "APPROVAL":
       return `Approve ${symbol(sellToken)}`;
     case "TRADE":
@@ -388,6 +430,7 @@ function preparedExecutionMode(
   if (step?.kind === "SUPPLY") return "SUPPLY";
   if (step?.kind === "ENABLE_COLLATERAL" || step?.kind === "BORROW")
     return "BORROW";
+  if (step?.kind === "REPAY") return "REPAY";
   return step?.kind === "TRADE" ? step.action.executionMode : "SWAP";
 }
 

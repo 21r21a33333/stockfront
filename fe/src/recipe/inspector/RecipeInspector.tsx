@@ -4,6 +4,7 @@ import type {
   PreparedRecipe,
   RecipeDiagnostic,
   RecipeBorrowPolicy,
+  RecipeRepayPolicy,
   RecipePreview,
   RecipeSupplyPolicy,
   RecipeTradePolicy,
@@ -26,11 +27,18 @@ import { SuppliedPositionFields } from "./SuppliedPositionFields";
 import { WithdrawFields } from "./WithdrawFields";
 import { BorrowFields } from "./BorrowFields";
 import type { SuppliedPositionOption } from "../editor/withdrawalPolicy";
+import type { BorrowedPositionOption } from "../editor/repaymentPolicy";
+import { BorrowedPositionFields } from "./BorrowedPositionFields";
+import { RepayFields } from "./RepayFields";
 
 const emptyBorrowPolicy: RecipeBorrowPolicy = {
   allowedInputs: [],
   debtTokens: [],
   minimumHealthFactor: "1.5",
+};
+const emptyRepayPolicy: RecipeRepayPolicy = {
+  allowedInputs: [],
+  debtTokens: [],
 };
 
 export function RecipeInspector({
@@ -39,7 +47,9 @@ export function RecipeInspector({
   tradePolicy,
   supplyPolicy,
   borrowPolicy = emptyBorrowPolicy,
+  repayPolicy = emptyRepayPolicy,
   suppliedPositions = [],
+  borrowedPositions = [],
   diagnostics,
   preview,
   selectedRouteId,
@@ -58,7 +68,9 @@ export function RecipeInspector({
   tradePolicy: RecipeTradePolicy;
   supplyPolicy: RecipeSupplyPolicy;
   borrowPolicy?: RecipeBorrowPolicy;
+  repayPolicy?: RecipeRepayPolicy;
   suppliedPositions?: SuppliedPositionOption[];
+  borrowedPositions?: BorrowedPositionOption[];
   diagnostics: RecipeDiagnostic[];
   preview?: RecipePreview;
   selectedRouteId?: string;
@@ -199,6 +211,11 @@ export function RecipeInspector({
                 node={node}
                 positions={suppliedPositions}
               />
+            ) : node.data.kind === "BORROWED_POSITION" ? (
+              <BorrowedPositionFields
+                node={node}
+                positions={borrowedPositions}
+              />
             ) : node.data.kind === "WITHDRAW" ? (
               <WithdrawFields
                 node={node}
@@ -210,12 +227,24 @@ export function RecipeInspector({
                 preparing={preparing}
                 onPrepare={onPrepare}
               />
-            ) : (
+            ) : node.data.kind === "BORROW" ? (
               <BorrowFields
                 node={node}
                 assets={assets}
                 positions={suppliedPositions}
                 borrowPolicy={borrowPolicy}
+                preview={preview}
+                prepared={prepared}
+                completed={completed}
+                preparing={preparing}
+                onPrepare={onPrepare}
+              />
+            ) : (
+              <RepayFields
+                node={node}
+                assets={assets}
+                positions={borrowedPositions}
+                repayPolicy={repayPolicy}
                 preview={preview}
                 prepared={prepared}
                 completed={completed}
@@ -271,6 +300,8 @@ function inspectorTitle(kind: RecipeNodeData["kind"] | undefined): string {
       return "Wallet Asset";
     case "SUPPLIED_POSITION":
       return "Supplied position";
+    case "BORROWED_POSITION":
+      return "Borrowed position";
     case "TRADE":
       return "Trade";
     case "SUPPLY":
@@ -279,6 +310,8 @@ function inspectorTitle(kind: RecipeNodeData["kind"] | undefined): string {
       return "Withdraw";
     case "BORROW":
       return "Borrow stablecoin";
+    case "REPAY":
+      return "Repay debt";
     default:
       return "Recipe";
   }
@@ -291,9 +324,11 @@ function inspectorTone(kind: RecipeNodeData["kind"] | undefined): string {
     case "SUPPLY":
       return styles.greenIcon;
     case "SUPPLIED_POSITION":
+    case "BORROWED_POSITION":
     case "WITHDRAW":
       return styles.blueIcon;
     case "BORROW":
+    case "REPAY":
       return styles.orangeIcon;
     default:
       return "";

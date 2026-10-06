@@ -35,6 +35,13 @@ export type SuppliedPositionNodeData = {
   token?: Address;
 };
 
+export type BorrowedPositionNodeData = {
+  kind: "BORROWED_POSITION";
+  venue: BorrowingVenue;
+  pool?: Address;
+  token?: Address;
+};
+
 export type WithdrawNodeData = {
   kind: "WITHDRAW";
 };
@@ -45,21 +52,29 @@ export type BorrowNodeData = {
   amount: string;
 };
 
+export type RepayNodeData = {
+  kind: "REPAY";
+};
+
 export type RecipeNodeData =
   | WalletAssetNodeData
   | SuppliedPositionNodeData
+  | BorrowedPositionNodeData
   | TradeNodeData
   | SupplyNodeData
   | WithdrawNodeData
-  | BorrowNodeData;
+  | BorrowNodeData
+  | RepayNodeData;
 export type RecipeFlowNode = Node<
   RecipeNodeData,
   | "walletAsset"
   | "suppliedPosition"
+  | "borrowedPosition"
   | "trade"
   | "supply"
   | "withdraw"
   | "borrow"
+  | "repay"
 >;
 export type RecipeFlowEdge = Edge;
 
@@ -75,6 +90,8 @@ export function flowType(kind: RecipePrimitiveKind): RecipeFlowNode["type"] {
       return "walletAsset";
     case "SUPPLIED_POSITION":
       return "suppliedPosition";
+    case "BORROWED_POSITION":
+      return "borrowedPosition";
     case "TRADE":
       return "trade";
     case "SUPPLY":
@@ -83,5 +100,7 @@ export function flowType(kind: RecipePrimitiveKind): RecipeFlowNode["type"] {
       return "withdraw";
     case "BORROW":
       return "borrow";
+    case "REPAY":
+      return "repay";
   }
 }

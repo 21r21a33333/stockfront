@@ -262,6 +262,68 @@ it("submits approval and Venus supply as one atomic terminal action", async () =
   await waitFor(() => expect(result.current.completed).toBe(true));
 });
 
+it("sends no repayment call when the wallet cannot guarantee atomic execution", async () => {
+  mocks.getCapabilities.mockResolvedValue({
+    atomic: { status: "unsupported" },
+  });
+  const repaymentRecipe: RecipeDefinition = {
+    schemaVersion: 1,
+    chainId: 56,
+    nodes: [
+      {
+        id: "debt",
+        kind: "BORROWED_POSITION",
+        venue: "venus",
+        pool: wallet,
+        token,
+      },
+      { id: "repay", kind: "REPAY" },
+    ],
+    edges: [
+      {
+        id: "repay-edge",
+        from: { nodeId: "debt", port: "debt" },
+        to: { nodeId: "repay", port: "debt" },
+      },
+    ],
+  };
+  const repayment: PreparedRecipe = {
+    steps: [
+      {
+        kind: "REPAY",
+        nodeId: "repay",
+        action: {
+          transactions: [
+            {
+              kind: "APPROVE",
+              to: token,
+              data: "0x095ea7b3",
+              value: "0",
+            },
+            {
+              kind: "REPAY",
+              to: wallet,
+              data: "0x12345678",
+              value: "0",
+            },
+          ],
+          preview: {},
+        },
+      },
+    ],
+  };
+  const { result } = renderHook(
+    () => useRecipeExecution({ recipe: repaymentRecipe, prepared: repayment }),
+    { wrapper: Wrapper },
+  );
+
+  await act(() => result.current.execute());
+
+  expect(mocks.sendCalls).not.toHaveBeenCalled();
+  expect(result.current.run).toBeUndefined();
+  expect(result.current.error).toMatch(/Atomic batching is not supported/);
+});
+
 it("settles collateral activation before borrowing and exposes the exact debt output", async () => {
   const borrowRecipe: RecipeDefinition = {
     schemaVersion: 1,

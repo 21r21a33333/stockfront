@@ -15,7 +15,9 @@ import type { RecipePrimitiveKind } from "@/api/generated";
 import type { RecipeFlowEdge } from "../editor/types";
 import { RecipeAssetEdge } from "./RecipeAssetEdge";
 import {
+  BorrowedPositionNode,
   BorrowNode,
+  RepayNode,
   SuppliedPositionNode,
   SupplyNode,
   TradeNode,
@@ -28,10 +30,12 @@ import styles from "../RecipeBuilder.module.css";
 const nodeTypes: NodeTypes = {
   walletAsset: WalletAssetNode,
   suppliedPosition: SuppliedPositionNode,
+  borrowedPosition: BorrowedPositionNode,
   trade: TradeNode,
   supply: SupplyNode,
   withdraw: WithdrawNode,
   borrow: BorrowNode,
+  repay: RepayNode,
 };
 const edgeTypes: EdgeTypes = { asset: RecipeAssetEdge };
 
@@ -73,13 +77,16 @@ export function RecipeCanvas({
       )
         ? source?.data.kind === "SUPPLIED_POSITION" &&
           connection.sourceHandle === "position"
-        : ["sell", "asset"].includes(connection.targetHandle) &&
-          ((source?.data.kind === "WALLET_ASSET" &&
-            connection.sourceHandle === "asset") ||
-            (source?.data.kind === "TRADE" &&
-              connection.sourceHandle === "buy") ||
-            (source?.data.kind === "BORROW" &&
-              connection.sourceHandle === "borrowed"));
+        : connection.targetHandle === "debt"
+          ? source?.data.kind === "BORROWED_POSITION" &&
+            connection.sourceHandle === "debt"
+          : ["sell", "asset"].includes(connection.targetHandle) &&
+            ((source?.data.kind === "WALLET_ASSET" &&
+              connection.sourceHandle === "asset") ||
+              (source?.data.kind === "TRADE" &&
+                connection.sourceHandle === "buy") ||
+              (source?.data.kind === "BORROW" &&
+                connection.sourceHandle === "borrowed"));
       if (!validPorts) return false;
       return !editor.edges.some(
         (edge) =>
@@ -101,10 +108,12 @@ export function RecipeCanvas({
         ![
           "WALLET_ASSET",
           "SUPPLIED_POSITION",
+          "BORROWED_POSITION",
           "TRADE",
           "SUPPLY",
           "WITHDRAW",
           "BORROW",
+          "REPAY",
         ].includes(kind)
       )
         return;

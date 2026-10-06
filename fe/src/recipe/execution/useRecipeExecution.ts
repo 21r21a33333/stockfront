@@ -199,8 +199,16 @@ export function useRecipeExecution({
                         (transaction) => transaction.kind === "APPROVE",
                       ),
                   )
-                : plan.steps.some((step) => step.kind === "APPROVAL") &&
-                  !execution.steps.some((step) => step === "APPROVAL"),
+                : execution.action === "REPAY"
+                  ? plan.steps.some(
+                      (step) =>
+                        step.kind === "REPAY" &&
+                        !step.action.transactions.some(
+                          (transaction) => transaction.kind === "APPROVE",
+                        ),
+                    )
+                  : plan.steps.some((step) => step.kind === "APPROVAL") &&
+                    !execution.steps.some((step) => step === "APPROVAL"),
           };
           active = { ...active, attempts: [...active.attempts, attempt] };
           save(active);
