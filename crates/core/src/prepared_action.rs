@@ -8,8 +8,10 @@ use crate::{
 };
 
 #[derive(utoipa::ToSchema, Debug, Eq, PartialEq, Serialize)]
+#[schema(as = PreparedActionTransaction)]
 #[serde(rename_all = "camelCase")]
 pub struct PreparedTransaction<K> {
+    #[schema(inline)]
     pub kind: K,
     #[serde(serialize_with = "serialize_as_string")]
     #[schema(value_type = String, format = "evm-address")]
