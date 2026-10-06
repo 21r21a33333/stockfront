@@ -59,6 +59,7 @@ export function writeRun(run: ExecutionRun): void {
       approvalSkipped,
       amountsUnavailable,
       settledOutput,
+      expectedOutput,
       error,
     }) => ({
       id,
@@ -73,6 +74,7 @@ export function writeRun(run: ExecutionRun): void {
       approvalSkipped,
       amountsUnavailable,
       settledOutput,
+      expectedOutput,
       error,
     }),
   );
@@ -131,6 +133,9 @@ function validRecipe(
             address(node.pool) &&
             address(node.token)) ||
           node.kind === "WITHDRAW" ||
+          (node.kind === "BORROW" &&
+            address(node.debtToken) &&
+            unsigned(node.rawAmount)) ||
           (node.kind === "WALLET_ASSET" &&
             address(node.token) &&
             unsigned(node.rawAmount))),
@@ -152,21 +157,15 @@ function validRecipe(
 
 function validAttempt(value: unknown, recipe: RecipeDefinition): boolean {
   if (!isRecord(value)) return false;
+  const node = recipe.nodes.find((item) => item.id === value.nodeId);
   const output = value.settledOutput;
   const outputMatchesNode =
     output === undefined ||
-    (value.kind === "TRADE" &&
-      value.phase === "complete" &&
-      validSettledOutput(output) &&
-      recipe.nodes.some(
-        (node) =>
-          node.id === value.nodeId &&
-          node.kind === "TRADE" &&
-          isRecord(output) &&
-          isRecord(output.asset) &&
-          address(output.asset.token) &&
-          node.buyToken.toLowerCase() === output.asset.token.toLowerCase(),
-      ));
+    (value.phase === "complete" && validNodeOutput(output, node));
+  const expected = value.expectedOutput;
+  const expectedMatchesNode =
+    expected === undefined ||
+    (value.kind === "BORROW" && validNodeOutput(expected, node));
   return (
     nonEmpty(value.id) &&
     nonEmpty(value.nodeId) &&
@@ -174,7 +173,9 @@ function validAttempt(value: unknown, recipe: RecipeDefinition): boolean {
     (value.kind === "APPROVAL" ||
       value.kind === "TRADE" ||
       value.kind === "SUPPLY" ||
-      value.kind === "WITHDRAW") &&
+      value.kind === "WITHDRAW" ||
+      value.kind === "ENABLE_COLLATERAL" ||
+      value.kind === "BORROW") &&
     PHASES.includes(value.phase as ExecutionPhase) &&
     Number.isInteger(value.attempt) &&
     Number(value.attempt) > 0 &&
@@ -185,7 +186,9 @@ function validAttempt(value: unknown, recipe: RecipeDefinition): boolean {
         step === "APPROVAL" ||
         step === "TRADE" ||
         step === "SUPPLY" ||
-        step === "WITHDRAW",
+        step === "WITHDRAW" ||
+        step === "ENABLE_COLLATERAL" ||
+        step === "BORROW",
     ) &&
     optionalString(value.error) &&
     optionalBoolean(value.approvalSkipped) &&
@@ -195,9 +198,11 @@ function validAttempt(value: unknown, recipe: RecipeDefinition): boolean {
       value.executionMode === "SWAP" ||
       value.executionMode === "RFQ" ||
       value.executionMode === "SUPPLY" ||
-      value.executionMode === "WITHDRAW") &&
+      value.executionMode === "WITHDRAW" ||
+      value.executionMode === "BORROW") &&
     validReference(value.reference) &&
-    outputMatchesNode
+    outputMatchesNode &&
+    expectedMatchesNode
   );
 }
 
@@ -219,12 +224,21 @@ function validReference(value: unknown): boolean {
   return value.kind === "LEGACY_TRANSACTION" && hash(value.transactionHash);
 }
 
-function validSettledOutput(value: unknown): boolean {
-  if (value === undefined) return true;
-  if (!isRecord(value) || value.port !== "buy" || !isRecord(value.asset))
-    return false;
+function validNodeOutput(
+  value: unknown,
+  node: RecipeDefinition["nodes"][number] | undefined,
+): boolean {
+  if (!isRecord(value) || !isRecord(value.asset)) return false;
+  const expected =
+    node?.kind === "TRADE"
+      ? { port: "buy", token: node.buyToken }
+      : node?.kind === "BORROW"
+        ? { port: "borrowed", token: node.debtToken }
+        : undefined;
+  if (!expected || value.port !== expected.port) return false;
   return (
     address(value.asset.token) &&
+    value.asset.token.toLowerCase() === expected.token.toLowerCase() &&
     unsigned(value.asset.amount) &&
     BigInt(value.asset.amount) > 0n
   );
@@ -279,7 +293,10 @@ function migrateV1(value: Record<string, unknown>): unknown {
       firstSubmittedAtMs: finiteValue(item.firstSubmittedAtMs),
       approvalSkipped: booleanValue(item.approvalSkipped),
       amountsUnavailable: booleanValue(item.amountsUnavailable),
-      settledOutput: validSettledOutput(item.settledOutput)
+      settledOutput: validNodeOutput(
+        item.settledOutput,
+        recipe.nodes.find((node) => node.id === nodeId),
+      )
         ? (item.settledOutput as RecipeNodeOutput)
         : undefined,
       error: stringValue(item.error),

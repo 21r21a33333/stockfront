@@ -2,6 +2,7 @@ import { Handle, Position, type NodeProps } from "@xyflow/react";
 import {
   ArrowRightLeft,
   Check,
+  CircleDollarSign,
   Landmark,
   Plus,
   Undo2,
@@ -13,6 +14,7 @@ import type { PreparedRecipeStep } from "@/api/generated";
 import { attemptLabel, type ExecutionAttempt } from "../execution/journal";
 import { diagnosticsForNode } from "../editor/compiler";
 import {
+  inputForBorrow,
   inputForSupply,
   inputForTrade,
   inputForWithdraw,
@@ -67,8 +69,16 @@ export function SuppliedPositionNode({
   data,
   selected,
 }: NodeProps<RecipeFlowNode>) {
-  const { diagnostics, suppliedPositions, connectedOutputs, appendWithdraw } =
-    useBuilderContext();
+  const {
+    diagnostics,
+    suppliedPositions,
+    connectedOutputs,
+    borrowablePositions,
+    withdrawablePositions,
+    appendWithdraw,
+    appendBorrow,
+  } = useBuilderContext();
+  const [showNextActions, setShowNextActions] = useState(false);
   if (data.kind !== "SUPPLIED_POSITION") return null;
   const position = suppliedPositionFor(
     suppliedPositions,
@@ -107,15 +117,44 @@ export function SuppliedPositionNode({
           <button
             type="button"
             className={`${styles.nextActionButton} nodrag nopan`}
-            aria-label="Add withdrawal"
+            aria-label="Add position action"
+            aria-expanded={showNextActions}
             onClick={(event) => {
               event.stopPropagation();
-              appendWithdraw(id);
+              setShowNextActions((open) => !open);
             }}
           >
             <Plus size={17} />
           </button>
-          <span className={styles.nextActionHint}>Withdraw</span>
+          <span className={styles.nextActionHint}>Next action</span>
+          {showNextActions ? (
+            <div
+              className={`${styles.nextActionMenu} nodrag nopan`}
+              onClick={(event) => event.stopPropagation()}
+            >
+              <strong>Use supplied position</strong>
+              <button
+                type="button"
+                disabled={!borrowablePositions.includes(id)}
+                onClick={() => {
+                  appendBorrow(id);
+                  setShowNextActions(false);
+                }}
+              >
+                <CircleDollarSign size={14} /> Borrow stablecoin
+              </button>
+              <button
+                type="button"
+                disabled={!withdrawablePositions.includes(id)}
+                onClick={() => {
+                  appendWithdraw(id);
+                  setShowNextActions(false);
+                }}
+              >
+                <Undo2 size={14} /> Withdraw
+              </button>
+            </div>
+          ) : null}
         </div>
       ) : null}
     </NodeShell>
@@ -391,6 +430,112 @@ export function WithdrawNode({
   );
 }
 
+export function BorrowNode({ id, data, selected }: NodeProps<RecipeFlowNode>) {
+  const nodes = useRecipeEditor((state) => state.nodes);
+  const edges = useRecipeEditor((state) => state.edges);
+  const {
+    assets,
+    diagnostics,
+    preview,
+    prepared,
+    execution,
+    connectedOutputs,
+    appendTrade,
+    openActivity,
+  } = useBuilderContext();
+  if (data.kind !== "BORROW") return null;
+  const input = inputForBorrow(nodes, edges, id);
+  const collateral = assets.find(
+    (asset) => asset.address.toLowerCase() === input?.token?.toLowerCase(),
+  );
+  const debt = assets.find(
+    (asset) => asset.address.toLowerCase() === data.debtToken?.toLowerCase(),
+  );
+  const candidate = preview?.nodes.find((item) => item.nodeId === id);
+  const previewNode = candidate?.kind === "BORROW" ? candidate : undefined;
+  const progress =
+    execution.find((item) => item.nodeId === id && item.kind === "BORROW") ??
+    execution.find(
+      (item) => item.nodeId === id && item.kind === "ENABLE_COLLATERAL",
+    );
+  const actions =
+    prepared?.steps
+      .map((step, index) => ({ step, index }))
+      .filter(({ step }) => step.nodeId === id) ?? [];
+  const problem = diagnosticsForNode(diagnostics, id)[0];
+  return (
+    <NodeShell
+      title="Borrow"
+      tone="orange"
+      icon={<CircleDollarSign size={13} />}
+      selected={selected}
+      problem={problem?.message}
+    >
+      <p>
+        Borrow {data.amount || "0"} {debt?.symbol ?? "stablecoin"} against{" "}
+        {collateral?.symbol ?? "collateral"}
+      </p>
+      <div className={styles.nodeTags}>
+        <span>
+          {previewNode?.capability
+            ? `HF ${previewNode.capability.healthFactorAfter ?? "—"}`
+            : `Borrow ${debt?.symbol ?? "asset"}`}
+        </span>
+        <span>
+          {progress
+            ? attemptLabel(progress)
+            : previewNode?.capability?.stage === "ENABLE_COLLATERAL"
+              ? "Activate collateral"
+              : previewNode?.state === "READY"
+                ? "Market ready"
+                : "Preview risk"}
+        </span>
+      </div>
+      <Handle
+        id="collateral"
+        type="target"
+        position={Position.Left}
+        className={styles.handle}
+      />
+      <Handle
+        id="borrowed"
+        type="source"
+        position={Position.Right}
+        className={styles.handle}
+      />
+      {!connectedOutputs.includes(id) && data.debtToken ? (
+        <div className={styles.nextActionAnchor}>
+          <span className={styles.nextOutputLabel}>
+            Asset&lt;{debt?.symbol ?? "?"}&gt;
+          </span>
+          <button
+            type="button"
+            className={`${styles.nextActionButton} nodrag nopan`}
+            aria-label="Trade borrowed asset"
+            onClick={(event) => {
+              event.stopPropagation();
+              appendTrade(id);
+            }}
+          >
+            <Plus size={17} />
+          </button>
+          <span className={styles.nextActionHint}>Trade</span>
+        </div>
+      ) : null}
+      {actions.length > 0 ? (
+        <PreparedActionBranch
+          actions={actions}
+          assets={assets}
+          inputSymbol={collateral?.symbol}
+          buySymbol={debt?.symbol}
+          execution={execution}
+          onOpen={openActivity}
+        />
+      ) : null}
+    </NodeShell>
+  );
+}
+
 function PreparedActionBranch({
   actions,
   assets,
@@ -415,9 +560,26 @@ function PreparedActionBranch({
   )?.step;
   const withdrawal =
     withdrawalStep?.kind === "WITHDRAW" ? withdrawalStep : undefined;
+  const collateralStep = actions.find(
+    ({ step }) => step.kind === "ENABLE_COLLATERAL",
+  )?.step;
+  const collateral =
+    collateralStep?.kind === "ENABLE_COLLATERAL" ? collateralStep : undefined;
+  const borrowStep = actions.find(({ step }) => step.kind === "BORROW")?.step;
+  const borrow = borrowStep?.kind === "BORROW" ? borrowStep : undefined;
   const nodeId =
-    trade?.nodeId ?? supply?.nodeId ?? withdrawal?.nodeId ?? approval?.nodeId;
-  const state = execution.find((item) => item.nodeId === nodeId)?.phase;
+    trade?.nodeId ??
+    supply?.nodeId ??
+    withdrawal?.nodeId ??
+    collateral?.nodeId ??
+    borrow?.nodeId ??
+    approval?.nodeId;
+  const state = execution.find(
+    (item) =>
+      item.nodeId === nodeId &&
+      (!borrow || item.kind === "BORROW") &&
+      (!collateral || item.kind === "ENABLE_COLLATERAL"),
+  )?.phase;
   const approvedAsset =
     approval?.kind === "APPROVAL"
       ? assets.find(
@@ -430,6 +592,8 @@ function PreparedActionBranch({
     trade,
     supply,
     withdrawal,
+    collateral,
+    borrow,
     approvedSymbol: approvedAsset?.symbol,
     buySymbol,
     inputSymbol,
@@ -463,6 +627,8 @@ function preparedActionLabel({
   trade,
   supply,
   withdrawal,
+  collateral,
+  borrow,
   approvedSymbol,
   buySymbol,
   inputSymbol,
@@ -471,10 +637,15 @@ function preparedActionLabel({
   trade?: PreparedRecipeStep;
   supply?: PreparedRecipeStep;
   withdrawal?: PreparedRecipeStep;
+  collateral?: PreparedRecipeStep;
+  borrow?: PreparedRecipeStep;
   approvedSymbol?: string;
   buySymbol?: string;
   inputSymbol?: string;
 }): string {
+  if (borrow?.kind === "BORROW") return `Borrow ${buySymbol ?? "stablecoin"}`;
+  if (collateral?.kind === "ENABLE_COLLATERAL")
+    return `Enable ${inputSymbol ?? "asset"} collateral`;
   if (withdrawal?.kind === "WITHDRAW")
     return `Withdraw all ${inputSymbol ?? "asset"}`;
   if (supply?.kind === "SUPPLY") {

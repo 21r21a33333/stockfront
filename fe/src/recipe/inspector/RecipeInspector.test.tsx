@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import type {
   PreparedRecipe,
+  RecipeBorrowPolicy,
   RecipePreview,
   RecipeSupplyPolicy,
   RecipeTradePolicy,
@@ -20,6 +21,12 @@ const tradePolicy: RecipeTradePolicy = {
 };
 const supplyPolicy: RecipeSupplyPolicy = {
   allowedInputs: [{ input: "BSTOCKS", venue: "venus" }],
+};
+const pool = "0x1111111111111111111111111111111111111111" as const;
+const borrowPolicy: RecipeBorrowPolicy = {
+  allowedInputs: [{ input: "SUPPLIED_POSITIONS", venue: "venus", pool }],
+  debtTokens: [usdt],
+  minimumHealthFactor: "1.5",
 };
 const node: RecipeFlowNode = {
   id: "trade-1",
@@ -216,6 +223,97 @@ it("shows a live Venus market and prepares a terminal supply", () => {
   expect(screen.getByText("3.42%")).toBeVisible();
   expect(screen.getByText("Unlimited")).toBeVisible();
   fireEvent.click(screen.getByRole("button", { name: "Prepare supply" }));
+  expect(onPrepare).toHaveBeenCalledOnce();
+});
+
+it("shows the live health-factor gate before preparing a borrow stage", () => {
+  const source: RecipeFlowNode = {
+    id: "position-1",
+    type: "suppliedPosition",
+    position: { x: 0, y: 0 },
+    data: { kind: "SUPPLIED_POSITION", venue: "venus", pool, token: bstock },
+  };
+  const borrow: RecipeFlowNode = {
+    id: "borrow-1",
+    type: "borrow",
+    position: { x: 300, y: 0 },
+    data: { kind: "BORROW", debtToken: usdt, amount: "1" },
+  };
+  useRecipeEditor.setState({
+    nodes: [source, borrow],
+    edges: [
+      {
+        id: "edge-1",
+        type: "asset",
+        source: source.id,
+        sourceHandle: "position",
+        target: borrow.id,
+        targetHandle: "collateral",
+      },
+    ],
+  });
+  const onPrepare = vi.fn();
+
+  render(
+    <RecipeInspector
+      node={borrow}
+      assets={assets}
+      tradePolicy={tradePolicy}
+      supplyPolicy={supplyPolicy}
+      borrowPolicy={borrowPolicy}
+      suppliedPositions={[
+        {
+          venue: "venus",
+          pool,
+          asset: {
+            token: { contract: bstock, symbol: "NVDAB" },
+            amount: "1.25",
+            valueUsd: "450",
+          },
+          catalogAsset: assets[1],
+        },
+      ]}
+      diagnostics={[]}
+      preview={{
+        nodes: [
+          {
+            kind: "BORROW",
+            nodeId: borrow.id,
+            state: "READY",
+            capability: {
+              availableBorrowLiquidity: "500000",
+              borrowApyPercent: "4.2",
+              chainId: 56,
+              collateral: { contract: bstock, symbol: "NVDAB" },
+              collateralEnabled: false,
+              conservativeMaxAmount: "120",
+              debt: { contract: usdt, symbol: "USDT" },
+              debtTokenDecimals: 18,
+              healthFactorBefore: null,
+              healthFactorAfter: "2.4",
+              observedAtMs: 1,
+              pool,
+              requestedAmount: "1",
+              requestedRawAmount: "1000000000000000000",
+              stage: "ENABLE_COLLATERAL",
+              unavailableReasons: [],
+              venue: "venus",
+            },
+          },
+        ],
+      }}
+      completed={false}
+      preparing={false}
+      onRouteSelect={() => {}}
+      onPrepare={onPrepare}
+    />,
+  );
+
+  expect(screen.getByText("No debt → 2.4")).toBeVisible();
+  expect(screen.getAllByText("4.2%", { exact: true })).toHaveLength(2);
+  fireEvent.click(
+    screen.getByRole("button", { name: "Prepare collateral activation" }),
+  );
   expect(onPrepare).toHaveBeenCalledOnce();
 });
 

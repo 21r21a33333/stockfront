@@ -164,9 +164,13 @@ async function readStatus({
             ? "Atomic approval and supply reverted. Prepare the supply again before retrying."
             : attempt.kind === "WITHDRAW"
               ? "Withdrawal reverted. Prepare the withdrawal again before retrying."
-              : reference.atomicRequired
-                ? "Atomic approval and swap reverted. Refresh the route before retrying."
-                : "Transaction failed. Refresh the route before retrying.",
+              : attempt.kind === "ENABLE_COLLATERAL"
+                ? "Collateral activation reverted. Prepare it again before borrowing."
+                : attempt.kind === "BORROW"
+                  ? "Borrow reverted. Refresh the risk preview before retrying."
+                  : reference.atomicRequired
+                    ? "Atomic approval and swap reverted. Refresh the route before retrying."
+                    : "Transaction failed. Refresh the route before retrying.",
       };
     if (result.status !== "success") return undefined;
     if (reference.atomicRequired && !result.atomic)
@@ -242,16 +246,19 @@ function completePatch(
     buyToken && attempt.kind === "TRADE"
       ? exactBuyAmountFromTransferLogs(logs, buyToken, wallet)
       : undefined;
+  const settledOutput =
+    attempt.kind === "BORROW"
+      ? attempt.expectedOutput
+      : buyToken && amount
+        ? {
+            port: "buy" as const,
+            asset: { token: buyToken, amount: amount.toString() },
+          }
+        : undefined;
   return {
     phase: "complete",
     reference,
-    settledOutput:
-      buyToken && amount
-        ? {
-            port: "buy",
-            asset: { token: buyToken, amount: amount.toString() },
-          }
-        : undefined,
+    settledOutput,
     amountsUnavailable: attempt.kind === "TRADE" && amount === undefined,
     error: undefined,
   };

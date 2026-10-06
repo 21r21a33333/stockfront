@@ -2,7 +2,6 @@ import type {
   BorrowingAccount,
   BorrowingAsset,
   BorrowingVenue,
-  RecipeWithdrawalPolicy,
 } from "@/api/generated";
 import type { Address } from "viem";
 import type { AssetOption } from "./types";
@@ -28,7 +27,9 @@ export function suppliedPositionFor(
 
 export function selectableSuppliedPositions(
   account: BorrowingAccount | undefined,
-  policy: RecipeWithdrawalPolicy,
+  policy: {
+    allowedInputs: readonly { venue: BorrowingVenue; pool: Address }[];
+  },
   assets: AssetOption[],
 ): SuppliedPositionOption[] {
   if (!account) return [];
@@ -58,4 +59,20 @@ export function selectableSuppliedPositions(
         : [];
     });
   });
+}
+
+export function canWithdrawPosition(
+  position: SuppliedPositionOption | undefined,
+  policy: {
+    allowedInputs: readonly { venue: BorrowingVenue; pool: Address }[];
+  },
+): boolean {
+  return Boolean(
+    position &&
+    policy.allowedInputs.some(
+      (rule) =>
+        rule.venue === position.venue &&
+        rule.pool.toLowerCase() === position.pool.toLowerCase(),
+    ),
+  );
 }

@@ -30,13 +30,14 @@ export interface ExecutionAttempt {
   kind: PreparedRecipeStep["kind"];
   attempt: number;
   phase: ExecutionPhase;
-  executionMode?: "SWAP" | "RFQ" | "SUPPLY" | "WITHDRAW";
+  executionMode?: "SWAP" | "RFQ" | "SUPPLY" | "WITHDRAW" | "BORROW";
   steps: PreparedRecipeStep["kind"][];
   reference?: ExecutionReference;
   firstSubmittedAtMs?: number;
   approvalSkipped?: boolean;
   amountsUnavailable?: boolean;
   settledOutput?: RecipeNodeOutput;
+  expectedOutput?: RecipeNodeOutput;
   error?: string;
 }
 
@@ -99,7 +100,17 @@ export function executionProgress(
   attempts: ExecutionAttempt[],
   busy: boolean,
 ): ExecutionAttempt[] {
-  return latestAttempts(attempts).map((item) =>
+  const visible = [
+    ...new Map(
+      attempts.map((item) => [
+        item.kind === "ENABLE_COLLATERAL"
+          ? `${item.nodeId}:ENABLE_COLLATERAL`
+          : item.nodeId,
+        item,
+      ]),
+    ).values(),
+  ];
+  return visible.map((item) =>
     !busy && (item.phase === "awaiting" || item.phase === "submitting")
       ? { ...item, phase: "attention" }
       : item,
@@ -111,7 +122,8 @@ export function isRunComplete(run: ExecutionRun): boolean {
     (node) =>
       node.kind === "TRADE" ||
       node.kind === "SUPPLY" ||
-      node.kind === "WITHDRAW",
+      node.kind === "WITHDRAW" ||
+      node.kind === "BORROW",
   );
   const latest = latestAttempts(run.attempts);
   return (
@@ -135,13 +147,16 @@ export function completedRecipeNodes(
       (item) =>
         (item.kind === "TRADE" ||
           item.kind === "SUPPLY" ||
-          item.kind === "WITHDRAW") &&
+          item.kind === "WITHDRAW" ||
+          item.kind === "BORROW") &&
         item.phase === "complete",
     )
     .map((item) => ({
       nodeId: item.nodeId,
       outputs:
-        item.kind === "TRADE" && item.settledOutput ? [item.settledOutput] : [],
+        (item.kind === "TRADE" || item.kind === "BORROW") && item.settledOutput
+          ? [item.settledOutput]
+          : [],
     }));
 }
 

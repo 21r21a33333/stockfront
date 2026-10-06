@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import type {
   PreparedRecipe,
   RecipeDiagnostic,
+  RecipeBorrowPolicy,
   RecipePreview,
   RecipeSupplyPolicy,
   RecipeTradePolicy,
@@ -23,13 +24,21 @@ import { TradeFields } from "./TradeFields";
 import { SupplyFields } from "./SupplyFields";
 import { SuppliedPositionFields } from "./SuppliedPositionFields";
 import { WithdrawFields } from "./WithdrawFields";
+import { BorrowFields } from "./BorrowFields";
 import type { SuppliedPositionOption } from "../editor/withdrawalPolicy";
+
+const emptyBorrowPolicy: RecipeBorrowPolicy = {
+  allowedInputs: [],
+  debtTokens: [],
+  minimumHealthFactor: "1.5",
+};
 
 export function RecipeInspector({
   node,
   assets,
   tradePolicy,
   supplyPolicy,
+  borrowPolicy = emptyBorrowPolicy,
   suppliedPositions = [],
   diagnostics,
   preview,
@@ -48,6 +57,7 @@ export function RecipeInspector({
   assets: AssetOption[];
   tradePolicy: RecipeTradePolicy;
   supplyPolicy: RecipeSupplyPolicy;
+  borrowPolicy?: RecipeBorrowPolicy;
   suppliedPositions?: SuppliedPositionOption[];
   diagnostics: RecipeDiagnostic[];
   preview?: RecipePreview;
@@ -189,11 +199,23 @@ export function RecipeInspector({
                 node={node}
                 positions={suppliedPositions}
               />
-            ) : (
+            ) : node.data.kind === "WITHDRAW" ? (
               <WithdrawFields
                 node={node}
                 assets={assets}
                 positions={suppliedPositions}
+                preview={preview}
+                prepared={prepared}
+                completed={completed}
+                preparing={preparing}
+                onPrepare={onPrepare}
+              />
+            ) : (
+              <BorrowFields
+                node={node}
+                assets={assets}
+                positions={suppliedPositions}
+                borrowPolicy={borrowPolicy}
                 preview={preview}
                 prepared={prepared}
                 completed={completed}
@@ -255,6 +277,8 @@ function inspectorTitle(kind: RecipeNodeData["kind"] | undefined): string {
       return "Supply";
     case "WITHDRAW":
       return "Withdraw";
+    case "BORROW":
+      return "Borrow stablecoin";
     default:
       return "Recipe";
   }
@@ -269,6 +293,8 @@ function inspectorTone(kind: RecipeNodeData["kind"] | undefined): string {
     case "SUPPLIED_POSITION":
     case "WITHDRAW":
       return styles.blueIcon;
+    case "BORROW":
+      return styles.orangeIcon;
     default:
       return "";
   }

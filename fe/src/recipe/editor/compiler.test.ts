@@ -16,6 +16,8 @@ const supplyEdgeId = "00000000-0000-0000-0000-000000000005";
 const positionId = "00000000-0000-0000-0000-000000000006";
 const withdrawId = "00000000-0000-0000-0000-000000000007";
 const withdrawEdgeId = "00000000-0000-0000-0000-000000000008";
+const borrowId = "00000000-0000-0000-0000-000000000009";
+const borrowEdgeId = "00000000-0000-0000-0000-000000000010";
 const venusPool = "0xfD36E2c2a6789Db23113685031d7F16329158384" as const;
 
 const assets: AssetOption[] = [
@@ -158,6 +160,53 @@ it("serializes a supplied Venus position into a terminal withdrawal", () => {
       to: { nodeId: withdrawId, port: "position" },
     },
   ]);
+});
+
+it("serializes an exact stablecoin borrow against a supplied position", () => {
+  const recipe = buildRecipe(
+    1,
+    [
+      {
+        id: positionId,
+        type: "suppliedPosition",
+        position: { x: 0, y: 0 },
+        data: {
+          kind: "SUPPLIED_POSITION",
+          venue: "venus",
+          pool: venusPool,
+          token: nvdab,
+        },
+      },
+      {
+        id: borrowId,
+        type: "borrow",
+        position: { x: 300, y: 0 },
+        data: { kind: "BORROW", debtToken: usdt, amount: "1.25" },
+      },
+    ],
+    [
+      {
+        id: borrowEdgeId,
+        source: positionId,
+        sourceHandle: "position",
+        target: borrowId,
+        targetHandle: "collateral",
+      },
+    ],
+    assets,
+  );
+
+  expect(recipe.nodes[1]).toEqual({
+    id: borrowId,
+    kind: "BORROW",
+    debtToken: usdt,
+    rawAmount: "1250000000000000000",
+  });
+  expect(recipe.edges[0]).toEqual({
+    id: borrowEdgeId,
+    from: { nodeId: positionId, port: "position" },
+    to: { nodeId: borrowId, port: "collateral" },
+  });
 });
 
 it("sends malformed amounts to the compiler as zero for a typed diagnostic", () => {

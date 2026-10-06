@@ -1,4 +1,8 @@
-import type { PreparedRecipe, SubmitOrderRequest } from "@/api/generated";
+import type {
+  PreparedRecipe,
+  RecipeNodeOutput,
+  SubmitOrderRequest,
+} from "@/api/generated";
 import type { Address, Hex, WalletClient } from "viem";
 import {
   hasSufficientAllowance,
@@ -9,11 +13,25 @@ export type PreparedExecution =
   | {
       kind: "CALL_BATCH";
       nodeId: string;
-      action: "APPROVAL" | "TRADE" | "SUPPLY" | "WITHDRAW";
-      executionMode: "SWAP" | "SUPPLY" | "WITHDRAW";
-      steps: ("APPROVAL" | "TRADE" | "SUPPLY" | "WITHDRAW")[];
+      action:
+        | "APPROVAL"
+        | "TRADE"
+        | "SUPPLY"
+        | "WITHDRAW"
+        | "ENABLE_COLLATERAL"
+        | "BORROW";
+      executionMode: "SWAP" | "SUPPLY" | "WITHDRAW" | "BORROW";
+      steps: (
+        | "APPROVAL"
+        | "TRADE"
+        | "SUPPLY"
+        | "WITHDRAW"
+        | "ENABLE_COLLATERAL"
+        | "BORROW"
+      )[];
       calls: { to: Address; data: Hex; value?: bigint }[];
       atomicRequired: boolean;
+      output?: RecipeNodeOutput;
     }
   | {
       kind: "RFQ";
@@ -44,6 +62,49 @@ export async function preparedExecution(
   const trade = prepared.steps.find((step) => step.kind === "TRADE");
   const supply = prepared.steps.find((step) => step.kind === "SUPPLY");
   const withdrawal = prepared.steps.find((step) => step.kind === "WITHDRAW");
+  const collateral = prepared.steps.find(
+    (step) => step.kind === "ENABLE_COLLATERAL",
+  );
+  const borrow = prepared.steps.find((step) => step.kind === "BORROW");
+
+  if (collateral?.kind === "ENABLE_COLLATERAL") {
+    const transaction = oneBorrowingTransaction(
+      prepared,
+      collateral.action.transactions,
+      "ENABLE_COLLATERAL",
+      "collateral activation",
+    );
+    await simulatePreparedTransaction(client, owner, transaction);
+    return {
+      kind: "CALL_BATCH",
+      nodeId,
+      action: "ENABLE_COLLATERAL",
+      executionMode: "BORROW",
+      steps: ["ENABLE_COLLATERAL"],
+      calls: [call(transaction)],
+      atomicRequired: false,
+    };
+  }
+
+  if (borrow?.kind === "BORROW") {
+    const transaction = oneBorrowingTransaction(
+      prepared,
+      borrow.action.transactions,
+      "BORROW",
+      "borrow",
+    );
+    await simulatePreparedTransaction(client, owner, transaction);
+    return {
+      kind: "CALL_BATCH",
+      nodeId,
+      action: "BORROW",
+      executionMode: "BORROW",
+      steps: ["BORROW"],
+      calls: [call(transaction)],
+      atomicRequired: false,
+      output: { port: "borrowed", asset: borrow.output },
+    };
+  }
 
   if (withdrawal?.kind === "WITHDRAW") {
     if (prepared.steps.length !== 1)
@@ -164,6 +225,27 @@ function supplyCalls(
   if (!validDeposit && !validApprovalAndDeposit)
     throw new Error("The prepared supply action is incomplete.");
   return transactions.map(call);
+}
+
+function oneBorrowingTransaction(
+  prepared: PreparedRecipe,
+  transactions: Extract<
+    PreparedRecipe["steps"][number],
+    { kind: "ENABLE_COLLATERAL" | "BORROW" }
+  >["action"]["transactions"],
+  expectedKind: "ENABLE_COLLATERAL" | "BORROW",
+  label: string,
+) {
+  const [transaction] = transactions;
+  if (
+    prepared.steps.length !== 1 ||
+    transactions.length !== 1 ||
+    transaction?.kind !== expectedKind
+  )
+    throw new Error(
+      `The prepared ${label} must contain one ${label} transaction.`,
+    );
+  return transaction;
 }
 
 export async function supportsAtomicCalls(

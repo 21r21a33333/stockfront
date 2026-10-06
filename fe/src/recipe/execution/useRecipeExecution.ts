@@ -188,6 +188,8 @@ export function useRecipeExecution({
             phase: "awaiting",
             executionMode: execution.executionMode,
             steps: execution.steps,
+            expectedOutput:
+              execution.kind === "CALL_BATCH" ? execution.output : undefined,
             approvalSkipped:
               execution.action === "SUPPLY"
                 ? plan.steps.some(
@@ -370,8 +372,10 @@ export function useRecipeExecution({
 
   const latest = latestAttempts(current?.attempts ?? []);
   const last = latest.at(-1);
-  const requiresFreshRoute = latest.some(
-    (item) => item.kind === "APPROVAL" && item.phase === "complete",
+  const requiresFreshPreparation = latest.some(
+    (item) =>
+      (item.kind === "APPROVAL" || item.kind === "ENABLE_COLLATERAL") &&
+      item.phase === "complete",
   );
   const canPrepareFresh = Boolean(
     navigator.locks &&
@@ -388,7 +392,7 @@ export function useRecipeExecution({
     blocked: pending !== undefined,
     busy,
     sameRecipe: matches,
-    requiresFreshRoute,
+    requiresFreshPreparation,
     canPrepareFresh,
     paused: status.paused,
     error: error ?? status.error,

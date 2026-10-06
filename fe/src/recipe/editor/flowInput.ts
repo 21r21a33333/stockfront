@@ -28,6 +28,18 @@ export function inputForWithdraw(
   return source?.data.kind === "SUPPLIED_POSITION" ? source.data : undefined;
 }
 
+export function inputForBorrow(
+  nodes: RecipeFlowNode[],
+  edges: RecipeFlowEdge[],
+  borrowId: string,
+) {
+  const edge = edges.find(
+    (item) => item.target === borrowId && item.targetHandle === "collateral",
+  );
+  const source = nodes.find((node) => node.id === edge?.source);
+  return source?.data.kind === "SUPPLIED_POSITION" ? source.data : undefined;
+}
+
 function inputForAction(
   nodes: RecipeFlowNode[],
   edges: RecipeFlowEdge[],
@@ -47,6 +59,13 @@ function inputForAction(
   }
   if (source?.data.kind === "TRADE") {
     return { token: source.data.buyToken, sourceName: "Trade" };
+  }
+  if (source?.data.kind === "BORROW") {
+    return {
+      token: source.data.debtToken,
+      amount: source.data.amount,
+      sourceName: "Borrow",
+    };
   }
   return undefined;
 }

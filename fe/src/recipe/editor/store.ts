@@ -22,6 +22,7 @@ const DRAFT_KEY = "stockfront.recipe-builder.draft.v1";
 
 export interface EditorDefaults {
   settlementToken?: Address;
+  debtToken?: Address;
   bstockToken?: Address;
   suppliedPosition?: {
     venue: "venus";
@@ -45,6 +46,7 @@ interface RecipeEditorState {
   appendTrade(sourceId: string, buyToken?: Address): void;
   appendSupply(sourceId: string): void;
   appendWithdraw(sourceId: string): void;
+  appendBorrow(sourceId: string, debtToken?: Address): void;
   updateNode(id: string, patch: Partial<RecipeNodeData>): void;
   selectNode(id?: string): void;
   removeSelected(): void;
@@ -104,6 +106,17 @@ function nodeFor(
         position,
         data: { kind },
       };
+    case "BORROW":
+      return {
+        id,
+        type: flowType(kind),
+        position,
+        data: {
+          kind,
+          debtToken: defaults.debtToken ?? defaults.settlementToken,
+          amount: "1",
+        },
+      };
   }
 }
 
@@ -149,10 +162,18 @@ export const useRecipeEditor = create<RecipeEditorState>((set, get) => ({
   appendTrade: (sourceId, buyToken) =>
     set((state) => {
       const source = state.nodes.find((node) => node.id === sourceId);
+      const sourceHandle =
+        source?.data.kind === "TRADE"
+          ? "buy"
+          : source?.data.kind === "BORROW"
+            ? "borrowed"
+            : undefined;
       if (
-        source?.data.kind !== "TRADE" ||
+        !source ||
+        !sourceHandle ||
         state.edges.some(
-          (edge) => edge.source === sourceId && edge.sourceHandle === "buy",
+          (edge) =>
+            edge.source === sourceId && edge.sourceHandle === sourceHandle,
         )
       ) {
         return state;
@@ -170,7 +191,7 @@ export const useRecipeEditor = create<RecipeEditorState>((set, get) => ({
           {
             id: crypto.randomUUID(),
             source: sourceId,
-            sourceHandle: "buy",
+            sourceHandle,
             target: node.id,
             targetHandle: "sell",
             type: "asset",
@@ -240,6 +261,40 @@ export const useRecipeEditor = create<RecipeEditorState>((set, get) => ({
             sourceHandle: "position",
             target: node.id,
             targetHandle: "position",
+            type: "asset",
+          },
+        ],
+        selectedNodeId: node.id,
+      };
+    }),
+  appendBorrow: (sourceId, debtToken) =>
+    set((state) => {
+      const source = state.nodes.find((node) => node.id === sourceId);
+      if (
+        source?.data.kind !== "SUPPLIED_POSITION" ||
+        state.edges.some(
+          (edge) =>
+            edge.source === sourceId && edge.sourceHandle === "position",
+        )
+      ) {
+        return state;
+      }
+      const node: RecipeFlowNode = {
+        id: crypto.randomUUID(),
+        type: "borrow",
+        position: { x: source.position.x + 300, y: source.position.y },
+        data: { kind: "BORROW", debtToken, amount: "1" },
+      };
+      return {
+        nodes: [...state.nodes, node],
+        edges: [
+          ...state.edges,
+          {
+            id: crypto.randomUUID(),
+            source: sourceId,
+            sourceHandle: "position",
+            target: node.id,
+            targetHandle: "collateral",
             type: "asset",
           },
         ],

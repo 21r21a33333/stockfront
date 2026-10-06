@@ -24,6 +24,19 @@ it("builds backend runtime context from only settled trade attempts", () => {
         phase: "pending",
         steps: ["TRADE"],
       },
+      {
+        id: "borrow:2",
+        nodeId: "borrow",
+        kind: "BORROW",
+        attempt: 2,
+        phase: "complete",
+        executionMode: "BORROW",
+        steps: ["BORROW"],
+        settledOutput: {
+          port: "borrowed",
+          asset: { token: wallet, amount: "11" },
+        },
+      },
     ]),
   ).toEqual({
     wallet,
@@ -34,6 +47,15 @@ it("builds backend runtime context from only settled trade attempts", () => {
           {
             port: "buy",
             asset: { token: wallet, amount: "23" },
+          },
+        ],
+      },
+      {
+        nodeId: "borrow",
+        outputs: [
+          {
+            port: "borrowed",
+            asset: { token: wallet, amount: "11" },
           },
         ],
       },

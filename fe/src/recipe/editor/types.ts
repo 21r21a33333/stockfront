@@ -39,15 +39,27 @@ export type WithdrawNodeData = {
   kind: "WITHDRAW";
 };
 
+export type BorrowNodeData = {
+  kind: "BORROW";
+  debtToken?: Address;
+  amount: string;
+};
+
 export type RecipeNodeData =
   | WalletAssetNodeData
   | SuppliedPositionNodeData
   | TradeNodeData
   | SupplyNodeData
-  | WithdrawNodeData;
+  | WithdrawNodeData
+  | BorrowNodeData;
 export type RecipeFlowNode = Node<
   RecipeNodeData,
-  "walletAsset" | "suppliedPosition" | "trade" | "supply" | "withdraw"
+  | "walletAsset"
+  | "suppliedPosition"
+  | "trade"
+  | "supply"
+  | "withdraw"
+  | "borrow"
 >;
 export type RecipeFlowEdge = Edge;
 
@@ -69,5 +81,7 @@ export function flowType(kind: RecipePrimitiveKind): RecipeFlowNode["type"] {
       return "supply";
     case "WITHDRAW":
       return "withdraw";
+    case "BORROW":
+      return "borrow";
   }
 }

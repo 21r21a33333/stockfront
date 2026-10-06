@@ -241,9 +241,18 @@
   color: #3569b7;
 }
 
+.borrowPalette .paletteIcon {
+  background: #fff3df;
+  color: #b66a08;
+}
+
 .tradePalette small,
 .supplyPalette small,
 .positionPalette small {
+  color: var(--success);
+}
+
+.borrowPalette small {
   color: var(--success);
 }
 
@@ -1239,6 +1248,40 @@
   font-size: 23px;
   font-weight: 670;
   letter-spacing: -0.03em;
+}
+
+.borrowPreviewHeading {
+  margin-bottom: 5px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--ink-soft);
+  font-size: 10px;
+}
+
+.borrowPreviewHeading span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.borrowPreviewHeading b {
+  padding: 3px 5px;
+  border-radius: 4px;
+  background: var(--success-soft);
+  color: var(--success);
+  font-size: 8px;
+  letter-spacing: 0.05em;
+}
+
+.safeMaxButton {
+  min-height: 28px;
+  border: 1px solid #ddd5ea;
+  border-radius: 7px;
+  background: #faf8fd;
+  color: var(--purple);
+  font-size: 9.5px;
+  cursor: pointer;
 }
 
 .marketPreview dl {

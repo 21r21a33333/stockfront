@@ -31,8 +31,13 @@ import { RecipeInspector } from "@/recipe/inspector/RecipeInspector";
 import { useRecipeEditor } from "@/recipe/editor/store";
 import { compatibleTradeAssets } from "@/recipe/editor/tradePolicy";
 import { canSupplyAsset } from "@/recipe/editor/supplyPolicy";
+import { canBorrowAgainst } from "@/recipe/editor/borrowPolicy";
 import { flowType } from "@/recipe/editor/types";
-import { selectableSuppliedPositions } from "@/recipe/editor/withdrawalPolicy";
+import {
+  canWithdrawPosition,
+  selectableSuppliedPositions,
+  suppliedPositionFor,
+} from "@/recipe/editor/withdrawalPolicy";
 import styles from "@/recipe/RecipeBuilder.module.css";
 
 export function RecipeBuilderPage() {
@@ -58,7 +63,14 @@ export function RecipeBuilderPage() {
       catalog.data
         ? selectableSuppliedPositions(
             borrowingData,
-            catalog.data.withdrawalPolicy,
+            {
+              allowedInputs: [
+                ...catalog.data.withdrawalPolicy.allowedInputs,
+                ...catalog.data.borrowPolicy.allowedInputs.map(
+                  ({ venue, pool }) => ({ venue, pool }),
+                ),
+              ],
+            },
             assets,
           )
         : [],
@@ -67,6 +79,7 @@ export function RecipeBuilderPage() {
   const defaults = useMemo(
     () => ({
       settlementToken: catalog.data?.settlementTokens[0],
+      debtToken: catalog.data?.borrowPolicy.debtTokens[0],
       bstockToken: catalog.data?.bstocks[0]?.contract,
       suppliedPosition: suppliedPositions[0]
         ? {
@@ -429,10 +442,36 @@ export function RecipeBuilderPage() {
             ? [node.id]
             : [];
         }),
+        borrowablePositions: editor.nodes.flatMap((node) => {
+          if (node.data.kind !== "SUPPLIED_POSITION") return [];
+          const position = suppliedPositionFor(
+            suppliedPositions,
+            node.data.pool,
+            node.data.token,
+          );
+          return canBorrowAgainst(position, catalog.data.borrowPolicy)
+            ? [node.id]
+            : [];
+        }),
+        withdrawablePositions: editor.nodes.flatMap((node) => {
+          if (node.data.kind !== "SUPPLIED_POSITION") return [];
+          const position = suppliedPositionFor(
+            suppliedPositions,
+            node.data.pool,
+            node.data.token,
+          );
+          return canWithdrawPosition(position, catalog.data.withdrawalPolicy)
+            ? [node.id]
+            : [];
+        }),
         appendTrade: (sourceId) => {
           const source = editor.nodes.find((node) => node.id === sourceId);
           const sellToken =
-            source?.data.kind === "TRADE" ? source.data.buyToken : undefined;
+            source?.data.kind === "TRADE"
+              ? source.data.buyToken
+              : source?.data.kind === "BORROW"
+                ? source.data.debtToken
+                : undefined;
           const buyToken = compatibleTradeAssets(
             sellToken,
             assets,
@@ -457,6 +496,13 @@ export function RecipeBuilderPage() {
         },
         appendWithdraw: (sourceId) => {
           editor.appendWithdraw(sourceId);
+          setInspectorView("configure");
+        },
+        appendBorrow: (sourceId) => {
+          editor.appendBorrow(
+            sourceId,
+            catalog.data.borrowPolicy.debtTokens[0],
+          );
           setInspectorView("configure");
         },
         openActivity: () => {
@@ -551,6 +597,7 @@ export function RecipeBuilderPage() {
                   assets={assets}
                   tradePolicy={catalog.data.tradePolicy}
                   supplyPolicy={catalog.data.supplyPolicy}
+                  borrowPolicy={catalog.data.borrowPolicy}
                   suppliedPositions={suppliedPositions}
                   diagnostics={diagnostics}
                   preview={runtimePreview as RecipePreview | undefined}
@@ -574,10 +621,12 @@ export function RecipeBuilderPage() {
                         sameRecipe={execution.sameRecipe}
                         canExecute={
                           execution.canExecute ||
-                          (execution.requiresFreshRoute &&
+                          (execution.requiresFreshPreparation &&
                             execution.canPrepareFresh)
                         }
-                        requiresFreshRoute={execution.requiresFreshRoute}
+                        requiresFreshPreparation={
+                          execution.requiresFreshPreparation
+                        }
                         canRetrySubmission={execution.canRetrySubmission}
                         onExecute={() => void executeRecipe()}
                         onCheck={() => void execution.checkStatus()}
@@ -595,7 +644,8 @@ export function RecipeBuilderPage() {
                   error={
                     requestError ??
                     (selectedNode?.data.kind === "SUPPLIED_POSITION" ||
-                    selectedNode?.data.kind === "WITHDRAW"
+                    selectedNode?.data.kind === "WITHDRAW" ||
+                    selectedNode?.data.kind === "BORROW"
                       ? readableError(borrowingError)
                       : undefined)
                   }
@@ -719,6 +769,18 @@ function restoredNodeData(
       };
     case "WITHDRAW":
       return { kind: node.kind };
+    case "BORROW": {
+      const asset = assets.find(
+        (candidate) =>
+          candidate.address.toLowerCase() === node.debtToken.toLowerCase(),
+      );
+      if (!asset) throw new Error("The saved debt asset is unavailable.");
+      return {
+        kind: node.kind,
+        debtToken: node.debtToken,
+        amount: formatUnits(BigInt(node.rawAmount), asset.decimals),
+      };
+    }
     case "WALLET_ASSET": {
       const asset = assets.find(
         (candidate) =>
@@ -746,5 +808,7 @@ function nodeTitle(kind: RecipeNodeData["kind"]): string {
       return "Supply";
     case "WITHDRAW":
       return "Withdraw";
+    case "BORROW":
+      return "Borrow";
   }
 }

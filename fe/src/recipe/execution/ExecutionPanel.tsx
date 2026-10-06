@@ -31,7 +31,7 @@ export function ExecutionPanel({
   paused,
   sameRecipe,
   canExecute,
-  requiresFreshRoute = false,
+  requiresFreshPreparation = false,
   canRetrySubmission,
   onExecute,
   onCheck,
@@ -48,7 +48,7 @@ export function ExecutionPanel({
   paused: boolean;
   sameRecipe: boolean;
   canExecute: boolean;
-  requiresFreshRoute?: boolean;
+  requiresFreshPreparation?: boolean;
   canRetrySubmission: boolean;
   onExecute(): void;
   onCheck(): void;
@@ -82,17 +82,15 @@ export function ExecutionPanel({
       <div className={styles.summary}>
         <strong>{summaryLabel(complete, attempts, pending)}</strong>
         <span>
-          {
-            latestAttempts(attempts).filter((item) => item.phase === "complete")
-              .length
-          }
+          {completedActionCount(attempts, snapshot)}
           {" / "}
           {
             snapshot.nodes.filter(
               (node) =>
                 node.kind === "TRADE" ||
                 node.kind === "SUPPLY" ||
-                node.kind === "WITHDRAW",
+                node.kind === "WITHDRAW" ||
+                node.kind === "BORROW",
             ).length
           }
         </span>
@@ -121,7 +119,12 @@ export function ExecutionPanel({
           )?.from.nodeId;
           const source = snapshot.nodes.find((node) => node.id === sourceId);
           const sellToken = sourceToken(source);
-          const buyToken = node?.kind === "TRADE" ? node.buyToken : undefined;
+          const buyToken =
+            node?.kind === "TRADE"
+              ? node.buyToken
+              : node?.kind === "BORROW"
+                ? node.debtToken
+                : undefined;
           const label = actionLabel(item, sellToken, buyToken, symbol);
           const hash = transactionHash(item);
           const attention =
@@ -174,6 +177,18 @@ export function ExecutionPanel({
                   <span>Return to wallet</span>
                 </div>
               )}
+              {item.kind === "ENABLE_COLLATERAL" && (
+                <div className={styles.steps}>
+                  <span>Enable {symbol(sellToken)} as collateral</span>
+                  <span>Borrow is prepared after settlement</span>
+                </div>
+              )}
+              {item.kind === "BORROW" && (
+                <div className={styles.steps}>
+                  <span>Borrow {symbol(buyToken)} from Venus</span>
+                  <span>Receive in connected wallet</span>
+                </div>
+              )}
               {item.error && <p className={styles.notice}>{item.error}</p>}
               {hash && (
                 <div className={styles.reference}>
@@ -216,7 +231,11 @@ export function ExecutionPanel({
                     ? "Prepare withdrawal again"
                     : item.kind === "SUPPLY"
                       ? "Prepare supply again"
-                      : "Refresh route to retry"}
+                      : item.kind === "ENABLE_COLLATERAL"
+                        ? "Prepare collateral again"
+                        : item.kind === "BORROW"
+                          ? "Refresh risk and retry"
+                          : "Refresh route to retry"}
                 </button>
               )}
             </li>
@@ -256,9 +275,7 @@ export function ExecutionPanel({
             onClick={onExecute}
             disabled={busy}
           >
-            {requiresFreshRoute
-              ? "Refresh route and continue"
-              : "Execute recipe"}
+            {requiresFreshPreparation ? "Prepare next stage" : "Execute recipe"}
           </button>
         ) : sameRecipe && run ? (
           <button type="button" onClick={onRefresh} disabled={busy}>
@@ -279,17 +296,19 @@ function mergePreparedActions(
   attempts: ExecutionAttempt[],
   prepared?: PreparedRecipe,
 ): ActivityItem[] {
-  const actions: ActivityItem[] = [...latestAttempts(attempts)];
+  const actions: ActivityItem[] = [...attempts];
   if (!prepared) return actions;
   for (const nodeId of new Set(prepared.steps.map((step) => step.nodeId))) {
-    if (actions.some((item) => item.nodeId === nodeId)) continue;
     const steps = prepared.steps.filter((step) => step.nodeId === nodeId);
     const supply = steps.find((step) => step.kind === "SUPPLY");
     const action = steps.find((step) => step.kind !== "APPROVAL");
+    const kind = action?.kind ?? "APPROVAL";
+    if (actions.some((item) => item.nodeId === nodeId && item.kind === kind))
+      continue;
     actions.push({
       id: `prepared:${nodeId}`,
       nodeId,
-      kind: action?.kind ?? "APPROVAL",
+      kind,
       attempt: 0,
       phase: "ready",
       executionMode: preparedExecutionMode(action),
@@ -351,6 +370,10 @@ function actionLabel(
       return `Withdraw all ${symbol(sellToken)} from Venus`;
     case "SUPPLY":
       return `Supply ${symbol(sellToken)} to Venus`;
+    case "ENABLE_COLLATERAL":
+      return `Enable ${symbol(sellToken)} as Venus collateral`;
+    case "BORROW":
+      return `Borrow ${symbol(buyToken)} from Venus`;
     case "APPROVAL":
       return `Approve ${symbol(sellToken)}`;
     case "TRADE":
@@ -363,5 +386,20 @@ function preparedExecutionMode(
 ): ExecutionAttempt["executionMode"] {
   if (step?.kind === "WITHDRAW") return "WITHDRAW";
   if (step?.kind === "SUPPLY") return "SUPPLY";
+  if (step?.kind === "ENABLE_COLLATERAL" || step?.kind === "BORROW")
+    return "BORROW";
   return step?.kind === "TRADE" ? step.action.executionMode : "SWAP";
+}
+
+function completedActionCount(
+  attempts: ExecutionAttempt[],
+  recipe: RecipeDefinition,
+): number {
+  return latestAttempts(attempts).filter(
+    (attempt) =>
+      attempt.phase === "complete" &&
+      recipe.nodes.some(
+        (node) => node.id === attempt.nodeId && node.kind === attempt.kind,
+      ),
+  ).length;
 }

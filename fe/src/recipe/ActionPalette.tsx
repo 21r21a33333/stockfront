@@ -20,7 +20,6 @@ import { WalletButton } from "@/wallet/WalletButton";
 import styles from "./RecipeBuilder.module.css";
 
 const upcoming = [
-  ["Borrow", CircleDollarSign],
   ["Earn deposit", Layers3],
   ["Liquidity provision", Boxes],
 ] as const;
@@ -53,6 +52,11 @@ const primitivePresentation: Record<
     className: styles.positionPalette,
     badge: "Live",
     Icon: Undo2,
+  },
+  BORROW: {
+    className: styles.borrowPalette,
+    badge: "Live",
+    Icon: CircleDollarSign,
   },
 };
 

@@ -15,6 +15,7 @@ import type { RecipePrimitiveKind } from "@/api/generated";
 import type { RecipeFlowEdge } from "../editor/types";
 import { RecipeAssetEdge } from "./RecipeAssetEdge";
 import {
+  BorrowNode,
   SuppliedPositionNode,
   SupplyNode,
   TradeNode,
@@ -30,6 +31,7 @@ const nodeTypes: NodeTypes = {
   trade: TradeNode,
   supply: SupplyNode,
   withdraw: WithdrawNode,
+  borrow: BorrowNode,
 };
 const edgeTypes: EdgeTypes = { asset: RecipeAssetEdge };
 
@@ -66,15 +68,18 @@ export function RecipeCanvas({
       if (!connection.targetHandle) return false;
       if (!connection.sourceHandle) return false;
       const source = editor.nodes.find((node) => node.id === connection.source);
-      const validPorts =
-        connection.targetHandle === "position"
-          ? source?.data.kind === "SUPPLIED_POSITION" &&
-            connection.sourceHandle === "position"
-          : ["sell", "asset"].includes(connection.targetHandle) &&
-            ((source?.data.kind === "WALLET_ASSET" &&
-              connection.sourceHandle === "asset") ||
-              (source?.data.kind === "TRADE" &&
-                connection.sourceHandle === "buy"));
+      const validPorts = ["position", "collateral"].includes(
+        connection.targetHandle,
+      )
+        ? source?.data.kind === "SUPPLIED_POSITION" &&
+          connection.sourceHandle === "position"
+        : ["sell", "asset"].includes(connection.targetHandle) &&
+          ((source?.data.kind === "WALLET_ASSET" &&
+            connection.sourceHandle === "asset") ||
+            (source?.data.kind === "TRADE" &&
+              connection.sourceHandle === "buy") ||
+            (source?.data.kind === "BORROW" &&
+              connection.sourceHandle === "borrowed"));
       if (!validPorts) return false;
       return !editor.edges.some(
         (edge) =>
@@ -99,6 +104,7 @@ export function RecipeCanvas({
           "TRADE",
           "SUPPLY",
           "WITHDRAW",
+          "BORROW",
         ].includes(kind)
       )
         return;

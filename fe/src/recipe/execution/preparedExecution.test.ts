@@ -55,3 +55,54 @@ it.each([
     "The prepared withdrawal must contain one withdrawal transaction.",
   );
 });
+
+it.each([
+  ["ENABLE_COLLATERAL" as const, undefined],
+  [
+    "BORROW" as const,
+    {
+      port: "borrowed",
+      asset: { token: market, amount: "1000000000000000000" },
+    },
+  ],
+])(
+  "prepares the %s borrow stage as one simulated wallet call",
+  async (kind, output) => {
+    const prepared: PreparedRecipe = {
+      steps: [
+        kind === "BORROW"
+          ? {
+              kind,
+              nodeId: "borrow",
+              action: {
+                transactions: [{ ...transaction, kind }],
+                preview: {},
+              },
+              output: output!.asset,
+            }
+          : {
+              kind,
+              nodeId: "borrow",
+              action: {
+                transactions: [{ ...transaction, kind }],
+                preview: {},
+              },
+            },
+      ],
+    };
+    const request = vi.fn().mockResolvedValue("0x");
+
+    await expect(
+      preparedExecution(prepared, { request }, owner),
+    ).resolves.toMatchObject({
+      kind: "CALL_BATCH",
+      nodeId: "borrow",
+      action: kind,
+      executionMode: "BORROW",
+      steps: [kind],
+      calls: [{ to: market, data: "0x12345678", value: 0n }],
+      ...(output ? { output } : {}),
+    });
+    expect(request).toHaveBeenCalledOnce();
+  },
+);

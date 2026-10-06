@@ -262,6 +262,103 @@ it("submits approval and Venus supply as one atomic terminal action", async () =
   await waitFor(() => expect(result.current.completed).toBe(true));
 });
 
+it("settles collateral activation before borrowing and exposes the exact debt output", async () => {
+  const borrowRecipe: RecipeDefinition = {
+    schemaVersion: 1,
+    chainId: 56,
+    nodes: [
+      {
+        id: "position",
+        kind: "SUPPLIED_POSITION",
+        venue: "venus",
+        pool: wallet,
+        token,
+      },
+      {
+        id: "borrow",
+        kind: "BORROW",
+        debtToken: wallet,
+        rawAmount: "11",
+      },
+    ],
+    edges: [
+      {
+        id: "edge",
+        from: { nodeId: "position", port: "position" },
+        to: { nodeId: "borrow", port: "collateral" },
+      },
+    ],
+  };
+  const activation: PreparedRecipe = {
+    steps: [
+      {
+        kind: "ENABLE_COLLATERAL",
+        nodeId: "borrow",
+        action: {
+          transactions: [
+            {
+              kind: "ENABLE_COLLATERAL",
+              to: wallet,
+              data: "0x12345678",
+              value: "0",
+            },
+          ],
+          preview: {},
+        },
+      },
+    ],
+  };
+  const borrow: PreparedRecipe = {
+    steps: [
+      {
+        kind: "BORROW",
+        nodeId: "borrow",
+        action: {
+          transactions: [
+            {
+              kind: "BORROW",
+              to: wallet,
+              data: "0x12345678",
+              value: "0",
+            },
+          ],
+          preview: {},
+        },
+        output: { token: wallet, amount: "11" },
+      },
+    ],
+  };
+  const { result } = renderHook(
+    () => useRecipeExecution({ recipe: borrowRecipe, prepared: activation }),
+    { wrapper: Wrapper },
+  );
+
+  await act(() => result.current.execute());
+  mocks.getCallsStatus.mockResolvedValue({
+    status: "success",
+    atomic: true,
+    receipts: [{ transactionHash: hash, logs: [] }],
+  });
+  await act(() => result.current.checkStatus());
+  await waitFor(() =>
+    expect(result.current.requiresFreshPreparation).toBe(true),
+  );
+  expect(result.current.completed).toBe(false);
+
+  await act(() => result.current.execute(borrow));
+  await act(() => result.current.checkStatus());
+
+  await waitFor(() => expect(result.current.completed).toBe(true));
+  expect(readRun(wallet, 56)?.attempts.at(-1)).toMatchObject({
+    kind: "BORROW",
+    phase: "complete",
+    settledOutput: {
+      port: "borrowed",
+      asset: { token: wallet, amount: "11" },
+    },
+  });
+});
+
 function preparedSwap(): PreparedRecipe {
   return {
     steps: [

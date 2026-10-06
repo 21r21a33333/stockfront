@@ -51,6 +51,14 @@ export function buildRecipe(
       });
     } else if (node.data.kind === "WITHDRAW") {
       result.push({ id: node.id, kind: node.data.kind });
+    } else if (node.data.kind === "BORROW" && node.data.debtToken) {
+      const asset = assetByAddress.get(node.data.debtToken.toLowerCase());
+      result.push({
+        id: node.id,
+        kind: node.data.kind,
+        debtToken: node.data.debtToken,
+        rawAmount: parseAmount(node.data.amount, asset?.decimals ?? 18),
+      });
     }
     return result;
   }, []);

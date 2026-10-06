@@ -287,6 +287,74 @@
         "type": "string",
         "enum": ["stock", "preIpo", "etf", "unknown"]
       },
+      "BorrowCapability": {
+        "type": "object",
+        "description": "Live safety and liquidity information for one exact Venus borrow.\n\nThe selected collateral is only the position the recipe starts from. Venus\nstill evaluates every enabled collateral and every debt in the account.",
+        "required": [
+          "venue",
+          "chainId",
+          "pool",
+          "collateral",
+          "debt",
+          "requestedAmount",
+          "requestedRawAmount",
+          "debtTokenDecimals",
+          "conservativeMaxAmount",
+          "availableBorrowLiquidity",
+          "borrowApyPercent",
+          "collateralEnabled",
+          "stage",
+          "unavailableReasons",
+          "observedAtMs"
+        ],
+        "properties": {
+          "availableBorrowLiquidity": { "type": "string" },
+          "borrowApyPercent": { "type": "string" },
+          "chainId": { "type": "integer", "format": "int64", "minimum": 0 },
+          "collateral": { "$ref": "#/components/schemas/BorrowingToken" },
+          "collateralEnabled": { "type": "boolean" },
+          "conservativeMaxAmount": { "type": "string" },
+          "debt": { "$ref": "#/components/schemas/BorrowingToken" },
+          "debtTokenDecimals": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "healthFactorAfter": { "type": ["string", "null"] },
+          "healthFactorBefore": { "type": ["string", "null"] },
+          "observedAtMs": { "type": "integer", "format": "int64" },
+          "pool": { "type": "string", "format": "evm-address" },
+          "requestedAmount": { "type": "string" },
+          "requestedRawAmount": { "type": "string" },
+          "stage": { "$ref": "#/components/schemas/BorrowStage" },
+          "unavailableReasons": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BorrowCapabilityUnavailableReason"
+            }
+          },
+          "venue": { "$ref": "#/components/schemas/BorrowingVenue" }
+        }
+      },
+      "BorrowCapabilityUnavailableReason": {
+        "type": "string",
+        "enum": [
+          "POSITION_NOT_FOUND",
+          "UNSUPPORTED_POOL",
+          "MARKET_UNLISTED",
+          "COLLATERAL_UNAVAILABLE",
+          "BORROW_PAUSED",
+          "BORROW_CAP_REACHED",
+          "INSUFFICIENT_BORROW_LIQUIDITY",
+          "INVALID_ORACLE_PRICE",
+          "HEALTH_FACTOR_UNAVAILABLE",
+          "HEALTH_FACTOR_BELOW_MINIMUM"
+        ]
+      },
+      "BorrowStage": {
+        "type": "string",
+        "enum": ["ENABLE_COLLATERAL", "BORROW"]
+      },
       "BorrowingAccount": {
         "type": "object",
         "required": [
@@ -549,6 +617,29 @@
               "kind": { "type": "string", "enum": ["WITHDRAW"] },
               "nodeId": { "type": "string", "format": "uuid" }
             }
+          },
+          {
+            "type": "object",
+            "required": ["nodeId", "action", "kind"],
+            "properties": {
+              "action": {
+                "$ref": "#/components/schemas/PreparedBorrowingAction"
+              },
+              "kind": { "type": "string", "enum": ["ENABLE_COLLATERAL"] },
+              "nodeId": { "type": "string", "format": "uuid" }
+            }
+          },
+          {
+            "type": "object",
+            "required": ["nodeId", "action", "output", "kind"],
+            "properties": {
+              "action": {
+                "$ref": "#/components/schemas/PreparedBorrowingAction"
+              },
+              "kind": { "type": "string", "enum": ["BORROW"] },
+              "nodeId": { "type": "string", "format": "uuid" },
+              "output": { "$ref": "#/components/schemas/TokenAmount" }
+            }
           }
         ]
       },
@@ -611,6 +702,30 @@
           "sell": { "$ref": "#/components/schemas/RecipeOptionSource" }
         }
       },
+      "RecipeBorrowPolicy": {
+        "type": "object",
+        "required": ["allowedInputs", "debtTokens", "minimumHealthFactor"],
+        "properties": {
+          "allowedInputs": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/RecipeBorrowRule" }
+          },
+          "debtTokens": {
+            "type": "array",
+            "items": { "type": "string", "format": "evm-address" }
+          },
+          "minimumHealthFactor": { "type": "string" }
+        }
+      },
+      "RecipeBorrowRule": {
+        "type": "object",
+        "required": ["venue", "pool", "input"],
+        "properties": {
+          "input": { "$ref": "#/components/schemas/RecipeOptionSource" },
+          "pool": { "type": "string", "format": "evm-address" },
+          "venue": { "$ref": "#/components/schemas/BorrowingVenue" }
+        }
+      },
       "RecipeCatalog": {
         "type": "object",
         "required": [
@@ -620,9 +735,11 @@
           "bstocks",
           "tradePolicy",
           "supplyPolicy",
-          "withdrawalPolicy"
+          "withdrawalPolicy",
+          "borrowPolicy"
         ],
         "properties": {
+          "borrowPolicy": { "$ref": "#/components/schemas/RecipeBorrowPolicy" },
           "bstocks": {
             "type": "array",
             "items": { "$ref": "#/components/schemas/BstockSummary" }
@@ -727,7 +844,9 @@
           "INVALID_AMOUNT",
           "UNSUPPORTED_TRADE_PAIR",
           "UNSUPPORTED_SUPPLY_ASSET",
-          "UNSUPPORTED_WITHDRAWAL_POSITION"
+          "UNSUPPORTED_WITHDRAWAL_POSITION",
+          "UNSUPPORTED_BORROW_POSITION",
+          "UNSUPPORTED_BORROW_ASSET"
         ]
       },
       "RecipeDiagnosticLocation": {
@@ -886,6 +1005,25 @@
                 "items": { "type": "string", "format": "uuid" }
               }
             }
+          },
+          {
+            "type": "object",
+            "required": ["nodeId", "state", "kind"],
+            "properties": {
+              "capability": {
+                "oneOf": [
+                  { "type": "null" },
+                  { "$ref": "#/components/schemas/BorrowCapability" }
+                ]
+              },
+              "kind": { "type": "string", "enum": ["BORROW"] },
+              "nodeId": { "type": "string", "format": "uuid" },
+              "state": { "$ref": "#/components/schemas/RecipeNodeState" },
+              "waitingFor": {
+                "type": "array",
+                "items": { "type": "string", "format": "uuid" }
+              }
+            }
           }
         ]
       },
@@ -1010,6 +1148,15 @@
             "type": "object",
             "required": ["kind"],
             "properties": { "kind": { "type": "string", "enum": ["WITHDRAW"] } }
+          },
+          {
+            "type": "object",
+            "required": ["debtToken", "rawAmount", "kind"],
+            "properties": {
+              "debtToken": { "type": "string", "format": "evm-address" },
+              "kind": { "type": "string", "enum": ["BORROW"] },
+              "rawAmount": { "type": "string" }
+            }
           }
         ]
       },
@@ -1037,7 +1184,8 @@
           "SUPPLIED_POSITION",
           "TRADE",
           "SUPPLY",
-          "WITHDRAW"
+          "WITHDRAW",
+          "BORROW"
         ]
       },
       "RecipeSupplyPolicy": {
@@ -1173,9 +1321,13 @@
               "bstocks",
               "tradePolicy",
               "supplyPolicy",
-              "withdrawalPolicy"
+              "withdrawalPolicy",
+              "borrowPolicy"
             ],
             "properties": {
+              "borrowPolicy": {
+                "$ref": "#/components/schemas/RecipeBorrowPolicy"
+              },
               "bstocks": {
                 "type": "array",
                 "items": { "$ref": "#/components/schemas/BstockSummary" }

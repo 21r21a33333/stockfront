@@ -139,6 +139,49 @@ export interface components {
     };
     /** @enum {string} */
     AssetKind: "stock" | "preIpo" | "etf" | "unknown";
+    /**
+     * @description Live safety and liquidity information for one exact Venus borrow.
+     *
+     *     The selected collateral is only the position the recipe starts from. Venus
+     *     still evaluates every enabled collateral and every debt in the account.
+     */
+    BorrowCapability: {
+      availableBorrowLiquidity: string;
+      borrowApyPercent: string;
+      /** Format: int64 */
+      chainId: number;
+      collateral: components["schemas"]["BorrowingToken"];
+      collateralEnabled: boolean;
+      conservativeMaxAmount: string;
+      debt: components["schemas"]["BorrowingToken"];
+      /** Format: int32 */
+      debtTokenDecimals: number;
+      healthFactorAfter?: string | null;
+      healthFactorBefore?: string | null;
+      /** Format: int64 */
+      observedAtMs: number;
+      /** Format: evm-address */
+      pool: `0x${string}`;
+      requestedAmount: string;
+      requestedRawAmount: string;
+      stage: components["schemas"]["BorrowStage"];
+      unavailableReasons: components["schemas"]["BorrowCapabilityUnavailableReason"][];
+      venue: components["schemas"]["BorrowingVenue"];
+    };
+    /** @enum {string} */
+    BorrowCapabilityUnavailableReason:
+      | "POSITION_NOT_FOUND"
+      | "UNSUPPORTED_POOL"
+      | "MARKET_UNLISTED"
+      | "COLLATERAL_UNAVAILABLE"
+      | "BORROW_PAUSED"
+      | "BORROW_CAP_REACHED"
+      | "INSUFFICIENT_BORROW_LIQUIDITY"
+      | "INVALID_ORACLE_PRICE"
+      | "HEALTH_FACTOR_UNAVAILABLE"
+      | "HEALTH_FACTOR_BELOW_MINIMUM";
+    /** @enum {string} */
+    BorrowStage: "ENABLE_COLLATERAL" | "BORROW";
     BorrowingAccount: {
       /** Format: int64 */
       chainId: number;
@@ -286,6 +329,21 @@ export interface components {
           kind: "WITHDRAW";
           /** Format: uuid */
           nodeId: string;
+        }
+      | {
+          action: components["schemas"]["PreparedBorrowingAction"];
+          /** @enum {string} */
+          kind: "ENABLE_COLLATERAL";
+          /** Format: uuid */
+          nodeId: string;
+        }
+      | {
+          action: components["schemas"]["PreparedBorrowingAction"];
+          /** @enum {string} */
+          kind: "BORROW";
+          /** Format: uuid */
+          nodeId: string;
+          output: components["schemas"]["TokenAmount"];
         };
     PreparedTrade:
       | {
@@ -317,7 +375,19 @@ export interface components {
       buy: components["schemas"]["RecipeOptionSource"];
       sell: components["schemas"]["RecipeOptionSource"];
     };
+    RecipeBorrowPolicy: {
+      allowedInputs: components["schemas"]["RecipeBorrowRule"][];
+      debtTokens: `0x${string}`[];
+      minimumHealthFactor: string;
+    };
+    RecipeBorrowRule: {
+      input: components["schemas"]["RecipeOptionSource"];
+      /** Format: evm-address */
+      pool: `0x${string}`;
+      venue: components["schemas"]["BorrowingVenue"];
+    };
     RecipeCatalog: {
+      borrowPolicy: components["schemas"]["RecipeBorrowPolicy"];
       bstocks: components["schemas"]["BstockSummary"][];
       primitives: components["schemas"]["RecipePrimitiveDescriptor"][];
       /** Format: int32 */
@@ -372,7 +442,9 @@ export interface components {
       | "INVALID_AMOUNT"
       | "UNSUPPORTED_TRADE_PAIR"
       | "UNSUPPORTED_SUPPLY_ASSET"
-      | "UNSUPPORTED_WITHDRAWAL_POSITION";
+      | "UNSUPPORTED_WITHDRAWAL_POSITION"
+      | "UNSUPPORTED_BORROW_POSITION"
+      | "UNSUPPORTED_BORROW_ASSET";
     RecipeDiagnosticLocation:
       | {
           /** @enum {string} */
@@ -458,6 +530,15 @@ export interface components {
           unavailableReason?:
             null | components["schemas"]["RecipeWithdrawalUnavailableReason"];
           waitingFor?: string[];
+        }
+      | {
+          capability?: null | components["schemas"]["BorrowCapability"];
+          /** @enum {string} */
+          kind: "BORROW";
+          /** Format: uuid */
+          nodeId: string;
+          state: components["schemas"]["RecipeNodeState"];
+          waitingFor?: string[];
         };
     RecipeNodeSelection: {
       /** @enum {string} */
@@ -535,6 +616,13 @@ export interface components {
       | {
           /** @enum {string} */
           kind: "WITHDRAW";
+        }
+      | {
+          /** Format: evm-address */
+          debtToken: `0x${string}`;
+          /** @enum {string} */
+          kind: "BORROW";
+          rawAmount: string;
         };
     RecipePrimitiveDescriptor: {
       description: string;
@@ -545,7 +633,12 @@ export interface components {
     };
     /** @enum {string} */
     RecipePrimitiveKind:
-      "WALLET_ASSET" | "SUPPLIED_POSITION" | "TRADE" | "SUPPLY" | "WITHDRAW";
+      | "WALLET_ASSET"
+      | "SUPPLIED_POSITION"
+      | "TRADE"
+      | "SUPPLY"
+      | "WITHDRAW"
+      | "BORROW";
     RecipeSupplyPolicy: {
       allowedInputs: components["schemas"]["RecipeSupplyRule"][];
     };
@@ -601,6 +694,7 @@ export interface components {
     Response_RecipeCatalog: {
       error?: components["schemas"]["Error"];
       result?: {
+        borrowPolicy: components["schemas"]["RecipeBorrowPolicy"];
         bstocks: components["schemas"]["BstockSummary"][];
         primitives: components["schemas"]["RecipePrimitiveDescriptor"][];
         /** Format: int32 */
@@ -774,6 +868,10 @@ export interface components {
 }
 export type ActionWarning = components["schemas"]["ActionWarning"];
 export type AssetKind = components["schemas"]["AssetKind"];
+export type BorrowCapability = components["schemas"]["BorrowCapability"];
+export type BorrowCapabilityUnavailableReason =
+  components["schemas"]["BorrowCapabilityUnavailableReason"];
+export type BorrowStage = components["schemas"]["BorrowStage"];
 export type BorrowingAccount = components["schemas"]["BorrowingAccount"];
 export type BorrowingAsset = components["schemas"]["BorrowingAsset"];
 export type BorrowingPosition = components["schemas"]["BorrowingPosition"];
@@ -798,6 +896,8 @@ export type PreparedTrade = components["schemas"]["PreparedTrade"];
 export type PreparedTransaction = components["schemas"]["PreparedTransaction"];
 export type RecipeAssetTransition =
   components["schemas"]["RecipeAssetTransition"];
+export type RecipeBorrowPolicy = components["schemas"]["RecipeBorrowPolicy"];
+export type RecipeBorrowRule = components["schemas"]["RecipeBorrowRule"];
 export type RecipeCatalog = components["schemas"]["RecipeCatalog"];
 export type RecipeCompletedNode = components["schemas"]["RecipeCompletedNode"];
 export type RecipeContext = components["schemas"]["RecipeContext"];

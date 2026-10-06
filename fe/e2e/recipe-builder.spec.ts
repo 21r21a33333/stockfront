@@ -13,6 +13,17 @@ const catalog = {
   supplyPolicy: {
     allowedInputs: [{ input: "BSTOCKS", venue: "venus" }],
   },
+  borrowPolicy: {
+    allowedInputs: [
+      {
+        input: "SUPPLIED_POSITIONS",
+        venue: "venus",
+        pool: "0x1111111111111111111111111111111111111111",
+      },
+    ],
+    debtTokens: ["0x55d398326f99059fF775485246999027B3197955"],
+    minimumHealthFactor: "1.5",
+  },
   withdrawalPolicy: {
     allowedInputs: [
       {
@@ -71,6 +82,13 @@ const catalog = {
       fields: [],
       ports: [],
     },
+    {
+      kind: "BORROW",
+      name: "Borrow stablecoin",
+      description: "Borrow against a supplied Venus position.",
+      fields: [],
+      ports: [],
+    },
   ],
 } satisfies RecipeCatalog;
 
@@ -102,7 +120,9 @@ test("builds, inspects, searches, and saves a recipe draft", async ({
 
   const search = page.getByRole("textbox", { name: "Search actions" });
   await search.fill("borrow");
-  await expect(page.getByText("Borrow", { exact: true })).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: /^Borrow stablecoin/ }),
+  ).toBeVisible();
   await expect(page.getByRole("button", { name: /^Trade/ })).toHaveCount(0);
 
   await search.fill("");
@@ -339,7 +359,8 @@ test("builds and prepares a full Venus position withdrawal", async ({
   await expect(
     page.locator(".react-flow__node").getByText("1.25 NVDAB", { exact: true }),
   ).toBeVisible();
-  await page.getByRole("button", { name: "Add withdrawal" }).click();
+  await page.getByRole("button", { name: "Add position action" }).click();
+  await page.getByRole("button", { name: "Withdraw", exact: true }).click();
   await page.getByRole("button", { name: "Preview route" }).click();
   await expect(
     page.getByRole("button", { name: "Prepare withdrawal" }),

@@ -19,9 +19,12 @@ export interface BuilderContextValue {
   execution: ExecutionAttempt[];
   connectedOutputs: string[];
   supplyableOutputs: string[];
+  borrowablePositions: string[];
+  withdrawablePositions: string[];
   appendTrade(sourceId: string): void;
   appendSupply(sourceId: string): void;
   appendWithdraw(sourceId: string): void;
+  appendBorrow(sourceId: string): void;
   openActivity(): void;
 }
 
