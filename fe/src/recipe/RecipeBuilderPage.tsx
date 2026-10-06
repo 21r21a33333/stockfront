@@ -25,6 +25,7 @@ import { RecipeHeader } from "@/recipe/RecipeHeader";
 import { RecipeInspector } from "@/recipe/inspector/RecipeInspector";
 import { useRecipeEditor } from "@/recipe/editor/store";
 import { compatibleTradeAssets } from "@/recipe/editor/tradePolicy";
+import { canSupplyAsset } from "@/recipe/editor/supplyPolicy";
 import styles from "@/recipe/RecipeBuilder.module.css";
 
 export function RecipeBuilderPage() {
@@ -93,13 +94,13 @@ export function RecipeBuilderPage() {
       setSelectedRoutes(
         Object.fromEntries(
           result.nodes.flatMap((node) =>
-            node.routes?.[0] ? [[node.nodeId, node.routes[0]]] : [],
+            node.kind === "TRADE" && node.routes?.[0]
+              ? [[node.nodeId, node.routes[0]]]
+              : [],
           ),
         ),
       );
-      const next = result.nodes.find(
-        (node) => node.state === "READY" && (node.routes?.length ?? 0) > 0,
-      );
+      const next = result.nodes.find((node) => node.state === "READY");
       if ((request.context.completedNodes?.length ?? 0) > 0 && next) {
         editor.selectNode(next.nodeId);
       }
@@ -252,7 +253,12 @@ export function RecipeBuilderPage() {
       const freshPreview = await preview.mutateAsync(request);
       const freshRoutes: Record<string, TradeQuote> = {};
       for (const node of freshPreview.nodes) {
-        if (node.state !== "READY" || !node.routes?.length) continue;
+        if (
+          node.kind !== "TRADE" ||
+          node.state !== "READY" ||
+          !node.routes?.length
+        )
+          continue;
         const previous = selectedRoutes[node.nodeId];
         const route = previous
           ? node.routes.find(
@@ -319,22 +325,29 @@ export function RecipeBuilderPage() {
       return;
     const nodes: RecipeFlowNode[] = snapshot.nodes.map((node, index) => ({
       id: node.id,
-      type: node.kind === "TRADE" ? "trade" : "walletAsset",
+      type:
+        node.kind === "TRADE"
+          ? "trade"
+          : node.kind === "SUPPLY"
+            ? "supply"
+            : "walletAsset",
       position: { x: 70 + index * 385, y: 180 },
       data:
         node.kind === "TRADE"
           ? { kind: "TRADE", buyToken: node.buyToken }
-          : {
-              kind: "WALLET_ASSET",
-              token: node.token,
-              amount: formatUnits(
-                BigInt(node.rawAmount),
-                assets.find(
-                  (asset) =>
-                    asset.address.toLowerCase() === node.token.toLowerCase(),
-                )!.decimals,
-              ),
-            },
+          : node.kind === "SUPPLY"
+            ? { kind: "SUPPLY", venue: node.venue }
+            : {
+                kind: "WALLET_ASSET",
+                token: node.token,
+                amount: formatUnits(
+                  BigInt(node.rawAmount),
+                  assets.find(
+                    (asset) =>
+                      asset.address.toLowerCase() === node.token.toLowerCase(),
+                  )!.decimals,
+                ),
+              },
     }));
     useRecipeEditor.setState({
       nodes,
@@ -346,7 +359,8 @@ export function RecipeBuilderPage() {
         target: edge.to.nodeId,
         targetHandle: edge.to.port,
       })),
-      selectedNodeId: nodes.find((node) => node.data.kind === "TRADE")?.id,
+      selectedNodeId: nodes.find((node) => node.data.kind !== "WALLET_ASSET")
+        ?.id,
     });
   }
 
@@ -368,11 +382,22 @@ export function RecipeBuilderPage() {
         assets,
         diagnostics,
         selectedRoutes,
+        preview: runtimePreview,
         prepared: execution.sameRecipe ? runtimePrepared : undefined,
         execution: execution.sameRecipe ? execution.progress : [],
         connectedOutputs: editor.edges
           .filter((edge) => edge.sourceHandle === "buy")
           .map((edge) => edge.source),
+        supplyableOutputs: editor.nodes.flatMap((node) => {
+          if (node.data.kind !== "TRADE") return [];
+          const buyToken = node.data.buyToken;
+          const output = assets.find(
+            (asset) => asset.address.toLowerCase() === buyToken?.toLowerCase(),
+          );
+          return canSupplyAsset(output, catalog.data.supplyPolicy, "venus")
+            ? [node.id]
+            : [];
+        }),
         appendTrade: (sourceId) => {
           const source = editor.nodes.find((node) => node.id === sourceId);
           const sellToken =
@@ -383,6 +408,20 @@ export function RecipeBuilderPage() {
             catalog.data.tradePolicy,
           )[0]?.address;
           editor.appendTrade(sourceId, buyToken);
+          setInspectorView("configure");
+        },
+        appendSupply: (sourceId) => {
+          const source = editor.nodes.find((node) => node.id === sourceId);
+          const output = assets.find(
+            (asset) =>
+              asset.address.toLowerCase() ===
+              (source?.data.kind === "TRADE"
+                ? source.data.buyToken?.toLowerCase()
+                : undefined),
+          );
+          if (!canSupplyAsset(output, catalog.data.supplyPolicy, "venus"))
+            return;
+          editor.appendSupply(sourceId);
           setInspectorView("configure");
         },
         openActivity: () => {
@@ -414,7 +453,15 @@ export function RecipeBuilderPage() {
               title={
                 editor.nodes.length === 0
                   ? "Untitled recipe"
-                  : "Wallet asset → Trade"
+                  : editor.nodes
+                      .map((node) =>
+                        node.data.kind === "WALLET_ASSET"
+                          ? "Wallet asset"
+                          : node.data.kind === "TRADE"
+                            ? "Trade"
+                            : "Supply",
+                      )
+                      .join(" → ")
               }
               validation={validation.data}
               validating={validation.isFetching}
@@ -474,6 +521,7 @@ export function RecipeBuilderPage() {
                   node={selectedNode}
                   assets={assets}
                   tradePolicy={catalog.data.tradePolicy}
+                  supplyPolicy={catalog.data.supplyPolicy}
                   diagnostics={diagnostics}
                   preview={runtimePreview as RecipePreview | undefined}
                   selectedRouteId={selectedRoute?.routeQuoteId}

@@ -38,6 +38,7 @@ interface RecipeEditorState {
     defaults: EditorDefaults,
   ): void;
   appendTrade(sourceId: string, buyToken?: Address): void;
+  appendSupply(sourceId: string): void;
   updateNode(id: string, patch: Partial<RecipeNodeData>): void;
   selectNode(id?: string): void;
   removeSelected(): void;
@@ -56,20 +57,29 @@ function nodeFor(
   defaults: EditorDefaults,
 ): RecipeFlowNode {
   const id = crypto.randomUUID();
-  if (kind === "WALLET_ASSET") {
-    return {
-      id,
-      type: flowType(kind),
-      position,
-      data: { kind, token: defaults.settlementToken, amount: "6" },
-    };
+  switch (kind) {
+    case "WALLET_ASSET":
+      return {
+        id,
+        type: flowType(kind),
+        position,
+        data: { kind, token: defaults.settlementToken, amount: "6" },
+      };
+    case "TRADE":
+      return {
+        id,
+        type: flowType(kind),
+        position,
+        data: { kind, buyToken: defaults.bstockToken },
+      };
+    case "SUPPLY":
+      return {
+        id,
+        type: flowType(kind),
+        position,
+        data: { kind, venue: "venus" },
+      };
   }
-  return {
-    id,
-    type: flowType(kind),
-    position,
-    data: { kind, buyToken: defaults.bstockToken },
-  };
 }
 
 function initialGraph(defaults: EditorDefaults): {
@@ -138,6 +148,39 @@ export const useRecipeEditor = create<RecipeEditorState>((set, get) => ({
             sourceHandle: "buy",
             target: node.id,
             targetHandle: "sell",
+            type: "asset",
+          },
+        ],
+        selectedNodeId: node.id,
+      };
+    }),
+  appendSupply: (sourceId) =>
+    set((state) => {
+      const source = state.nodes.find((node) => node.id === sourceId);
+      if (
+        source?.data.kind !== "TRADE" ||
+        state.edges.some(
+          (edge) => edge.source === sourceId && edge.sourceHandle === "buy",
+        )
+      ) {
+        return state;
+      }
+      const node: RecipeFlowNode = {
+        id: crypto.randomUUID(),
+        type: "supply",
+        position: { x: source.position.x + 300, y: source.position.y },
+        data: { kind: "SUPPLY", venue: "venus" },
+      };
+      return {
+        nodes: [...state.nodes, node],
+        edges: [
+          ...state.edges,
+          {
+            id: crypto.randomUUID(),
+            source: sourceId,
+            sourceHandle: "buy",
+            target: node.id,
+            targetHandle: "asset",
             type: "asset",
           },
         ],

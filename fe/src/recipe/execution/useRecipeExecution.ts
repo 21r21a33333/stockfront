@@ -189,8 +189,16 @@ export function useRecipeExecution({
             executionMode: execution.executionMode,
             steps: execution.steps,
             approvalSkipped:
-              plan.steps.some((step) => step.kind === "APPROVAL") &&
-              !execution.steps.some((step) => step === "APPROVAL"),
+              execution.action === "SUPPLY"
+                ? plan.steps.some(
+                    (step) =>
+                      step.kind === "SUPPLY" &&
+                      !step.action.transactions.some(
+                        (transaction) => transaction.kind === "APPROVE",
+                      ),
+                  )
+                : plan.steps.some((step) => step.kind === "APPROVAL") &&
+                  !execution.steps.some((step) => step === "APPROVAL"),
           };
           active = { ...active, attempts: [...active.attempts, attempt] };
           save(active);
@@ -426,7 +434,7 @@ function message(cause: unknown, fallback: string): string {
 
 function publicExecutionError(cause: unknown): string {
   const value = message(cause, "Execution paused.");
-  return /^(Atomic|Previous|Finish|Refresh|This wallet|Wallet changed|Could not|No prepared|Prepare one|The prepared|Unsupported)/.test(
+  return /^(Atomic|Previous|Finish|Refresh|This wallet|Wallet changed|Could not|No prepared|Prepare one|The prepared|A supply|Unsupported)/.test(
     value,
   )
     ? value

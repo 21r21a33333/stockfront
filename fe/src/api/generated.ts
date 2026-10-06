@@ -116,8 +116,26 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
   schemas: {
+    ActionWarning: {
+      code: string;
+      level: string;
+      message: string;
+    };
     /** @enum {string} */
     AssetKind: "stock" | "preIpo" | "etf" | "unknown";
+    BorrowingPreview: {
+      estimatedNetworkFee?: null | components["schemas"]["NetworkFee"];
+      healthFactorAfter?: string | null;
+      healthFactorBefore?: string | null;
+      warnings?: components["schemas"]["ActionWarning"][];
+    };
+    BorrowingToken: {
+      /** Format: evm-address */
+      contract: `0x${string}`;
+      symbol: string;
+    };
+    /** @enum {string} */
+    BorrowingVenue: "venus";
     BstockId: {
       /** Format: int64 */
       chainId: number;
@@ -156,10 +174,34 @@ export interface components {
       session?: string;
       tradable?: boolean;
     };
+    NetworkFee: {
+      amount: string;
+      tokenSymbol: string;
+      valueUsd?: string | null;
+    };
     PrepareRecipeRequest: {
       context: components["schemas"]["RecipeContext"];
       recipe: components["schemas"]["RecipeDefinition"];
       selections: components["schemas"]["RecipeNodeSelection"][];
+    };
+    PreparedActionTransaction: {
+      /** Format: hex */
+      data: `0x${string}`;
+      gasLimit?: string;
+      gasPrice?: string;
+      /** @enum {string} */
+      kind:
+        | "APPROVE"
+        | "DEPOSIT"
+        | "ENABLE_COLLATERAL"
+        | "BORROW"
+        | "REPAY"
+        | "WITHDRAW";
+      maxFeePerGas?: string;
+      maxPriorityFeePerGas?: string;
+      /** Format: evm-address */
+      to: `0x${string}`;
+      value: string;
     };
     PreparedApproval: {
       /** Format: hex */
@@ -170,6 +212,10 @@ export interface components {
       spender: `0x${string}`;
       /** Format: evm-address */
       to: `0x${string}`;
+    };
+    PreparedBorrowingAction: {
+      preview: components["schemas"]["BorrowingPreview"];
+      transactions: components["schemas"]["PreparedActionTransaction"][];
     };
     PreparedRecipe: {
       steps: components["schemas"]["PreparedRecipeStep"][];
@@ -186,6 +232,13 @@ export interface components {
           action: components["schemas"]["PreparedTrade"];
           /** @enum {string} */
           kind: "TRADE";
+          /** Format: uuid */
+          nodeId: string;
+        }
+      | {
+          action: components["schemas"]["PreparedBorrowingAction"];
+          /** @enum {string} */
+          kind: "SUPPLY";
           /** Format: uuid */
           nodeId: string;
         };
@@ -225,6 +278,7 @@ export interface components {
       /** Format: int32 */
       schemaVersion: number;
       settlementTokens: `0x${string}`[];
+      supplyPolicy: components["schemas"]["RecipeSupplyPolicy"];
       tradePolicy: components["schemas"]["RecipeTradePolicy"];
     };
     RecipeCompletedNode: {
@@ -270,7 +324,8 @@ export interface components {
       | "RECIPE_CYCLE"
       | "DISCONNECTED_NODE"
       | "INVALID_AMOUNT"
-      | "UNSUPPORTED_TRADE_PAIR";
+      | "UNSUPPORTED_TRADE_PAIR"
+      | "UNSUPPORTED_SUPPLY_ASSET";
     RecipeDiagnosticLocation:
       | {
           /** @enum {string} */
@@ -311,7 +366,7 @@ export interface components {
       to: components["schemas"]["RecipePortRef"];
     };
     /** @enum {string} */
-    RecipeFieldControl: "TOKEN" | "AMOUNT";
+    RecipeFieldControl: "TOKEN" | "AMOUNT" | "VENUE";
     RecipeFieldDescriptor: {
       control: components["schemas"]["RecipeFieldControl"];
       key: string;
@@ -327,15 +382,25 @@ export interface components {
       asset: components["schemas"]["TokenAmount"];
       port: string;
     };
-    RecipeNodePreview: {
-      /** @enum {string} */
-      kind: "TRADE";
-      /** Format: uuid */
-      nodeId: string;
-      routes?: components["schemas"]["TradeQuote"][];
-      state: components["schemas"]["RecipeNodeState"];
-      waitingFor?: string[];
-    };
+    RecipeNodePreview:
+      | {
+          /** @enum {string} */
+          kind: "TRADE";
+          /** Format: uuid */
+          nodeId: string;
+          routes?: components["schemas"]["TradeQuote"][];
+          state: components["schemas"]["RecipeNodeState"];
+          waitingFor?: string[];
+        }
+      | {
+          /** @enum {string} */
+          kind: "SUPPLY";
+          market?: null | components["schemas"]["SupplyMarket"];
+          /** Format: uuid */
+          nodeId: string;
+          state: components["schemas"]["RecipeNodeState"];
+          waitingFor?: string[];
+        };
     RecipeNodeSelection: {
       /** @enum {string} */
       kind: "TRADE";
@@ -346,7 +411,11 @@ export interface components {
     };
     /** @enum {string} */
     RecipeNodeState:
-      "READY" | "WAITING_FOR_UPSTREAM" | "COMPLETE" | "OUTPUT_UNAVAILABLE";
+      | "READY"
+      | "WAITING_FOR_UPSTREAM"
+      | "COMPLETE"
+      | "OUTPUT_UNAVAILABLE"
+      | "UNAVAILABLE";
     /** @enum {string} */
     RecipeOptionSource: "SETTLEMENT_TOKENS" | "BSTOCKS";
     RecipePortDescriptor: {
@@ -390,6 +459,11 @@ export interface components {
           buyToken: `0x${string}`;
           /** @enum {string} */
           kind: "TRADE";
+        }
+      | {
+          /** @enum {string} */
+          kind: "SUPPLY";
+          venue: components["schemas"]["BorrowingVenue"];
         };
     RecipePrimitiveDescriptor: {
       description: string;
@@ -399,7 +473,14 @@ export interface components {
       ports: components["schemas"]["RecipePortDescriptor"][];
     };
     /** @enum {string} */
-    RecipePrimitiveKind: "WALLET_ASSET" | "TRADE";
+    RecipePrimitiveKind: "WALLET_ASSET" | "TRADE" | "SUPPLY";
+    RecipeSupplyPolicy: {
+      allowedInputs: components["schemas"]["RecipeSupplyRule"][];
+    };
+    RecipeSupplyRule: {
+      input: components["schemas"]["RecipeOptionSource"];
+      venue: components["schemas"]["BorrowingVenue"];
+    };
     RecipeTradePolicy: {
       allowedTransitions: components["schemas"]["RecipeAssetTransition"][];
     };
@@ -427,6 +508,7 @@ export interface components {
         /** Format: int32 */
         schemaVersion: number;
         settlementTokens: `0x${string}`[];
+        supplyPolicy: components["schemas"]["RecipeSupplyPolicy"];
         tradePolicy: components["schemas"]["RecipeTradePolicy"];
       };
       status: components["schemas"]["Status"];
@@ -507,6 +589,32 @@ export interface components {
       orderId: string;
       state: components["schemas"]["TradeOrderState"];
     };
+    /**
+     * @description Current Venus capability for supplying one supported bStock.
+     *
+     *     `remaining_supply_capacity` is `None` when Venus reports an unlimited cap.
+     *     This model intentionally excludes collateral and borrowing fields: supplying
+     *     an asset does not require it to be collateral-eligible or borrowable.
+     */
+    SupplyMarket: {
+      /** Format: int64 */
+      chainId: number;
+      /** Format: evm-address */
+      market: `0x${string}`;
+      /** Format: int64 */
+      observedAtMs: number;
+      remainingSupplyCapacity?: string | null;
+      supplyApyPercent: string;
+      supplyAvailable: boolean;
+      token: components["schemas"]["BorrowingToken"];
+      /** Format: int32 */
+      tokenDecimals: number;
+      unavailableReasons: components["schemas"]["SupplyMarketUnavailableReason"][];
+      venue: components["schemas"]["BorrowingVenue"];
+    };
+    /** @enum {string} */
+    SupplyMarketUnavailableReason:
+      "MARKET_UNLISTED" | "SUPPLY_PAUSED" | "SUPPLY_CAP_REACHED";
     TokenAmount: {
       amount: string;
       /** Format: evm-address */
@@ -565,14 +673,23 @@ export interface components {
   headers: never;
   pathItems: never;
 }
+export type ActionWarning = components["schemas"]["ActionWarning"];
 export type AssetKind = components["schemas"]["AssetKind"];
+export type BorrowingPreview = components["schemas"]["BorrowingPreview"];
+export type BorrowingToken = components["schemas"]["BorrowingToken"];
+export type BorrowingVenue = components["schemas"]["BorrowingVenue"];
 export type BstockId = components["schemas"]["BstockId"];
 export type BstockSummary = components["schemas"]["BstockSummary"];
 export type Error = components["schemas"]["Error"];
 export type MarketStatus = components["schemas"]["MarketStatus"];
+export type NetworkFee = components["schemas"]["NetworkFee"];
 export type PrepareRecipeRequest =
   components["schemas"]["PrepareRecipeRequest"];
+export type PreparedActionTransaction =
+  components["schemas"]["PreparedActionTransaction"];
 export type PreparedApproval = components["schemas"]["PreparedApproval"];
+export type PreparedBorrowingAction =
+  components["schemas"]["PreparedBorrowingAction"];
 export type PreparedRecipe = components["schemas"]["PreparedRecipe"];
 export type PreparedRecipeStep = components["schemas"]["PreparedRecipeStep"];
 export type PreparedTrade = components["schemas"]["PreparedTrade"];
@@ -613,6 +730,8 @@ export type RecipePrimitive = components["schemas"]["RecipePrimitive"];
 export type RecipePrimitiveDescriptor =
   components["schemas"]["RecipePrimitiveDescriptor"];
 export type RecipePrimitiveKind = components["schemas"]["RecipePrimitiveKind"];
+export type RecipeSupplyPolicy = components["schemas"]["RecipeSupplyPolicy"];
+export type RecipeSupplyRule = components["schemas"]["RecipeSupplyRule"];
 export type RecipeTradePolicy = components["schemas"]["RecipeTradePolicy"];
 export type RecipeValidationReport =
   components["schemas"]["RecipeValidationReport"];
@@ -636,6 +755,9 @@ export type SettledTokenAmount = components["schemas"]["SettledTokenAmount"];
 export type Status = components["schemas"]["Status"];
 export type SubmitOrderRequest = components["schemas"]["SubmitOrderRequest"];
 export type SubmittedOrder = components["schemas"]["SubmittedOrder"];
+export type SupplyMarket = components["schemas"]["SupplyMarket"];
+export type SupplyMarketUnavailableReason =
+  components["schemas"]["SupplyMarketUnavailableReason"];
 export type TokenAmount = components["schemas"]["TokenAmount"];
 export type TradeExecutionMode = components["schemas"]["TradeExecutionMode"];
 export type TradeOrderState = components["schemas"]["TradeOrderState"];

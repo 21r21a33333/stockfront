@@ -32,7 +32,7 @@ export function RoutePreview({
     const action =
       item.kind === "APPROVAL"
         ? item.action
-        : item.action.executionMode === "SWAP"
+        : item.kind === "TRADE" && item.action.executionMode === "SWAP"
           ? item.action.transaction
           : undefined;
     return (

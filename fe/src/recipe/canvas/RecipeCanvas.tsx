@@ -15,13 +15,14 @@ import type { RecipePrimitiveKind } from "@/api/generated";
 import type { Address } from "viem";
 import type { RecipeFlowEdge } from "../editor/types";
 import { RecipeAssetEdge } from "./RecipeAssetEdge";
-import { TradeNode, WalletAssetNode } from "./RecipeNodes";
+import { SupplyNode, TradeNode, WalletAssetNode } from "./RecipeNodes";
 import { useRecipeEditor } from "../editor/store";
 import styles from "../RecipeBuilder.module.css";
 
 const nodeTypes: NodeTypes = {
   walletAsset: WalletAssetNode,
   trade: TradeNode,
+  supply: SupplyNode,
 };
 const edgeTypes: EdgeTypes = { asset: RecipeAssetEdge };
 
@@ -55,7 +56,11 @@ export function RecipeCanvas({
     (connection: Connection | RecipeFlowEdge) => {
       if (!connection.source || !connection.target) return false;
       if (connection.source === connection.target) return false;
-      if (connection.targetHandle !== "sell") return false;
+      if (
+        !connection.targetHandle ||
+        !["sell", "asset"].includes(connection.targetHandle)
+      )
+        return false;
       if (!connection.sourceHandle) return false;
       return !editor.edges.some(
         (edge) =>
@@ -73,7 +78,7 @@ export function RecipeCanvas({
       const kind = event.dataTransfer.getData(
         "application/stockfront-primitive",
       ) as RecipePrimitiveKind;
-      if (kind !== "WALLET_ASSET" && kind !== "TRADE") return;
+      if (!["WALLET_ASSET", "TRADE", "SUPPLY"].includes(kind)) return;
       editor.addNode(
         kind,
         flow.screenToFlowPosition({ x: event.clientX, y: event.clientY }),

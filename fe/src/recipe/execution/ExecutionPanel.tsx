@@ -83,7 +83,11 @@ export function ExecutionPanel({
               .length
           }
           {" / "}
-          {snapshot.nodes.filter((node) => node.kind === "TRADE").length}
+          {
+            snapshot.nodes.filter(
+              (node) => node.kind === "TRADE" || node.kind === "SUPPLY",
+            ).length
+          }
         </span>
       </div>
       <p className={styles.caption}>
@@ -117,9 +121,11 @@ export function ExecutionPanel({
                 : undefined;
           const buyToken = node?.kind === "TRADE" ? node.buyToken : undefined;
           const label =
-            item.kind === "APPROVAL"
-              ? `Approve ${symbol(sellToken)}`
-              : `${item.executionMode === "RFQ" ? "RFQ" : "Swap"} ${symbol(sellToken)} → ${symbol(buyToken)}`;
+            item.kind === "SUPPLY"
+              ? `Supply ${symbol(sellToken)} to Venus`
+              : item.kind === "APPROVAL"
+                ? `Approve ${symbol(sellToken)}`
+                : `${item.executionMode === "RFQ" ? "RFQ" : "Swap"} ${symbol(sellToken)} → ${symbol(buyToken)}`;
           const hash = transactionHash(item);
           const attention =
             item.phase === "attention" || item.phase === "failed";
@@ -154,6 +160,15 @@ export function ExecutionPanel({
                   <span>Approve {symbol(sellToken)}</span>
                   <span>Swap → {symbol(buyToken)}</span>
                   <b>Atomic</b>
+                </div>
+              )}
+              {item.kind === "SUPPLY" && (
+                <div className={styles.steps}>
+                  {!item.approvalSkipped && (
+                    <span>Approve {symbol(sellToken)}</span>
+                  )}
+                  <span>Supply to Venus</span>
+                  {!item.approvalSkipped && <b>Atomic</b>}
                 </div>
               )}
               {item.error && <p className={styles.notice}>{item.error}</p>}
@@ -194,7 +209,9 @@ export function ExecutionPanel({
                   onClick={() => onRetryFailed(item.nodeId)}
                   disabled={busy}
                 >
-                  Refresh route to retry
+                  {item.kind === "SUPPLY"
+                    ? "Prepare supply again"
+                    : "Refresh route to retry"}
                 </button>
               )}
             </li>
@@ -258,21 +275,29 @@ function mergePreparedActions(
   prepared?: PreparedRecipe,
 ): ActivityItem[] {
   const actions: ActivityItem[] = [...latestAttempts(attempts)];
-  for (const nodeId of new Set(
-    prepared?.steps.map((step) => step.nodeId) ?? [],
-  )) {
+  if (!prepared) return actions;
+  for (const nodeId of new Set(prepared.steps.map((step) => step.nodeId))) {
     if (actions.some((item) => item.nodeId === nodeId)) continue;
-    const steps = prepared!.steps.filter((step) => step.nodeId === nodeId);
+    const steps = prepared.steps.filter((step) => step.nodeId === nodeId);
     const trade = steps.find((step) => step.kind === "TRADE");
+    const supply = steps.find((step) => step.kind === "SUPPLY");
     actions.push({
       id: `prepared:${nodeId}`,
       nodeId,
-      kind: trade ? "TRADE" : "APPROVAL",
+      kind: supply ? "SUPPLY" : trade ? "TRADE" : "APPROVAL",
       attempt: 0,
       phase: "ready",
-      executionMode:
-        trade?.kind === "TRADE" ? trade.action.executionMode : "SWAP",
+      executionMode: supply
+        ? "SUPPLY"
+        : trade?.kind === "TRADE"
+          ? trade.action.executionMode
+          : "SWAP",
       steps: steps.map((step) => step.kind),
+      approvalSkipped:
+        supply?.kind === "SUPPLY" &&
+        !supply.action.transactions.some(
+          (transaction) => transaction.kind === "APPROVE",
+        ),
     });
   }
   return actions;

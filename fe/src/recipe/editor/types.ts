@@ -1,6 +1,6 @@
 import type { Edge, Node } from "@xyflow/react";
 import type { Address } from "viem";
-import type { RecipePrimitiveKind } from "@/api/generated";
+import type { BorrowingVenue, RecipePrimitiveKind } from "@/api/generated";
 
 export interface AssetOption {
   address: Address;
@@ -23,8 +23,17 @@ export type TradeNodeData = {
   buyToken?: Address;
 };
 
-export type RecipeNodeData = WalletAssetNodeData | TradeNodeData;
-export type RecipeFlowNode = Node<RecipeNodeData, "walletAsset" | "trade">;
+export type SupplyNodeData = {
+  kind: "SUPPLY";
+  venue: BorrowingVenue;
+};
+
+export type RecipeNodeData =
+  WalletAssetNodeData | TradeNodeData | SupplyNodeData;
+export type RecipeFlowNode = Node<
+  RecipeNodeData,
+  "walletAsset" | "trade" | "supply"
+>;
 export type RecipeFlowEdge = Edge;
 
 export interface DraftRecipe {
@@ -34,5 +43,6 @@ export interface DraftRecipe {
 }
 
 export function flowType(kind: RecipePrimitiveKind): RecipeFlowNode["type"] {
-  return kind === "WALLET_ASSET" ? "walletAsset" : "trade";
+  if (kind === "WALLET_ASSET") return "walletAsset";
+  return kind === "TRADE" ? "trade" : "supply";
 }

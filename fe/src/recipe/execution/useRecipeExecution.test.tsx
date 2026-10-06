@@ -7,7 +7,7 @@ import {
   encodeFunctionData,
   erc20Abi,
 } from "viem";
-import type { PreparedRecipe } from "@/api/generated";
+import type { PreparedRecipe, RecipeDefinition } from "@/api/generated";
 import { hash, recipe, token, wallet } from "./fixtures.test-support";
 import { readRun } from "./journal";
 import { useRecipeExecution } from "./useRecipeExecution";
@@ -192,6 +192,74 @@ it("skips a proven allowance and simulates before sending one swap call", async 
     approvalSkipped: true,
     steps: ["TRADE"],
   });
+});
+
+it("submits approval and Venus supply as one atomic terminal action", async () => {
+  const supplyRecipe: RecipeDefinition = {
+    schemaVersion: 1,
+    chainId: 56,
+    nodes: [
+      { id: "source", kind: "WALLET_ASSET", token, rawAmount: "100" },
+      { id: "supply", kind: "SUPPLY", venue: "venus" },
+    ],
+    edges: [
+      {
+        id: "edge",
+        from: { nodeId: "source", port: "asset" },
+        to: { nodeId: "supply", port: "asset" },
+      },
+    ],
+  };
+  const plan: PreparedRecipe = {
+    steps: [
+      {
+        kind: "SUPPLY",
+        nodeId: "supply",
+        action: {
+          transactions: [
+            {
+              kind: "APPROVE",
+              to: token,
+              data: "0x095ea7b3",
+              value: "0",
+            },
+            {
+              kind: "DEPOSIT",
+              to: wallet,
+              data: "0x12345678",
+              value: "0",
+            },
+          ],
+          preview: {},
+        },
+      },
+    ],
+  };
+  const { result } = renderHook(
+    () => useRecipeExecution({ recipe: supplyRecipe, prepared: plan }),
+    { wrapper: Wrapper },
+  );
+
+  await act(() => result.current.execute());
+
+  expect(mocks.sendCalls).toHaveBeenCalledWith(
+    expect.objectContaining({ forceAtomic: true, calls: expect.any(Array) }),
+  );
+  expect(mocks.sendCalls.mock.calls[0][0].calls).toHaveLength(2);
+  expect(result.current.progress[0]).toMatchObject({
+    kind: "SUPPLY",
+    executionMode: "SUPPLY",
+    steps: ["SUPPLY"],
+    phase: "pending",
+  });
+
+  mocks.getCallsStatus.mockResolvedValue({
+    status: "success",
+    atomic: true,
+    receipts: [{ transactionHash: hash, logs: [] }],
+  });
+  await act(() => result.current.checkStatus());
+  await waitFor(() => expect(result.current.completed).toBe(true));
 });
 
 function preparedSwap(): PreparedRecipe {

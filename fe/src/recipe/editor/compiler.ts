@@ -31,6 +31,12 @@ export function buildRecipe(
         kind: node.data.kind,
         buyToken: node.data.buyToken,
       });
+    } else if (node.data.kind === "SUPPLY") {
+      result.push({
+        id: node.id,
+        kind: node.data.kind,
+        venue: node.data.venue,
+      });
     }
     return result;
   }, []);

@@ -1,11 +1,17 @@
 import { Handle, Position, type NodeProps } from "@xyflow/react";
-import { ArrowRightLeft, Check, Plus, WalletCards } from "lucide-react";
+import {
+  ArrowRightLeft,
+  Check,
+  Landmark,
+  Plus,
+  WalletCards,
+} from "lucide-react";
 import { useState } from "react";
 import { formatUnits } from "viem";
 import type { PreparedRecipeStep } from "@/api/generated";
 import { attemptLabel, type ExecutionAttempt } from "../execution/journal";
 import { diagnosticsForNode } from "../editor/compiler";
-import { inputForTrade } from "../editor/flowInput";
+import { inputForSupply, inputForTrade } from "../editor/flowInput";
 import { useRecipeEditor } from "../editor/store";
 import { useBuilderContext } from "../editor/context";
 import type { AssetOption, RecipeFlowNode } from "../editor/types";
@@ -59,7 +65,9 @@ export function TradeNode({ id, data, selected }: NodeProps<RecipeFlowNode>) {
     prepared,
     execution,
     connectedOutputs,
+    supplyableOutputs,
     appendTrade,
+    appendSupply,
     openActivity,
   } = useBuilderContext();
   const [showNextActions, setShowNextActions] = useState(false);
@@ -156,9 +164,24 @@ export function TradeNode({ id, data, selected }: NodeProps<RecipeFlowNode>) {
               >
                 <ArrowRightLeft size={14} /> Trade
               </button>
-              <span>
-                Supply collateral <small>Soon</small>
-              </span>
+              <button
+                type="button"
+                disabled={!supplyableOutputs.includes(id)}
+                title={
+                  supplyableOutputs.includes(id)
+                    ? "Supply this bStock to Venus"
+                    : "Venus Supply accepts supported bStocks"
+                }
+                onClick={() => {
+                  appendSupply(id);
+                  setShowNextActions(false);
+                }}
+              >
+                <Landmark size={14} /> Supply
+                {!supplyableOutputs.includes(id) ? (
+                  <small>bStocks only</small>
+                ) : null}
+              </button>
             </div>
           ) : null}
         </div>
@@ -176,22 +199,89 @@ export function TradeNode({ id, data, selected }: NodeProps<RecipeFlowNode>) {
   );
 }
 
+export function SupplyNode({ id, data, selected }: NodeProps<RecipeFlowNode>) {
+  const nodes = useRecipeEditor((state) => state.nodes);
+  const edges = useRecipeEditor((state) => state.edges);
+  const { assets, diagnostics, preview, prepared, execution, openActivity } =
+    useBuilderContext();
+  if (data.kind !== "SUPPLY") return null;
+  const input = inputForSupply(nodes, edges, id);
+  const asset = assets.find(
+    (item) => item.address.toLowerCase() === input?.token?.toLowerCase(),
+  );
+  const candidate = preview?.nodes.find((item) => item.nodeId === id);
+  const previewNode = candidate?.kind === "SUPPLY" ? candidate : undefined;
+  const progress = execution.find(
+    (item) => item.nodeId === id && item.kind === "SUPPLY",
+  );
+  const actions =
+    prepared?.steps
+      .map((step, index) => ({ step, index }))
+      .filter(({ step }) => step.nodeId === id) ?? [];
+  const problem = diagnosticsForNode(diagnostics, id)[0];
+  return (
+    <NodeShell
+      title="Supply"
+      tone="green"
+      icon={<Landmark size={13} />}
+      selected={selected}
+      problem={problem?.message}
+    >
+      <p>Supply {asset?.symbol ?? "incoming asset"} to Venus</p>
+      <div className={styles.nodeTags}>
+        <span>
+          {previewNode?.market
+            ? `${previewNode.market.supplyApyPercent}% base APY`
+            : "Venus Core Pool"}
+        </span>
+        <span>
+          {progress
+            ? attemptLabel(progress)
+            : previewNode?.state === "READY"
+              ? "Market ready"
+              : "Preview market"}
+        </span>
+      </div>
+      <Handle
+        id="asset"
+        type="target"
+        position={Position.Left}
+        className={styles.handle}
+      />
+      {actions.length > 0 ? (
+        <PreparedActionBranch
+          actions={actions}
+          assets={assets}
+          inputSymbol={asset?.symbol}
+          execution={execution}
+          onOpen={openActivity}
+        />
+      ) : null}
+    </NodeShell>
+  );
+}
+
 function PreparedActionBranch({
   actions,
   assets,
   buySymbol,
+  inputSymbol,
   execution,
   onOpen,
 }: {
   actions: { step: PreparedRecipeStep; index: number }[];
   assets: AssetOption[];
   buySymbol?: string;
+  inputSymbol?: string;
   execution: ExecutionAttempt[];
   onOpen(): void;
 }) {
   const approval = actions.find(({ step }) => step.kind === "APPROVAL")?.step;
   const trade = actions.find(({ step }) => step.kind === "TRADE")?.step;
-  const state = execution.find((item) => item.nodeId === trade?.nodeId)?.phase;
+  const supplyStep = actions.find(({ step }) => step.kind === "SUPPLY")?.step;
+  const supply = supplyStep?.kind === "SUPPLY" ? supplyStep : undefined;
+  const nodeId = trade?.nodeId ?? supply?.nodeId ?? approval?.nodeId;
+  const state = execution.find((item) => item.nodeId === nodeId)?.phase;
   const approvedAsset =
     approval?.kind === "APPROVAL"
       ? assets.find(
@@ -199,11 +289,14 @@ function PreparedActionBranch({
             asset.address.toLowerCase() === approval.action.to.toLowerCase(),
         )
       : undefined;
-  const label = trade
-    ? approval
-      ? `Approve ${approvedAsset?.symbol ?? "asset"} + swap → ${buySymbol ?? "asset"}`
-      : `${trade.kind === "TRADE" && trade.action.executionMode === "RFQ" ? "Submit RFQ" : "Swap"} → ${buySymbol ?? "asset"}`
-    : `Approve ${approvedAsset?.symbol ?? "asset"}`;
+  const label = preparedActionLabel({
+    approval,
+    trade,
+    supply,
+    approvedSymbol: approvedAsset?.symbol,
+    buySymbol,
+    inputSymbol,
+  });
   return (
     <div className={styles.actionBranch} aria-label="Prepared actions">
       <span className={styles.branchLabel}>prepare</span>
@@ -228,6 +321,33 @@ function PreparedActionBranch({
   );
 }
 
+function preparedActionLabel({
+  approval,
+  trade,
+  supply,
+  approvedSymbol,
+  buySymbol,
+  inputSymbol,
+}: {
+  approval?: PreparedRecipeStep;
+  trade?: PreparedRecipeStep;
+  supply?: PreparedRecipeStep;
+  approvedSymbol?: string;
+  buySymbol?: string;
+  inputSymbol?: string;
+}): string {
+  if (supply?.kind === "SUPPLY") {
+    const needsApproval = supply.action.transactions.some(
+      (transaction) => transaction.kind === "APPROVE",
+    );
+    return `${needsApproval ? `Approve ${inputSymbol ?? "asset"} + ` : ""}supply to Venus`;
+  }
+  if (trade?.kind !== "TRADE") return `Approve ${approvedSymbol ?? "asset"}`;
+  if (approval?.kind === "APPROVAL")
+    return `Approve ${approvedSymbol ?? "asset"} + swap → ${buySymbol ?? "asset"}`;
+  return `${trade.action.executionMode === "RFQ" ? "Submit RFQ" : "Swap"} → ${buySymbol ?? "asset"}`;
+}
+
 function NodeShell({
   title,
   tone,
@@ -237,7 +357,7 @@ function NodeShell({
   children,
 }: {
   title: string;
-  tone: "purple" | "orange";
+  tone: "purple" | "orange" | "green";
   icon: React.ReactNode;
   selected: boolean;
   problem?: string;

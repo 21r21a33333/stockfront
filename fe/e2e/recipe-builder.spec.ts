@@ -10,6 +10,9 @@ const catalog = {
       { sell: "BSTOCKS", buy: "SETTLEMENT_TOKENS" },
     ],
   },
+  supplyPolicy: {
+    allowedInputs: [{ input: "BSTOCKS", venue: "venus" }],
+  },
   bstocks: [
     {
       chainId: 56,
@@ -36,6 +39,13 @@ const catalog = {
       kind: "TRADE",
       name: "Trade",
       description: "Trade the incoming asset for another token.",
+      fields: [],
+      ports: [],
+    },
+    {
+      kind: "SUPPLY",
+      name: "Supply",
+      description: "Supply the incoming bStock to Venus.",
       fields: [],
       ports: [],
     },
@@ -114,6 +124,15 @@ test("shows asset flow guides, adds the next action, and searches supported toke
   await expect(page.getByText("Asset<NVDAB>", { exact: true })).toBeVisible();
   await expect(page.locator(".react-flow__node").nth(2)).toBeInViewport();
 
+  await page.getByRole("button", { name: "Add next action" }).click();
+  const nextActions = page.locator(".react-flow__node").nth(2);
+  await expect(
+    nextActions.getByRole("button", { name: "Trade" }),
+  ).toBeEnabled();
+  await expect(
+    nextActions.getByRole("button", { name: "Supply" }),
+  ).toBeDisabled();
+
   await page.getByRole("button", { name: "Select asset" }).click();
   await expect(
     page.getByRole("dialog", { name: "Select token" }),
@@ -123,6 +142,27 @@ test("shows asset flow guides, adds the next action, and searches supported toke
   await expect(page.getByRole("button", { name: /Nvidia Corp/ })).toHaveCount(
     0,
   );
+});
+
+test("adds a terminal Venus supply from a supported bStock output", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Add next action" }).click();
+
+  const trade = page.locator(".react-flow__node").nth(1);
+  await expect(trade.getByRole("button", { name: "Supply" })).toBeEnabled();
+  await trade.getByRole("button", { name: "Supply" }).click();
+
+  await expect(page.locator(".react-flow__node")).toHaveCount(3);
+  await expect(
+    page
+      .locator(".react-flow__node")
+      .nth(2)
+      .getByText("Supply", { exact: true }),
+  ).toBeVisible();
+  await expect(page.getByText("Supply NVDAB to Venus")).toBeVisible();
+  await expect(page.getByText("Asset<NVDAB> · from Trade")).toBeVisible();
 });
 
 test("keeps the output asset label clear of the trade node and next action", async ({

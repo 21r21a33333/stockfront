@@ -56,6 +56,9 @@ async function mockApp(
             { sell: "BSTOCKS", buy: "SETTLEMENT_TOKENS" },
           ],
         },
+        supplyPolicy: {
+          allowedInputs: [{ input: "BSTOCKS", venue: "venus" }],
+        },
         bstocks: [
           {
             chainId: 56,
@@ -82,6 +85,13 @@ async function mockApp(
             kind: "TRADE",
             name: "Trade",
             description: "Trade",
+            fields: [],
+            ports: [],
+          },
+          {
+            kind: "SUPPLY",
+            name: "Supply",
+            description: "Supply a supported bStock to Venus.",
             fields: [],
             ports: [],
           },

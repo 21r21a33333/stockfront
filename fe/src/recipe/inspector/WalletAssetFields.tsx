@@ -9,9 +9,11 @@ import styles from "../RecipeBuilder.module.css";
 export function WalletAssetFields({
   node,
   assets,
+  availableAssets = assets,
 }: {
   node: RecipeFlowNode;
   assets: AssetOption[];
+  availableAssets?: AssetOption[];
 }) {
   const editor = useRecipeEditor();
   if (node.data.kind !== "WALLET_ASSET") return null;
@@ -23,6 +25,9 @@ export function WalletAssetFields({
     asset?.balanceRaw !== undefined
       ? formatUnits(asset.balanceRaw, asset.decimals)
       : undefined;
+  const supported = availableAssets.some(
+    (item) => item.address.toLowerCase() === token?.toLowerCase(),
+  );
   return (
     <>
       <div className={styles.inspectorSectionTitle}>
@@ -35,10 +40,17 @@ export function WalletAssetFields({
       <section className={styles.fieldGroup}>
         <label>Asset</label>
         <AssetSelect
-          assets={assets}
+          assets={availableAssets}
           value={node.data.token}
+          selectedAsset={asset}
+          invalid={Boolean(token && !supported)}
           onChange={(token) => editor.updateNode(node.id, { token })}
         />
+        {token && !supported ? (
+          <p className={`${styles.runtimeNotice} ${styles.runtimeWarning}`}>
+            Choose a supported bStock for the connected Venus Supply action.
+          </p>
+        ) : null}
         <label>Amount</label>
         <div className={styles.amountField}>
           <input

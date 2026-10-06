@@ -240,10 +240,45 @@
   },
   "components": {
     "schemas": {
+      "ActionWarning": {
+        "type": "object",
+        "required": ["code", "level", "message"],
+        "properties": {
+          "code": { "type": "string" },
+          "level": { "type": "string" },
+          "message": { "type": "string" }
+        }
+      },
       "AssetKind": {
         "type": "string",
         "enum": ["stock", "preIpo", "etf", "unknown"]
       },
+      "BorrowingPreview": {
+        "type": "object",
+        "properties": {
+          "estimatedNetworkFee": {
+            "oneOf": [
+              { "type": "null" },
+              { "$ref": "#/components/schemas/NetworkFee" }
+            ]
+          },
+          "healthFactorAfter": { "type": ["string", "null"] },
+          "healthFactorBefore": { "type": ["string", "null"] },
+          "warnings": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/ActionWarning" }
+          }
+        }
+      },
+      "BorrowingToken": {
+        "type": "object",
+        "required": ["contract", "symbol"],
+        "properties": {
+          "contract": { "type": "string", "format": "evm-address" },
+          "symbol": { "type": "string" }
+        }
+      },
+      "BorrowingVenue": { "type": "string", "enum": ["venus"] },
       "BstockId": {
         "type": "object",
         "required": ["chainId", "contract"],
@@ -313,6 +348,15 @@
           "tradable": { "type": "boolean" }
         }
       },
+      "NetworkFee": {
+        "type": "object",
+        "required": ["amount", "tokenSymbol"],
+        "properties": {
+          "amount": { "type": "string" },
+          "tokenSymbol": { "type": "string" },
+          "valueUsd": { "type": ["string", "null"] }
+        }
+      },
       "PrepareRecipeRequest": {
         "type": "object",
         "required": ["recipe", "context", "selections"],
@@ -325,6 +369,30 @@
           }
         }
       },
+      "PreparedActionTransaction": {
+        "type": "object",
+        "required": ["kind", "to", "data", "value"],
+        "properties": {
+          "data": { "type": "string", "format": "hex" },
+          "gasLimit": { "type": "string" },
+          "gasPrice": { "type": "string" },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "APPROVE",
+              "DEPOSIT",
+              "ENABLE_COLLATERAL",
+              "BORROW",
+              "REPAY",
+              "WITHDRAW"
+            ]
+          },
+          "maxFeePerGas": { "type": "string" },
+          "maxPriorityFeePerGas": { "type": "string" },
+          "to": { "type": "string", "format": "evm-address" },
+          "value": { "type": "string" }
+        }
+      },
       "PreparedApproval": {
         "type": "object",
         "required": ["to", "spender", "data"],
@@ -334,6 +402,19 @@
           "gasPrice": { "type": "string" },
           "spender": { "type": "string", "format": "evm-address" },
           "to": { "type": "string", "format": "evm-address" }
+        }
+      },
+      "PreparedBorrowingAction": {
+        "type": "object",
+        "required": ["transactions", "preview"],
+        "properties": {
+          "preview": { "$ref": "#/components/schemas/BorrowingPreview" },
+          "transactions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PreparedActionTransaction"
+            }
+          }
         }
       },
       "PreparedRecipe": {
@@ -363,6 +444,17 @@
             "properties": {
               "action": { "$ref": "#/components/schemas/PreparedTrade" },
               "kind": { "type": "string", "enum": ["TRADE"] },
+              "nodeId": { "type": "string", "format": "uuid" }
+            }
+          },
+          {
+            "type": "object",
+            "required": ["nodeId", "action", "kind"],
+            "properties": {
+              "action": {
+                "$ref": "#/components/schemas/PreparedBorrowingAction"
+              },
+              "kind": { "type": "string", "enum": ["SUPPLY"] },
               "nodeId": { "type": "string", "format": "uuid" }
             }
           }
@@ -434,7 +526,8 @@
           "primitives",
           "settlementTokens",
           "bstocks",
-          "tradePolicy"
+          "tradePolicy",
+          "supplyPolicy"
         ],
         "properties": {
           "bstocks": {
@@ -456,6 +549,7 @@
             "type": "array",
             "items": { "type": "string", "format": "evm-address" }
           },
+          "supplyPolicy": { "$ref": "#/components/schemas/RecipeSupplyPolicy" },
           "tradePolicy": { "$ref": "#/components/schemas/RecipeTradePolicy" }
         }
       },
@@ -535,7 +629,8 @@
           "RECIPE_CYCLE",
           "DISCONNECTED_NODE",
           "INVALID_AMOUNT",
-          "UNSUPPORTED_TRADE_PAIR"
+          "UNSUPPORTED_TRADE_PAIR",
+          "UNSUPPORTED_SUPPLY_ASSET"
         ]
       },
       "RecipeDiagnosticLocation": {
@@ -594,7 +689,10 @@
           "to": { "$ref": "#/components/schemas/RecipePortRef" }
         }
       },
-      "RecipeFieldControl": { "type": "string", "enum": ["TOKEN", "AMOUNT"] },
+      "RecipeFieldControl": {
+        "type": "string",
+        "enum": ["TOKEN", "AMOUNT", "VENUE"]
+      },
       "RecipeFieldDescriptor": {
         "type": "object",
         "required": ["key", "name", "control", "required", "optionSources"],
@@ -645,6 +743,25 @@
                 "items": { "type": "string", "format": "uuid" }
               }
             }
+          },
+          {
+            "type": "object",
+            "required": ["nodeId", "state", "kind"],
+            "properties": {
+              "kind": { "type": "string", "enum": ["SUPPLY"] },
+              "market": {
+                "oneOf": [
+                  { "type": "null" },
+                  { "$ref": "#/components/schemas/SupplyMarket" }
+                ]
+              },
+              "nodeId": { "type": "string", "format": "uuid" },
+              "state": { "$ref": "#/components/schemas/RecipeNodeState" },
+              "waitingFor": {
+                "type": "array",
+                "items": { "type": "string", "format": "uuid" }
+              }
+            }
           }
         ]
       },
@@ -668,7 +785,8 @@
           "READY",
           "WAITING_FOR_UPSTREAM",
           "COMPLETE",
-          "OUTPUT_UNAVAILABLE"
+          "OUTPUT_UNAVAILABLE",
+          "UNAVAILABLE"
         ]
       },
       "RecipeOptionSource": {
@@ -742,6 +860,14 @@
               "buyToken": { "type": "string", "format": "evm-address" },
               "kind": { "type": "string", "enum": ["TRADE"] }
             }
+          },
+          {
+            "type": "object",
+            "required": ["venue", "kind"],
+            "properties": {
+              "kind": { "type": "string", "enum": ["SUPPLY"] },
+              "venue": { "$ref": "#/components/schemas/BorrowingVenue" }
+            }
           }
         ]
       },
@@ -764,7 +890,25 @@
       },
       "RecipePrimitiveKind": {
         "type": "string",
-        "enum": ["WALLET_ASSET", "TRADE"]
+        "enum": ["WALLET_ASSET", "TRADE", "SUPPLY"]
+      },
+      "RecipeSupplyPolicy": {
+        "type": "object",
+        "required": ["allowedInputs"],
+        "properties": {
+          "allowedInputs": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/RecipeSupplyRule" }
+          }
+        }
+      },
+      "RecipeSupplyRule": {
+        "type": "object",
+        "required": ["venue", "input"],
+        "properties": {
+          "input": { "$ref": "#/components/schemas/RecipeOptionSource" },
+          "venue": { "$ref": "#/components/schemas/BorrowingVenue" }
+        }
       },
       "RecipeTradePolicy": {
         "type": "object",
@@ -826,7 +970,8 @@
               "primitives",
               "settlementTokens",
               "bstocks",
-              "tradePolicy"
+              "tradePolicy",
+              "supplyPolicy"
             ],
             "properties": {
               "bstocks": {
@@ -847,6 +992,9 @@
               "settlementTokens": {
                 "type": "array",
                 "items": { "type": "string", "format": "evm-address" }
+              },
+              "supplyPolicy": {
+                "$ref": "#/components/schemas/RecipeSupplyPolicy"
               },
               "tradePolicy": {
                 "$ref": "#/components/schemas/RecipeTradePolicy"
@@ -991,6 +1139,46 @@
           "orderId": { "type": "string" },
           "state": { "$ref": "#/components/schemas/TradeOrderState" }
         }
+      },
+      "SupplyMarket": {
+        "type": "object",
+        "description": "Current Venus capability for supplying one supported bStock.\n\n`remaining_supply_capacity` is `None` when Venus reports an unlimited cap.\nThis model intentionally excludes collateral and borrowing fields: supplying\nan asset does not require it to be collateral-eligible or borrowable.",
+        "required": [
+          "venue",
+          "chainId",
+          "token",
+          "market",
+          "tokenDecimals",
+          "supplyApyPercent",
+          "supplyAvailable",
+          "unavailableReasons",
+          "observedAtMs"
+        ],
+        "properties": {
+          "chainId": { "type": "integer", "format": "int64", "minimum": 0 },
+          "market": { "type": "string", "format": "evm-address" },
+          "observedAtMs": { "type": "integer", "format": "int64" },
+          "remainingSupplyCapacity": { "type": ["string", "null"] },
+          "supplyApyPercent": { "type": "string" },
+          "supplyAvailable": { "type": "boolean" },
+          "token": { "$ref": "#/components/schemas/BorrowingToken" },
+          "tokenDecimals": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "unavailableReasons": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SupplyMarketUnavailableReason"
+            }
+          },
+          "venue": { "$ref": "#/components/schemas/BorrowingVenue" }
+        }
+      },
+      "SupplyMarketUnavailableReason": {
+        "type": "string",
+        "enum": ["MARKET_UNLISTED", "SUPPLY_PAUSED", "SUPPLY_CAP_REACHED"]
       },
       "TokenAmount": {
         "type": "object",

@@ -2,6 +2,7 @@ import { fireEvent, render, screen, within } from "@testing-library/react";
 import type {
   PreparedRecipe,
   RecipePreview,
+  RecipeSupplyPolicy,
   RecipeTradePolicy,
 } from "@/api/generated";
 import { RecipeInspector } from "./RecipeInspector";
@@ -16,6 +17,9 @@ const tradePolicy: RecipeTradePolicy = {
     { sell: "SETTLEMENT_TOKENS", buy: "BSTOCKS" },
     { sell: "BSTOCKS", buy: "SETTLEMENT_TOKENS" },
   ],
+};
+const supplyPolicy: RecipeSupplyPolicy = {
+  allowedInputs: [{ input: "BSTOCKS", venue: "venus" }],
 };
 const node: RecipeFlowNode = {
   id: "trade-1",
@@ -83,6 +87,7 @@ it("shows quote output first, then prepared minimum and actual network estimate"
     node,
     assets,
     tradePolicy,
+    supplyPolicy,
     diagnostics: [],
     preview,
     selectedRouteId: "quote-1",
@@ -128,6 +133,7 @@ it("shows the bound wallet asset and amount on a trade input", () => {
       node={node}
       assets={assets}
       tradePolicy={tradePolicy}
+      supplyPolicy={supplyPolicy}
       diagnostics={[]}
       completed={false}
       preparing={false}
@@ -139,6 +145,78 @@ it("shows the bound wallet asset and amount on a trade input", () => {
     screen.getByText("Asset<USDT> · from Wallet Asset"),
   ).toBeInTheDocument();
   expect(screen.getByText("6 USDT")).toBeInTheDocument();
+});
+
+it("shows a live Venus market and prepares a terminal supply", () => {
+  const supply: RecipeFlowNode = {
+    id: "supply-1",
+    type: "supply",
+    position: { x: 200, y: 0 },
+    data: { kind: "SUPPLY", venue: "venus" },
+  };
+  useRecipeEditor.setState({
+    nodes: [
+      {
+        id: "wallet-1",
+        type: "walletAsset",
+        position: { x: 0, y: 0 },
+        data: { kind: "WALLET_ASSET", token: bstock, amount: "0.01" },
+      },
+      supply,
+    ],
+    edges: [
+      {
+        id: "edge-1",
+        type: "asset",
+        source: "wallet-1",
+        sourceHandle: "asset",
+        target: supply.id,
+        targetHandle: "asset",
+      },
+    ],
+  });
+  const onPrepare = vi.fn();
+
+  render(
+    <RecipeInspector
+      node={supply}
+      assets={assets}
+      tradePolicy={tradePolicy}
+      supplyPolicy={supplyPolicy}
+      diagnostics={[]}
+      preview={{
+        nodes: [
+          {
+            kind: "SUPPLY",
+            nodeId: supply.id,
+            state: "READY",
+            market: {
+              chainId: 56,
+              venue: "venus",
+              market: walletAddress(),
+              token: { contract: bstock, symbol: "NVDAB" },
+              tokenDecimals: 18,
+              supplyApyPercent: "3.42",
+              remainingSupplyCapacity: null,
+              supplyAvailable: true,
+              unavailableReasons: [],
+              observedAtMs: 1,
+            },
+          },
+        ],
+      }}
+      completed={false}
+      preparing={false}
+      onRouteSelect={() => {}}
+      onPrepare={onPrepare}
+    />,
+  );
+
+  expect(screen.getByText("Asset<NVDAB> · from Wallet Asset")).toBeVisible();
+  expect(screen.getByText("3.42%")).toBeVisible();
+  expect(screen.getByText("Unlimited")).toBeVisible();
+  fireEvent.click(screen.getByRole("button", { name: "Prepare supply" }));
+  expect(onPrepare).toHaveBeenCalledOnce();
 });
 
 it("keeps an unsupported saved choice editable and offers only compatible replacements", () => {
@@ -182,6 +260,7 @@ it("keeps an unsupported saved choice editable and offers only compatible replac
         },
       ]}
       tradePolicy={tradePolicy}
+      supplyPolicy={supplyPolicy}
       diagnostics={[]}
       completed={false}
       preparing={false}
@@ -216,6 +295,7 @@ it("keeps activity accessible without a selected node", () => {
     <RecipeInspector
       assets={assets}
       tradePolicy={tradePolicy}
+      supplyPolicy={supplyPolicy}
       diagnostics={[]}
       completed={false}
       preparing={false}
@@ -243,6 +323,7 @@ it.each([
       node={node}
       assets={assets}
       tradePolicy={tradePolicy}
+      supplyPolicy={supplyPolicy}
       diagnostics={[]}
       preview={{
         nodes: [
@@ -266,3 +347,7 @@ it.each([
     screen.queryByRole("button", { name: "Prepare transactions" }),
   ).not.toBeInTheDocument();
 });
+
+function walletAddress() {
+  return "0x1111111111111111111111111111111111111111" as const;
+}

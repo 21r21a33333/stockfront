@@ -4,21 +4,25 @@ import type {
   PreparedRecipe,
   RecipeDiagnostic,
   RecipePreview,
+  RecipeSupplyPolicy,
   RecipeTradePolicy,
   TradeQuote,
 } from "@/api/generated";
 import type { AssetOption, RecipeFlowNode } from "../editor/types";
 import { diagnosticsForNode } from "../editor/compiler";
+import { canSupplyAsset } from "../editor/supplyPolicy";
 import { useRecipeEditor } from "../editor/store";
 import styles from "../RecipeBuilder.module.css";
 
 import { WalletAssetFields } from "./WalletAssetFields";
 import { TradeFields } from "./TradeFields";
+import { SupplyFields } from "./SupplyFields";
 
 export function RecipeInspector({
   node,
   assets,
   tradePolicy,
+  supplyPolicy,
   diagnostics,
   preview,
   selectedRouteId,
@@ -35,6 +39,7 @@ export function RecipeInspector({
   node?: RecipeFlowNode;
   assets: AssetOption[];
   tradePolicy: RecipeTradePolicy;
+  supplyPolicy: RecipeSupplyPolicy;
   diagnostics: RecipeDiagnostic[];
   preview?: RecipePreview;
   selectedRouteId?: string;
@@ -62,11 +67,24 @@ export function RecipeInspector({
   }
   const showingActivity = view === "activity" && Boolean(activity);
   const problems = node ? diagnosticsForNode(diagnostics, node.id) : [];
+  const connectedSupply =
+    node?.data.kind === "WALLET_ASSET"
+      ? editor.edges
+          .filter((edge) => edge.source === node.id)
+          .map((edge) =>
+            editor.nodes.find((candidate) => candidate.id === edge.target),
+          )
+          .find((candidate) => candidate?.data.kind === "SUPPLY")
+      : undefined;
+  const connectedSupplyVenue =
+    connectedSupply?.data.kind === "SUPPLY"
+      ? connectedSupply.data.venue
+      : undefined;
   return (
     <aside className={styles.inspector}>
       <header className={styles.inspectorHeader}>
         <span
-          className={`${styles.inspectorIcon} ${!showingActivity && node?.data.kind === "TRADE" ? styles.orangeIcon : ""}`}
+          className={`${styles.inspectorIcon} ${!showingActivity && node?.data.kind === "TRADE" ? styles.orangeIcon : !showingActivity && node?.data.kind === "SUPPLY" ? styles.greenIcon : ""}`}
         >
           ●
         </span>
@@ -76,9 +94,11 @@ export function RecipeInspector({
               ? "Recipe activity"
               : node?.data.kind === "TRADE"
                 ? "Trade"
-                : node
-                  ? "Wallet Asset"
-                  : "Recipe"}
+                : node?.data.kind === "SUPPLY"
+                  ? "Supply"
+                  : node
+                    ? "Wallet Asset"
+                    : "Recipe"}
           </strong>
           <small>
             {showingActivity
@@ -123,8 +143,22 @@ export function RecipeInspector({
         ) : (
           <>
             {node.data.kind === "WALLET_ASSET" ? (
-              <WalletAssetFields node={node} assets={assets} />
-            ) : (
+              <WalletAssetFields
+                node={node}
+                assets={assets}
+                availableAssets={
+                  connectedSupplyVenue
+                    ? assets.filter((asset) =>
+                        canSupplyAsset(
+                          asset,
+                          supplyPolicy,
+                          connectedSupplyVenue,
+                        ),
+                      )
+                    : assets
+                }
+              />
+            ) : node.data.kind === "TRADE" ? (
               <TradeFields
                 node={node}
                 assets={assets}
@@ -135,6 +169,17 @@ export function RecipeInspector({
                 completed={completed}
                 preparing={preparing}
                 onRouteSelect={onRouteSelect}
+                onPrepare={onPrepare}
+              />
+            ) : (
+              <SupplyFields
+                node={node}
+                assets={assets}
+                supplyPolicy={supplyPolicy}
+                preview={preview}
+                prepared={prepared}
+                completed={completed}
+                preparing={preparing}
                 onPrepare={onPrepare}
               />
             )}

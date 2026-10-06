@@ -159,9 +159,12 @@ async function readStatus({
     if (result.status === "failure")
       return {
         phase: "failed",
-        error: reference.atomicRequired
-          ? "Atomic approval and swap reverted. Refresh the route before retrying."
-          : "Transaction failed. Refresh the route before retrying.",
+        error:
+          attempt.kind === "SUPPLY"
+            ? "Atomic approval and supply reverted. Prepare the supply again before retrying."
+            : reference.atomicRequired
+              ? "Atomic approval and swap reverted. Refresh the route before retrying."
+              : "Transaction failed. Refresh the route before retrying.",
       };
     if (result.status !== "success") return undefined;
     if (reference.atomicRequired && !result.atomic)

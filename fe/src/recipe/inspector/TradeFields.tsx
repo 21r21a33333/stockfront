@@ -40,7 +40,8 @@ export function TradeFields({
   const editor = useRecipeEditor();
   if (node.data.kind !== "TRADE") return null;
   const buyToken = node.data.buyToken;
-  const previewNode = preview?.nodes.find((item) => item.nodeId === node.id);
+  const candidate = preview?.nodes.find((item) => item.nodeId === node.id);
+  const previewNode = candidate?.kind === "TRADE" ? candidate : undefined;
   const routes = previewNode?.routes ?? [];
   const input = inputForTrade(editor.nodes, editor.edges, node.id);
   const sellAsset = assets.find(

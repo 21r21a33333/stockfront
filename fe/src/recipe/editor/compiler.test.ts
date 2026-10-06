@@ -11,6 +11,8 @@ const nvdab = "0x02Fca66C1D1aFB4E2A7884261eB00F63598a7436" as const;
 const walletId = "00000000-0000-0000-0000-000000000001";
 const tradeId = "00000000-0000-0000-0000-000000000002";
 const edgeId = "00000000-0000-0000-0000-000000000003";
+const supplyId = "00000000-0000-0000-0000-000000000004";
+const supplyEdgeId = "00000000-0000-0000-0000-000000000005";
 
 const assets: AssetOption[] = [
   {
@@ -42,6 +44,12 @@ const nodes: RecipeFlowNode[] = [
     position: { x: 200, y: 0 },
     data: { kind: "TRADE", buyToken: nvdab },
   },
+  {
+    id: supplyId,
+    type: "supply",
+    position: { x: 400, y: 0 },
+    data: { kind: "SUPPLY", venue: "venus" },
+  },
 ];
 
 it("serializes the graph into the compiler contract with exact raw units", () => {
@@ -55,6 +63,13 @@ it("serializes the graph into the compiler contract with exact raw units", () =>
         sourceHandle: "asset",
         target: tradeId,
         targetHandle: "sell",
+      },
+      {
+        id: supplyEdgeId,
+        source: tradeId,
+        sourceHandle: "buy",
+        target: supplyId,
+        targetHandle: "asset",
       },
     ],
     assets,
@@ -71,12 +86,18 @@ it("serializes the graph into the compiler contract with exact raw units", () =>
         rawAmount: "6250000000000000000",
       },
       { id: tradeId, kind: "TRADE", buyToken: nvdab },
+      { id: supplyId, kind: "SUPPLY", venue: "venus" },
     ],
     edges: [
       {
         id: edgeId,
         from: { nodeId: walletId, port: "asset" },
         to: { nodeId: tradeId, port: "sell" },
+      },
+      {
+        id: supplyEdgeId,
+        from: { nodeId: tradeId, port: "buy" },
+        to: { nodeId: supplyId, port: "asset" },
       },
     ],
   });

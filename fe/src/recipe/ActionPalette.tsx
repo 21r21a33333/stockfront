@@ -17,7 +17,6 @@ import { WalletButton } from "@/wallet/WalletButton";
 import styles from "./RecipeBuilder.module.css";
 
 const upcoming = [
-  ["Supply collateral", ShieldCheck],
   ["Borrow", CircleDollarSign],
   ["Earn deposit", Layers3],
   ["Liquidity provision", Boxes],
@@ -101,19 +100,23 @@ export function ActionPalette({
               event.dataTransfer.effectAllowed = "move";
             }}
             onClick={() => onAdd(primitive.kind)}
-            className={`${styles.paletteItem} ${primitive.kind === "TRADE" ? styles.tradePalette : styles.walletPalette}`}
+            className={`${styles.paletteItem} ${primitive.kind === "TRADE" ? styles.tradePalette : primitive.kind === "SUPPLY" ? styles.supplyPalette : styles.walletPalette}`}
             title={primitive.description}
           >
             <GripVertical size={13} />
             <span className={styles.paletteIcon}>
               {primitive.kind === "TRADE" ? (
                 <ArrowRightLeft size={12} />
+              ) : primitive.kind === "SUPPLY" ? (
+                <ShieldCheck size={12} />
               ) : (
                 <WalletCards size={12} />
               )}
             </span>
             <strong>{primitive.name}</strong>
-            <small>{primitive.kind === "TRADE" ? "Live" : "Source"}</small>
+            <small>
+              {primitive.kind === "WALLET_ASSET" ? "Source" : "Live"}
+            </small>
           </button>
         ))}
         {visibleUpcoming.map(([label, Icon]) => (

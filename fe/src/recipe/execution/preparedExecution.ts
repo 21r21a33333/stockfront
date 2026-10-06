@@ -9,9 +9,9 @@ export type PreparedExecution =
   | {
       kind: "CALL_BATCH";
       nodeId: string;
-      action: "APPROVAL" | "TRADE";
-      executionMode: "SWAP";
-      steps: ("APPROVAL" | "TRADE")[];
+      action: "APPROVAL" | "TRADE" | "SUPPLY";
+      executionMode: "SWAP" | "SUPPLY";
+      steps: ("APPROVAL" | "TRADE" | "SUPPLY")[];
       calls: { to: Address; data: Hex; value?: bigint }[];
       atomicRequired: boolean;
     }
@@ -42,6 +42,23 @@ export async function preparedExecution(
 
   const approval = prepared.steps.find((step) => step.kind === "APPROVAL");
   const trade = prepared.steps.find((step) => step.kind === "TRADE");
+  const supply = prepared.steps.find((step) => step.kind === "SUPPLY");
+
+  if (supply?.kind === "SUPPLY") {
+    if (prepared.steps.length !== 1)
+      throw new Error("A supply preparation must contain one recipe step.");
+    const calls = supplyCalls(supply.action.transactions);
+    return {
+      kind: "CALL_BATCH",
+      nodeId,
+      action: "SUPPLY",
+      executionMode: "SUPPLY",
+      steps: ["SUPPLY"],
+      calls,
+      atomicRequired: calls.length > 1,
+    };
+  }
+
   const needsApproval = approval
     ? !(await hasSufficientAllowance(client, owner, approval.action))
     : false;
@@ -109,6 +126,21 @@ export async function preparedExecution(
     };
   }
   throw new Error("Unsupported prepared action.");
+}
+
+function supplyCalls(
+  transactions: Extract<
+    PreparedRecipe["steps"][number],
+    { kind: "SUPPLY" }
+  >["action"]["transactions"],
+) {
+  const kinds = transactions.map((transaction) => transaction.kind);
+  const validDeposit = kinds.length === 1 && kinds[0] === "DEPOSIT";
+  const validApprovalAndDeposit =
+    kinds.length === 2 && kinds[0] === "APPROVE" && kinds[1] === "DEPOSIT";
+  if (!validDeposit && !validApprovalAndDeposit)
+    throw new Error("The prepared supply action is incomplete.");
+  return transactions.map(call);
 }
 
 export async function supportsAtomicCalls(

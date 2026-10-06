@@ -231,7 +231,13 @@
   color: var(--orange);
 }
 
-.tradePalette small {
+.supplyPalette .paletteIcon {
+  background: var(--success-soft);
+  color: var(--success);
+}
+
+.tradePalette small,
+.supplyPalette small {
   color: var(--success);
 }
 
@@ -517,6 +523,9 @@
 .selectedNode.orange {
   border: 1.5px solid #e89a55;
 }
+.selectedNode.green {
+  border: 1.5px solid var(--success);
+}
 .problemNode {
   border-color: var(--danger) !important;
 }
@@ -538,6 +547,10 @@
   background: var(--orange-soft);
   color: #b5581a;
 }
+.green .nodeHead {
+  background: var(--success-soft);
+  color: #167551;
+}
 
 .nodeHead > span {
   width: 16px;
@@ -553,6 +566,9 @@
 }
 .orange .nodeHead > span {
   background: var(--orange);
+}
+.green .nodeHead > span {
+  background: var(--success);
 }
 
 .nodeHead strong {
@@ -686,6 +702,13 @@
 }
 .nextActionMenu button:hover {
   background: var(--purple-soft);
+}
+.nextActionMenu button:disabled {
+  color: var(--muted);
+  cursor: not-allowed;
+}
+.nextActionMenu button:disabled small {
+  margin-left: auto;
 }
 .nextActionMenu > span {
   color: var(--muted);
@@ -861,6 +884,10 @@
   background: var(--orange);
 }
 
+.greenIcon {
+  background: var(--success);
+}
+
 .inspectorScroll {
   flex: 1;
   min-height: 0;
@@ -973,6 +1000,30 @@
   color: var(--muted);
   font-size: 10.5px;
   font-weight: 550;
+}
+
+.venueSelect {
+  min-height: 40px;
+  padding: 0 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: white;
+  color: var(--success);
+}
+
+.venueSelect select {
+  min-width: 0;
+  flex: 1;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
 }
 
 .amountField {
@@ -1143,6 +1194,52 @@
   color: var(--muted);
 }
 .routePreview dd {
+  margin: 0;
+  color: var(--ink);
+  text-align: right;
+}
+
+.marketPreview {
+  margin: 14px 0 12px;
+  padding: 13px;
+  border: 1px solid #cfe9df;
+  border-radius: 11px;
+  background: #fbfffd;
+}
+
+.marketPreview > p {
+  margin: 14px 0 3px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.marketApy {
+  margin-bottom: 14px;
+  color: var(--success);
+  font-size: 23px;
+  font-weight: 670;
+  letter-spacing: -0.03em;
+}
+
+.marketPreview dl {
+  margin: 0 0 13px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.marketPreview dl div {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 10px;
+}
+
+.marketPreview dt {
+  color: var(--muted);
+}
+
+.marketPreview dd {
   margin: 0;
   color: var(--ink);
   text-align: right;

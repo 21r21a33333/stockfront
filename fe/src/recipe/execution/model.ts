@@ -30,7 +30,7 @@ export interface ExecutionAttempt {
   kind: PreparedRecipeStep["kind"];
   attempt: number;
   phase: ExecutionPhase;
-  executionMode?: "SWAP" | "RFQ";
+  executionMode?: "SWAP" | "RFQ" | "SUPPLY";
   steps: PreparedRecipeStep["kind"][];
   reference?: ExecutionReference;
   firstSubmittedAtMs?: number;
@@ -107,15 +107,17 @@ export function executionProgress(
 }
 
 export function isRunComplete(run: ExecutionRun): boolean {
-  const trades = run.recipe.nodes.filter((node) => node.kind === "TRADE");
+  const actions = run.recipe.nodes.filter(
+    (node) => node.kind === "TRADE" || node.kind === "SUPPLY",
+  );
   const latest = latestAttempts(run.attempts);
   return (
-    trades.length > 0 &&
-    trades.every((node) =>
+    actions.length > 0 &&
+    actions.every((node) =>
       latest.some(
         (item) =>
           item.nodeId === node.id &&
-          item.kind === "TRADE" &&
+          item.kind === node.kind &&
           item.phase === "complete",
       ),
     )
@@ -126,10 +128,15 @@ export function completedRecipeNodes(
   attempts: ExecutionAttempt[],
 ): RecipeCompletedNode[] {
   return latestAttempts(attempts)
-    .filter((item) => item.kind === "TRADE" && item.phase === "complete")
+    .filter(
+      (item) =>
+        (item.kind === "TRADE" || item.kind === "SUPPLY") &&
+        item.phase === "complete",
+    )
     .map((item) => ({
       nodeId: item.nodeId,
-      outputs: item.settledOutput ? [item.settledOutput] : [],
+      outputs:
+        item.kind === "TRADE" && item.settledOutput ? [item.settledOutput] : [],
     }));
 }
 
