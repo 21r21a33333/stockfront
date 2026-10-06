@@ -26,13 +26,13 @@ pub use diagnostics::{
     RecipeValidationReport,
 };
 pub use model::{
-    PrepareRecipeRequest, PreparedRecipe, PreparedRecipeStep, RecipeAssetTransition, RecipeCatalog,
-    RecipeCompletedNode, RecipeContext, RecipeDefinition, RecipeEdge, RecipeFieldControl,
-    RecipeFieldDescriptor, RecipeNode, RecipeNodeOutput, RecipeNodePreview, RecipeNodeSelection,
-    RecipeNodeState, RecipeOptionSource, RecipePortDescriptor, RecipePortDirection, RecipePortFlow,
-    RecipePortRef, RecipePortValueType, RecipePreview, RecipePreviewRequest, RecipePrimitive,
-    RecipePrimitiveDescriptor, RecipePrimitiveKind, RecipeSupplyPolicy, RecipeSupplyRule,
-    RecipeTradePolicy, RecipeWithdrawalPolicy, RecipeWithdrawalRule,
-    RecipeWithdrawalUnavailableReason,
+    PrepareRecipeRequest, PreparedRecipe, PreparedRecipeStep, RecipeAssetTransition,
+    RecipeBorrowPolicy, RecipeBorrowRule, RecipeCatalog, RecipeCompletedNode, RecipeContext,
+    RecipeDefinition, RecipeEdge, RecipeFieldControl, RecipeFieldDescriptor, RecipeNode,
+    RecipeNodeOutput, RecipeNodePreview, RecipeNodeSelection, RecipeNodeState, RecipeOptionSource,
+    RecipePortDescriptor, RecipePortDirection, RecipePortFlow, RecipePortRef, RecipePortValueType,
+    RecipePreview, RecipePreviewRequest, RecipePrimitive, RecipePrimitiveDescriptor,
+    RecipePrimitiveKind, RecipeSupplyPolicy, RecipeSupplyRule, RecipeTradePolicy,
+    RecipeWithdrawalPolicy, RecipeWithdrawalRule, RecipeWithdrawalUnavailableReason,
 };
 pub use service::{RecipeError, RecipeService};

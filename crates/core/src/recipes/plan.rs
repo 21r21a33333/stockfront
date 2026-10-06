@@ -52,6 +52,11 @@ pub(super) enum RecipeAction {
     Withdraw {
         position: SuppliedPositionRef,
     },
+    Borrow {
+        collateral: SuppliedPositionRef,
+        debt_token: Address,
+        raw_amount: U256,
+    },
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]

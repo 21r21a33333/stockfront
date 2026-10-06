@@ -90,9 +90,12 @@ fn validate_recipe_header(recipe: &RecipeDefinition) -> Vec<RecipeDiagnostic> {
 
 fn validate_node_fields(recipe: &RecipeDefinition, diagnostics: &mut Vec<RecipeDiagnostic>) {
     for node in &recipe.nodes {
-        if let RecipePrimitive::WalletAsset { raw_amount, .. } = &node.primitive
-            && raw_amount.is_zero()
-        {
+        if matches!(
+            &node.primitive,
+            RecipePrimitive::WalletAsset { raw_amount, .. }
+                | RecipePrimitive::Borrow { raw_amount, .. }
+                if raw_amount.is_zero()
+        ) {
             diagnostics.push(RecipeDiagnostic::error(
                 RecipeDiagnosticCode::InvalidAmount,
                 RecipeDiagnosticLocation::Field {
@@ -190,9 +193,44 @@ fn lower(graph: &RecipeGraph<'_>) -> Result<LogicalPlan, RecipeDiagnostic> {
                     action: RecipeAction::Withdraw { position },
                 });
             }
+            RecipePrimitive::Borrow {
+                debt_token,
+                raw_amount,
+            } => {
+                let (step, output) =
+                    lower_borrow(graph, &positions, node_id, *debt_token, *raw_amount)?;
+                steps.push(step);
+                values.insert((node_id, "borrowed".to_owned()), output);
+            }
         }
     }
     Ok(LogicalPlan { steps })
+}
+
+fn lower_borrow(
+    graph: &RecipeGraph<'_>,
+    positions: &HashMap<(Uuid, String), SuppliedPositionRef>,
+    node_id: Uuid,
+    debt_token: alloy_primitives::Address,
+    raw_amount: alloy_primitives::U256,
+) -> Result<(LogicalStep, AssetRef), RecipeDiagnostic> {
+    let collateral = input_position_on(graph, positions, node_id, "collateral")?;
+    Ok((
+        LogicalStep {
+            node_id,
+            dependencies: Vec::new(),
+            action: RecipeAction::Borrow {
+                collateral,
+                debt_token,
+                raw_amount,
+            },
+        },
+        AssetRef::NodeOutput {
+            node_id,
+            port: "borrowed".to_owned(),
+            token: debt_token,
+        },
+    ))
 }
 
 fn input_asset(
@@ -219,14 +257,23 @@ fn input_position(
     positions: &HashMap<(Uuid, String), SuppliedPositionRef>,
     node_id: Uuid,
 ) -> Result<SuppliedPositionRef, RecipeDiagnostic> {
+    input_position_on(graph, positions, node_id, "position")
+}
+
+fn input_position_on(
+    graph: &RecipeGraph<'_>,
+    positions: &HashMap<(Uuid, String), SuppliedPositionRef>,
+    node_id: Uuid,
+    port: &str,
+) -> Result<SuppliedPositionRef, RecipeDiagnostic> {
     let edge = graph
-        .incoming(node_id, "position")
-        .ok_or_else(|| missing_input(node_id, "position"))?;
+        .incoming(node_id, port)
+        .ok_or_else(|| missing_input(node_id, port))?;
     let source_key = (edge.edge.from.node_id, edge.edge.from.port.clone());
     positions.get(&source_key).copied().ok_or_else(|| {
         unavailable_input(
             node_id,
-            "position",
+            port,
             "the supplied position is not available before this step",
         )
     })
@@ -267,6 +314,7 @@ mod tests {
     const SUPPLY_ID: Uuid = Uuid::from_u128(6);
     const POSITION_ID: Uuid = Uuid::from_u128(8);
     const WITHDRAW_ID: Uuid = Uuid::from_u128(9);
+    const BORROW_ID: Uuid = Uuid::from_u128(12);
 
     #[test]
     fn compiles_wallet_asset_trade_into_a_logical_plan() {
@@ -440,6 +488,65 @@ mod tests {
                     pool,
                     token,
                 },
+            }
+        );
+    }
+
+    #[test]
+    fn compiles_supplied_position_into_borrow_with_exact_output() {
+        let pool = Address::with_last_byte(8);
+        let collateral = Address::with_last_byte(9);
+        let debt = Address::with_last_byte(10);
+        let amount = U256::from(1_000_000_u64);
+        let recipe = RecipeDefinition {
+            schema_version: SCHEMA_VERSION,
+            chain_id: BNB_CHAIN_ID,
+            nodes: vec![
+                RecipeNode {
+                    id: POSITION_ID,
+                    primitive: RecipePrimitive::SuppliedPosition {
+                        venue: BorrowingVenue::Venus,
+                        pool,
+                        token: collateral,
+                    },
+                },
+                RecipeNode {
+                    id: BORROW_ID,
+                    primitive: RecipePrimitive::Borrow {
+                        debt_token: debt,
+                        raw_amount: amount,
+                    },
+                },
+            ],
+            edges: vec![RecipeEdge {
+                id: Uuid::from_u128(13),
+                from: RecipePortRef {
+                    node_id: POSITION_ID,
+                    port: "position".to_owned(),
+                },
+                to: RecipePortRef {
+                    node_id: BORROW_ID,
+                    port: "collateral".to_owned(),
+                },
+            }],
+        };
+
+        let compiled = compile(&recipe);
+        let plan = compiled
+            .plan
+            .unwrap_or_else(|| panic!("valid borrow recipe did not produce a plan"));
+
+        assert!(compiled.report.valid);
+        assert_eq!(
+            plan.steps[0].action,
+            RecipeAction::Borrow {
+                collateral: SuppliedPositionRef {
+                    venue: BorrowingVenue::Venus,
+                    pool,
+                    token: collateral,
+                },
+                debt_token: debt,
+                raw_amount: amount,
             }
         );
     }

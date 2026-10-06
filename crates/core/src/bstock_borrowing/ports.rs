@@ -4,9 +4,10 @@ use thiserror::Error;
 
 use crate::{
     bstock_borrowing::{
-        BorrowingAccount, BorrowingMarket, BorrowingTransactionStatus, PrepareBorrowRequest,
-        PrepareCollateralRequest, PrepareRepaymentRequest, PrepareSupplyRequest,
-        PrepareWithdrawalRequest, PreparedBorrowingAction, SupplyMarket,
+        BorrowCapability, BorrowCapabilityRequest, BorrowingAccount, BorrowingMarket,
+        BorrowingTransactionStatus, PrepareBorrowRequest, PrepareCollateralRequest,
+        PrepareRepaymentRequest, PrepareSupplyRequest, PrepareWithdrawalRequest,
+        PreparedBorrowingAction, SupplyMarket,
     },
     bstock_market::BstockId,
     wallet_portfolio::WalletAddress,
@@ -70,6 +71,11 @@ pub trait BorrowingActionGateway: Send + Sync {
 
 #[async_trait]
 pub trait BorrowingReader: Send + Sync {
+    async fn read_borrow_capability(
+        &self,
+        request: &BorrowCapabilityRequest,
+    ) -> Result<BorrowCapability, BorrowingProviderError>;
+
     async fn read_supply_market(
         &self,
         token: Address,

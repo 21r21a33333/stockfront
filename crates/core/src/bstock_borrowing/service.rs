@@ -6,10 +6,11 @@ use thiserror::Error;
 
 use crate::{
     bstock_borrowing::{
-        BorrowingAccount, BorrowingActionGateway, BorrowingMarket, BorrowingMarketQuery,
-        BorrowingProviderError, BorrowingReader, BorrowingTransactionStatus, PositionAmount,
-        PrepareBorrowRequest, PrepareCollateralRequest, PrepareRepaymentRequest,
-        PrepareSupplyRequest, PrepareWithdrawalRequest, PreparedBorrowingAction, SupplyMarket,
+        BorrowCapability, BorrowCapabilityRequest, BorrowingAccount, BorrowingActionGateway,
+        BorrowingMarket, BorrowingMarketQuery, BorrowingProviderError, BorrowingReader,
+        BorrowingTransactionStatus, PositionAmount, PrepareBorrowRequest, PrepareCollateralRequest,
+        PrepareRepaymentRequest, PrepareSupplyRequest, PrepareWithdrawalRequest,
+        PreparedBorrowingAction, SupplyMarket,
     },
     bstock_market::{BNB_CHAIN_ID, BstockCatalog, BstockId, CatalogError},
     wallet_portfolio::WalletAddress,
@@ -18,6 +19,11 @@ use crate::{
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct BorrowingPolicy {
     debt_tokens: Vec<Address>,
+}
+
+#[must_use]
+pub fn minimum_borrow_health_factor() -> Decimal {
+    Decimal::new(15, 1)
 }
 
 impl BorrowingPolicy {
@@ -34,6 +40,11 @@ impl BorrowingPolicy {
             return Err(BorrowingPolicyError::NoDebtTokens);
         }
         Ok(Self { debt_tokens })
+    }
+
+    #[must_use]
+    pub fn debt_tokens(&self) -> &[Address] {
+        &self.debt_tokens
     }
 }
 
@@ -61,6 +72,10 @@ pub enum BorrowingServiceError {
     UnsupportedCollateral,
     #[error("the debt token is not supported")]
     UnsupportedDebtToken,
+    #[error("the borrow health factor is unavailable")]
+    HealthFactorUnavailable,
+    #[error("the borrow would reduce the health factor below the safety minimum")]
+    UnsafeHealthFactor,
 }
 
 pub struct BorrowingService {
@@ -83,6 +98,50 @@ impl BorrowingService {
             action_gateway,
             policy,
         }
+    }
+
+    #[must_use]
+    pub fn supported_debt_tokens(&self) -> &[Address] {
+        self.policy.debt_tokens()
+    }
+
+    #[must_use]
+    pub fn minimum_health_factor(&self) -> Decimal {
+        minimum_borrow_health_factor()
+    }
+
+    /// Returns current account-wide safety for one exact borrow request.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`BorrowingServiceError`] when an asset is unsupported or live
+    /// Venus account and market state cannot be read safely.
+    pub async fn borrow_capability(
+        &self,
+        wallet: WalletAddress,
+        pool: Address,
+        collateral_token: Address,
+        debt_token: Address,
+        raw_amount: alloy_primitives::U256,
+    ) -> Result<BorrowCapability, BorrowingServiceError> {
+        if raw_amount.is_zero() {
+            return Err(BorrowingServiceError::InvalidBorrowAmount);
+        }
+        self.ensure_supported_collateral(collateral_token).await?;
+        if !self.policy.debt_tokens.contains(&debt_token) {
+            return Err(BorrowingServiceError::UnsupportedDebtToken);
+        }
+        self.reader
+            .read_borrow_capability(&BorrowCapabilityRequest {
+                wallet,
+                pool,
+                collateral_token,
+                debt_token,
+                raw_amount,
+                minimum_health_factor: minimum_borrow_health_factor(),
+            })
+            .await
+            .map_err(Into::into)
     }
 
     /// Returns Venus markets at the intersection of supported bStocks and debt assets.
@@ -212,10 +271,15 @@ impl BorrowingService {
         if !self.policy.debt_tokens.contains(&request.debt_token) {
             return Err(BorrowingServiceError::UnsupportedDebtToken);
         }
-        self.action_gateway
-            .prepare_borrow(request)
-            .await
-            .map_err(Into::into)
+        let action = self.action_gateway.prepare_borrow(request).await?;
+        let health_factor = action
+            .preview
+            .health_factor_after
+            .ok_or(BorrowingServiceError::HealthFactorUnavailable)?;
+        if health_factor < minimum_borrow_health_factor() {
+            return Err(BorrowingServiceError::UnsafeHealthFactor);
+        }
+        Ok(action)
     }
 
     /// Returns an exact, finite token approval required by a Venus repayment.
@@ -358,6 +422,13 @@ mod tests {
 
     #[async_trait]
     impl BorrowingReader for RecordingReader {
+        async fn read_borrow_capability(
+            &self,
+            _request: &BorrowCapabilityRequest,
+        ) -> Result<BorrowCapability, BorrowingProviderError> {
+            Err(BorrowingProviderError::Unavailable)
+        }
+
         async fn read_supply_market(
             &self,
             _token: Address,
@@ -424,7 +495,14 @@ mod tests {
             assert_eq!(request.debt_token, Address::with_last_byte(2));
             Ok(PreparedBorrowingAction {
                 transactions: Vec::new(),
-                preview: BorrowingPreview::default(),
+                preview: BorrowingPreview {
+                    health_factor_after: Some(if request.amount == Decimal::new(99, 0) {
+                        Decimal::new(14, 1)
+                    } else {
+                        Decimal::new(2, 0)
+                    }),
+                    ..BorrowingPreview::default()
+                },
             })
         }
 
@@ -615,6 +693,20 @@ mod tests {
 
         assert!(collateral.transactions.is_empty());
         assert!(borrow.transactions.is_empty());
+    }
+
+    #[tokio::test]
+    async fn borrow_rejects_a_provider_action_below_the_safety_floor() {
+        let error = service()
+            .prepare_borrow(&PrepareBorrowRequest {
+                wallet: WalletAddress::try_from(Address::with_last_byte(3))
+                    .unwrap_or_else(|error| panic!("valid wallet rejected: {error}")),
+                debt_token: Address::with_last_byte(2),
+                amount: Decimal::new(99, 0),
+            })
+            .await;
+
+        assert_eq!(error, Err(BorrowingServiceError::UnsafeHealthFactor));
     }
 
     #[tokio::test]

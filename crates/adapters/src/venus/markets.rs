@@ -5,9 +5,9 @@ use async_trait::async_trait;
 use rust_decimal::Decimal;
 use stockfront_core::{
     bstock_borrowing::{
-        BorrowingAccount, BorrowingMarket, BorrowingMarketUnavailableReason,
-        BorrowingProviderError, BorrowingReader, BorrowingToken, BorrowingVenue, SupplyMarket,
-        SupplyMarketUnavailableReason,
+        BorrowCapability, BorrowCapabilityRequest, BorrowingAccount, BorrowingMarket,
+        BorrowingMarketUnavailableReason, BorrowingProviderError, BorrowingReader, BorrowingToken,
+        BorrowingVenue, SupplyMarket, SupplyMarketUnavailableReason,
     },
     bstock_market::{BNB_CHAIN_ID, BstockId},
     wallet_portfolio::WalletAddress,
@@ -34,10 +34,10 @@ const ORACLE_VALID: u8 = 1 << 3;
 pub(super) struct MarketState {
     pub(super) market: Address,
     comptroller: Address,
-    token: BorrowingToken,
+    pub(super) token: BorrowingToken,
     pub(super) token_decimals: u32,
     pub(super) underlying_price_usd: Decimal,
-    borrow_apy_percent: Decimal,
+    pub(super) borrow_apy_percent: Decimal,
     supply_apy_percent: Decimal,
     collateral_factor: Decimal,
     pub(super) liquidation_threshold: Decimal,
@@ -130,10 +130,37 @@ impl MarketState {
         self.cash
             .min(self.borrow_cap.saturating_sub(self.total_borrows))
     }
+
+    pub(super) fn is_listed(&self) -> bool {
+        self.has(LISTED)
+    }
+
+    pub(super) fn is_borrowable(&self) -> bool {
+        self.has(BORROWABLE)
+    }
+
+    pub(super) fn oracle_valid(&self) -> bool {
+        self.has(ORACLE_VALID)
+    }
+
+    pub(super) fn borrow_paused(&self) -> bool {
+        action_paused(self.paused_actions, BORROW_ACTION)
+    }
+
+    pub(super) fn borrow_cap_reached(&self) -> bool {
+        self.borrow_cap.saturating_sub(self.total_borrows) == U256::ZERO
+    }
 }
 
 #[async_trait]
 impl BorrowingReader for VenusBorrowingAdapter {
+    async fn read_borrow_capability(
+        &self,
+        request: &BorrowCapabilityRequest,
+    ) -> Result<BorrowCapability, BorrowingProviderError> {
+        self.borrow_capability(request).await
+    }
+
     async fn read_supply_market(
         &self,
         token: Address,

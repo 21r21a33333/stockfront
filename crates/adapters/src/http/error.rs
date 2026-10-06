@@ -156,6 +156,16 @@ impl ApiError {
         "invalid_borrow_amount",
         "borrow amount must be greater than zero",
     );
+    const BORROW_HEALTH_FACTOR_UNAVAILABLE: Self = Self::fixed(
+        StatusCode::UNPROCESSABLE_ENTITY,
+        "borrow_health_factor_unavailable",
+        "the borrow health factor could not be verified",
+    );
+    const UNSAFE_BORROW_HEALTH_FACTOR: Self = Self::fixed(
+        StatusCode::UNPROCESSABLE_ENTITY,
+        "unsafe_borrow_health_factor",
+        "the borrow would reduce the health factor below the safety minimum",
+    );
     const INVALID_REPAYMENT_AMOUNT: Self = Self::fixed(
         StatusCode::BAD_REQUEST,
         "invalid_repayment_amount",
@@ -582,6 +592,10 @@ impl From<BorrowingServiceError> for ApiError {
             BorrowingServiceError::InvalidWithdrawalAmount => Self::INVALID_WITHDRAWAL_AMOUNT,
             BorrowingServiceError::UnsupportedCollateral => Self::UNSUPPORTED_COLLATERAL,
             BorrowingServiceError::UnsupportedDebtToken => Self::UNSUPPORTED_DEBT_TOKEN,
+            BorrowingServiceError::HealthFactorUnavailable => {
+                Self::BORROW_HEALTH_FACTOR_UNAVAILABLE
+            }
+            BorrowingServiceError::UnsafeHealthFactor => Self::UNSAFE_BORROW_HEALTH_FACTOR,
         }
     }
 }

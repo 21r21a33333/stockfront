@@ -3,6 +3,7 @@ mod ports;
 mod service;
 
 pub use model::{
+    BorrowCapability, BorrowCapabilityRequest, BorrowCapabilityUnavailableReason, BorrowStage,
     BorrowingAccount, BorrowingAsset, BorrowingMarket, BorrowingMarketQuery,
     BorrowingMarketUnavailableReason, BorrowingNetworkFee, BorrowingPosition, BorrowingPreview,
     BorrowingToken, BorrowingTransactionKind, BorrowingTransactionState,
@@ -12,4 +13,7 @@ pub use model::{
     SupplyMarketUnavailableReason,
 };
 pub use ports::{BorrowingActionGateway, BorrowingProviderError, BorrowingReader};
-pub use service::{BorrowingPolicy, BorrowingPolicyError, BorrowingService, BorrowingServiceError};
+pub use service::{
+    BorrowingPolicy, BorrowingPolicyError, BorrowingService, BorrowingServiceError,
+    minimum_borrow_health_factor,
+};

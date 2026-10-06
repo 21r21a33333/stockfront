@@ -1,4 +1,4 @@
-use alloy_primitives::Address;
+use alloy_primitives::{Address, U256};
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 
@@ -93,6 +93,70 @@ pub struct BorrowingMarket {
     pub oracle_valid: bool,
     pub unavailable_reasons: Vec<BorrowingMarketUnavailableReason>,
     pub observed_at_ms: i64,
+}
+
+/// Live safety and liquidity information for one exact Venus borrow.
+///
+/// The selected collateral is only the position the recipe starts from. Venus
+/// still evaluates every enabled collateral and every debt in the account.
+#[derive(utoipa::ToSchema, Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BorrowCapability {
+    pub venue: BorrowingVenue,
+    pub chain_id: u64,
+    #[serde(serialize_with = "serialize_as_string")]
+    #[schema(value_type = String, format = "evm-address")]
+    pub pool: Address,
+    pub collateral: BorrowingToken,
+    pub debt: BorrowingToken,
+    pub requested_amount: Decimal,
+    #[serde(serialize_with = "serialize_as_string")]
+    #[schema(value_type = String)]
+    pub requested_raw_amount: U256,
+    pub debt_token_decimals: u32,
+    pub conservative_max_amount: Decimal,
+    pub available_borrow_liquidity: Decimal,
+    pub borrow_apy_percent: Decimal,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub health_factor_before: Option<Decimal>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub health_factor_after: Option<Decimal>,
+    pub collateral_enabled: bool,
+    pub stage: BorrowStage,
+    pub unavailable_reasons: Vec<BorrowCapabilityUnavailableReason>,
+    pub observed_at_ms: i64,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct BorrowCapabilityRequest {
+    pub wallet: WalletAddress,
+    pub pool: Address,
+    pub collateral_token: Address,
+    pub debt_token: Address,
+    pub raw_amount: U256,
+    pub minimum_health_factor: Decimal,
+}
+
+#[derive(utoipa::ToSchema, Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum BorrowStage {
+    EnableCollateral,
+    Borrow,
+}
+
+#[derive(utoipa::ToSchema, Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum BorrowCapabilityUnavailableReason {
+    PositionNotFound,
+    UnsupportedPool,
+    MarketUnlisted,
+    CollateralUnavailable,
+    BorrowPaused,
+    BorrowCapReached,
+    InsufficientBorrowLiquidity,
+    InvalidOraclePrice,
+    HealthFactorUnavailable,
+    HealthFactorBelowMinimum,
 }
 
 #[derive(utoipa::ToSchema, Clone, Debug, Eq, PartialEq, Serialize)]

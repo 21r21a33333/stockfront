@@ -645,6 +645,13 @@ mod tests {
 
     #[async_trait]
     impl BorrowingReader for FixedBorrowingReader {
+        async fn read_borrow_capability(
+            &self,
+            _request: &crate::bstock_borrowing::BorrowCapabilityRequest,
+        ) -> Result<crate::bstock_borrowing::BorrowCapability, BorrowingProviderError> {
+            Err(BorrowingProviderError::Unavailable)
+        }
+
         async fn read_supply_market(
             &self,
             _token: Address,
