@@ -30,7 +30,7 @@ export interface ExecutionAttempt {
   kind: PreparedRecipeStep["kind"];
   attempt: number;
   phase: ExecutionPhase;
-  executionMode?: "SWAP" | "RFQ" | "SUPPLY";
+  executionMode?: "SWAP" | "RFQ" | "SUPPLY" | "WITHDRAW";
   steps: PreparedRecipeStep["kind"][];
   reference?: ExecutionReference;
   firstSubmittedAtMs?: number;
@@ -108,7 +108,10 @@ export function executionProgress(
 
 export function isRunComplete(run: ExecutionRun): boolean {
   const actions = run.recipe.nodes.filter(
-    (node) => node.kind === "TRADE" || node.kind === "SUPPLY",
+    (node) =>
+      node.kind === "TRADE" ||
+      node.kind === "SUPPLY" ||
+      node.kind === "WITHDRAW",
   );
   const latest = latestAttempts(run.attempts);
   return (
@@ -130,7 +133,9 @@ export function completedRecipeNodes(
   return latestAttempts(attempts)
     .filter(
       (item) =>
-        (item.kind === "TRADE" || item.kind === "SUPPLY") &&
+        (item.kind === "TRADE" ||
+          item.kind === "SUPPLY" ||
+          item.kind === "WITHDRAW") &&
         item.phase === "complete",
     )
     .map((item) => ({
@@ -170,5 +175,5 @@ export function attemptLabel(item: ExecutionAttempt): string {
   if (item.phase === "attention") return "Needs attention — check status";
   if (item.phase === "awaiting") return "Confirm in wallet";
   if (item.phase === "submitting") return "Submitting order";
-  return "Failed — refresh route";
+  return "Failed — prepare again";
 }

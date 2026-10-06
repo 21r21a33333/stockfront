@@ -1,7 +1,7 @@
 import { formatUnits } from "viem";
 import type { PreparedRecipe, TradeQuote } from "@/api/generated";
 import type { AssetOption } from "../editor/types";
-import { formatQuote, formatDisplayAmount } from "./amounts";
+import { formatQuote, formatDisplayAmount } from "../format";
 import styles from "../RecipeBuilder.module.css";
 
 export function RoutePreview({

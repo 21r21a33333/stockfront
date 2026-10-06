@@ -4,7 +4,10 @@ import { useAccount, useReadContracts } from "wagmi";
 import type { RecipeCatalog } from "@/api/generated";
 import type { AssetOption } from "@/recipe/editor/types";
 
-export function useRecipeAssets(catalog?: RecipeCatalog): AssetOption[] {
+export function useRecipeAssets(catalog?: RecipeCatalog): {
+  assets: AssetOption[];
+  refetchBalances(): Promise<unknown>;
+} {
   const { address: wallet } = useAccount();
   const settlementContracts = useMemo(
     () =>
@@ -76,7 +79,7 @@ export function useRecipeAssets(catalog?: RecipeCatalog): AssetOption[] {
     query: { enabled: balanceContracts.length > 0, refetchInterval: 15_000 },
   });
 
-  return useMemo(
+  const assets = useMemo(
     () =>
       baseAssets.map((asset, index) => {
         const balance = balances.data?.[index];
@@ -90,6 +93,7 @@ export function useRecipeAssets(catalog?: RecipeCatalog): AssetOption[] {
       }),
     [balances.data, baseAssets],
   );
+  return { assets, refetchBalances: balances.refetch };
 }
 
 function knownSettlement(address: string) {

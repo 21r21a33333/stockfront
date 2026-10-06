@@ -9,9 +9,9 @@ export type PreparedExecution =
   | {
       kind: "CALL_BATCH";
       nodeId: string;
-      action: "APPROVAL" | "TRADE" | "SUPPLY";
-      executionMode: "SWAP" | "SUPPLY";
-      steps: ("APPROVAL" | "TRADE" | "SUPPLY")[];
+      action: "APPROVAL" | "TRADE" | "SUPPLY" | "WITHDRAW";
+      executionMode: "SWAP" | "SUPPLY" | "WITHDRAW";
+      steps: ("APPROVAL" | "TRADE" | "SUPPLY" | "WITHDRAW")[];
       calls: { to: Address; data: Hex; value?: bigint }[];
       atomicRequired: boolean;
     }
@@ -43,6 +43,29 @@ export async function preparedExecution(
   const approval = prepared.steps.find((step) => step.kind === "APPROVAL");
   const trade = prepared.steps.find((step) => step.kind === "TRADE");
   const supply = prepared.steps.find((step) => step.kind === "SUPPLY");
+  const withdrawal = prepared.steps.find((step) => step.kind === "WITHDRAW");
+
+  if (withdrawal?.kind === "WITHDRAW") {
+    if (prepared.steps.length !== 1)
+      throw new Error("A withdrawal preparation must contain one recipe step.");
+    const [transaction] = withdrawal.action.transactions;
+    if (
+      withdrawal.action.transactions.length !== 1 ||
+      transaction?.kind !== "WITHDRAW"
+    )
+      throw new Error(
+        "The prepared withdrawal must contain one withdrawal transaction.",
+      );
+    return {
+      kind: "CALL_BATCH",
+      nodeId,
+      action: "WITHDRAW",
+      executionMode: "WITHDRAW",
+      steps: ["WITHDRAW"],
+      calls: [call(transaction)],
+      atomicRequired: false,
+    };
+  }
 
   if (supply?.kind === "SUPPLY") {
     if (prepared.steps.length !== 1)

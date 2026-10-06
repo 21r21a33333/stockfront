@@ -9,12 +9,17 @@ import { recipesApi } from "@/api/recipes";
 import { useRecipeExecution } from "./execution/useRecipeExecution";
 import { recipeRuntimeContext } from "./execution/runtimeContext";
 import { ExecutionPanel } from "./execution/ExecutionPanel";
-import type { RecipeFlowNode } from "./editor/types";
+import type {
+  AssetOption,
+  RecipeFlowNode,
+  RecipeNodeData,
+} from "./editor/types";
 import type {
   PrepareRecipeRequest,
   RecipePreviewRequest,
   RecipeDiagnostic,
   RecipePreview,
+  RecipeNode,
   TradeQuote,
 } from "@/api/generated";
 import { ActionPalette } from "@/recipe/ActionPalette";
@@ -26,6 +31,8 @@ import { RecipeInspector } from "@/recipe/inspector/RecipeInspector";
 import { useRecipeEditor } from "@/recipe/editor/store";
 import { compatibleTradeAssets } from "@/recipe/editor/tradePolicy";
 import { canSupplyAsset } from "@/recipe/editor/supplyPolicy";
+import { flowType } from "@/recipe/editor/types";
+import { selectableSuppliedPositions } from "@/recipe/editor/withdrawalPolicy";
 import styles from "@/recipe/RecipeBuilder.module.css";
 
 export function RecipeBuilderPage() {
@@ -35,13 +42,41 @@ export function RecipeBuilderPage() {
     queryKey: ["recipe-catalog"],
     queryFn: recipesApi.catalog,
   });
-  const assets = useRecipeAssets(catalog.data);
+  const { assets, refetchBalances } = useRecipeAssets(catalog.data);
+  const {
+    data: borrowingData,
+    error: borrowingError,
+    refetch: refetchBorrowingAccount,
+  } = useQuery({
+    queryKey: ["borrowing-account", account.address?.toLowerCase()],
+    queryFn: () => recipesApi.borrowingAccount(account.address!),
+    enabled: Boolean(account.address && account.chainId === 56),
+    refetchInterval: 15_000,
+  });
+  const suppliedPositions = useMemo(
+    () =>
+      catalog.data
+        ? selectableSuppliedPositions(
+            borrowingData,
+            catalog.data.withdrawalPolicy,
+            assets,
+          )
+        : [],
+    [assets, borrowingData, catalog.data],
+  );
   const defaults = useMemo(
     () => ({
       settlementToken: catalog.data?.settlementTokens[0],
       bstockToken: catalog.data?.bstocks[0]?.contract,
+      suppliedPosition: suppliedPositions[0]
+        ? {
+            venue: suppliedPositions[0].venue,
+            pool: suppliedPositions[0].pool,
+            token: suppliedPositions[0].asset.token.contract,
+          }
+        : undefined,
     }),
-    [catalog.data],
+    [catalog.data, suppliedPositions],
   );
 
   useEffect(() => {
@@ -128,6 +163,23 @@ export function RecipeBuilderPage() {
       `${request.context.wallet.toLowerCase()}:${request.recipe.chainId}:${JSON.stringify(request.recipe)}`;
   const activePrepared = matches(prepare.variables) ? prepare.data : undefined;
   const execution = useRecipeExecution({ recipe, prepared: activePrepared });
+  const refreshedRun = useRef<string>();
+  useEffect(() => {
+    if (
+      !execution.completed ||
+      !execution.run?.id ||
+      refreshedRun.current === execution.run.id
+    )
+      return;
+    refreshedRun.current = execution.run.id;
+    void refetchBorrowingAccount();
+    void refetchBalances();
+  }, [
+    execution.completed,
+    execution.run?.id,
+    refetchBalances,
+    refetchBorrowingAccount,
+  ]);
   const runtimeContext = account.address
     ? recipeRuntimeContext(account.address, execution.run?.attempts ?? [])
     : undefined;
@@ -325,29 +377,9 @@ export function RecipeBuilderPage() {
       return;
     const nodes: RecipeFlowNode[] = snapshot.nodes.map((node, index) => ({
       id: node.id,
-      type:
-        node.kind === "TRADE"
-          ? "trade"
-          : node.kind === "SUPPLY"
-            ? "supply"
-            : "walletAsset",
+      type: flowType(node.kind),
       position: { x: 70 + index * 385, y: 180 },
-      data:
-        node.kind === "TRADE"
-          ? { kind: "TRADE", buyToken: node.buyToken }
-          : node.kind === "SUPPLY"
-            ? { kind: "SUPPLY", venue: node.venue }
-            : {
-                kind: "WALLET_ASSET",
-                token: node.token,
-                amount: formatUnits(
-                  BigInt(node.rawAmount),
-                  assets.find(
-                    (asset) =>
-                      asset.address.toLowerCase() === node.token.toLowerCase(),
-                  )!.decimals,
-                ),
-              },
+      data: restoredNodeData(node, assets),
     }));
     useRecipeEditor.setState({
       nodes,
@@ -380,14 +412,13 @@ export function RecipeBuilderPage() {
     <BuilderContext.Provider
       value={{
         assets,
+        suppliedPositions,
         diagnostics,
         selectedRoutes,
         preview: runtimePreview,
         prepared: execution.sameRecipe ? runtimePrepared : undefined,
         execution: execution.sameRecipe ? execution.progress : [],
-        connectedOutputs: editor.edges
-          .filter((edge) => edge.sourceHandle === "buy")
-          .map((edge) => edge.source),
+        connectedOutputs: editor.edges.map((edge) => edge.source),
         supplyableOutputs: editor.nodes.flatMap((node) => {
           if (node.data.kind !== "TRADE") return [];
           const buyToken = node.data.buyToken;
@@ -424,6 +455,10 @@ export function RecipeBuilderPage() {
           editor.appendSupply(sourceId);
           setInspectorView("configure");
         },
+        appendWithdraw: (sourceId) => {
+          editor.appendWithdraw(sourceId);
+          setInspectorView("configure");
+        },
         openActivity: () => {
           editor.setMode("builder");
           setInspectorView("activity");
@@ -454,13 +489,7 @@ export function RecipeBuilderPage() {
                 editor.nodes.length === 0
                   ? "Untitled recipe"
                   : editor.nodes
-                      .map((node) =>
-                        node.data.kind === "WALLET_ASSET"
-                          ? "Wallet asset"
-                          : node.data.kind === "TRADE"
-                            ? "Trade"
-                            : "Supply",
-                      )
+                      .map((node) => nodeTitle(node.data.kind))
                       .join(" → ")
               }
               validation={validation.data}
@@ -522,6 +551,7 @@ export function RecipeBuilderPage() {
                   assets={assets}
                   tradePolicy={catalog.data.tradePolicy}
                   supplyPolicy={catalog.data.supplyPolicy}
+                  suppliedPositions={suppliedPositions}
                   diagnostics={diagnostics}
                   preview={runtimePreview as RecipePreview | undefined}
                   selectedRouteId={selectedRoute?.routeQuoteId}
@@ -562,7 +592,13 @@ export function RecipeBuilderPage() {
                       />
                     ) : undefined
                   }
-                  error={requestError}
+                  error={
+                    requestError ??
+                    (selectedNode?.data.kind === "SUPPLIED_POSITION" ||
+                    selectedNode?.data.kind === "WITHDRAW"
+                      ? readableError(borrowingError)
+                      : undefined)
+                  }
                   onRouteSelect={(route) => {
                     if (!selectedNode) return;
                     setSelectedRoutes((current) => ({
@@ -663,4 +699,52 @@ function validationError(error: unknown): RecipeDiagnostic[] {
 
 function readableError(error: unknown): string | undefined {
   return error instanceof Error ? error.message : undefined;
+}
+
+function restoredNodeData(
+  node: RecipeNode,
+  assets: AssetOption[],
+): RecipeNodeData {
+  switch (node.kind) {
+    case "TRADE":
+      return { kind: node.kind, buyToken: node.buyToken };
+    case "SUPPLY":
+      return { kind: node.kind, venue: node.venue };
+    case "SUPPLIED_POSITION":
+      return {
+        kind: node.kind,
+        venue: node.venue,
+        pool: node.pool,
+        token: node.token,
+      };
+    case "WITHDRAW":
+      return { kind: node.kind };
+    case "WALLET_ASSET": {
+      const asset = assets.find(
+        (candidate) =>
+          candidate.address.toLowerCase() === node.token.toLowerCase(),
+      );
+      if (!asset) throw new Error("The saved wallet asset is unavailable.");
+      return {
+        kind: node.kind,
+        token: node.token,
+        amount: formatUnits(BigInt(node.rawAmount), asset.decimals),
+      };
+    }
+  }
+}
+
+function nodeTitle(kind: RecipeNodeData["kind"]): string {
+  switch (kind) {
+    case "WALLET_ASSET":
+      return "Wallet asset";
+    case "SUPPLIED_POSITION":
+      return "Supplied position";
+    case "TRADE":
+      return "Trade";
+    case "SUPPLY":
+      return "Supply";
+    case "WITHDRAW":
+      return "Withdraw";
+  }
 }

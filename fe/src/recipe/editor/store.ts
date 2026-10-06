@@ -20,9 +20,14 @@ import { flowType } from "./types";
 
 const DRAFT_KEY = "stockfront.recipe-builder.draft.v1";
 
-interface EditorDefaults {
+export interface EditorDefaults {
   settlementToken?: Address;
   bstockToken?: Address;
+  suppliedPosition?: {
+    venue: "venus";
+    pool: Address;
+    token: Address;
+  };
 }
 
 interface RecipeEditorState {
@@ -39,6 +44,7 @@ interface RecipeEditorState {
   ): void;
   appendTrade(sourceId: string, buyToken?: Address): void;
   appendSupply(sourceId: string): void;
+  appendWithdraw(sourceId: string): void;
   updateNode(id: string, patch: Partial<RecipeNodeData>): void;
   selectNode(id?: string): void;
   removeSelected(): void;
@@ -78,6 +84,25 @@ function nodeFor(
         type: flowType(kind),
         position,
         data: { kind, venue: "venus" },
+      };
+    case "SUPPLIED_POSITION":
+      return {
+        id,
+        type: flowType(kind),
+        position,
+        data: {
+          kind,
+          venue: defaults.suppliedPosition?.venue ?? "venus",
+          pool: defaults.suppliedPosition?.pool,
+          token: defaults.suppliedPosition?.token,
+        },
+      };
+    case "WITHDRAW":
+      return {
+        id,
+        type: flowType(kind),
+        position,
+        data: { kind },
       };
   }
 }
@@ -181,6 +206,40 @@ export const useRecipeEditor = create<RecipeEditorState>((set, get) => ({
             sourceHandle: "buy",
             target: node.id,
             targetHandle: "asset",
+            type: "asset",
+          },
+        ],
+        selectedNodeId: node.id,
+      };
+    }),
+  appendWithdraw: (sourceId) =>
+    set((state) => {
+      const source = state.nodes.find((node) => node.id === sourceId);
+      if (
+        source?.data.kind !== "SUPPLIED_POSITION" ||
+        state.edges.some(
+          (edge) =>
+            edge.source === sourceId && edge.sourceHandle === "position",
+        )
+      ) {
+        return state;
+      }
+      const node: RecipeFlowNode = {
+        id: crypto.randomUUID(),
+        type: "withdraw",
+        position: { x: source.position.x + 300, y: source.position.y },
+        data: { kind: "WITHDRAW" },
+      };
+      return {
+        nodes: [...state.nodes, node],
+        edges: [
+          ...state.edges,
+          {
+            id: crypto.randomUUID(),
+            source: sourceId,
+            sourceHandle: "position",
+            target: node.id,
+            targetHandle: "position",
             type: "asset",
           },
         ],

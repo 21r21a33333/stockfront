@@ -13,6 +13,14 @@ const catalog = {
   supplyPolicy: {
     allowedInputs: [{ input: "BSTOCKS", venue: "venus" }],
   },
+  withdrawalPolicy: {
+    allowedInputs: [
+      {
+        venue: "venus",
+        pool: "0x1111111111111111111111111111111111111111",
+      },
+    ],
+  },
   bstocks: [
     {
       chainId: 56,
@@ -43,9 +51,23 @@ const catalog = {
       ports: [],
     },
     {
+      kind: "SUPPLIED_POSITION",
+      name: "Supplied position",
+      description: "Use an existing supplied Venus position.",
+      fields: [],
+      ports: [],
+    },
+    {
       kind: "SUPPLY",
       name: "Supply",
       description: "Supply the incoming bStock to Venus.",
+      fields: [],
+      ports: [],
+    },
+    {
+      kind: "WITHDRAW",
+      name: "Withdraw",
+      description: "Withdraw a full Venus supplied position.",
       fields: [],
       ports: [],
     },
@@ -201,4 +223,127 @@ test("shows a single focus ring around each text field", async ({ page }) => {
   await amount.focus();
   await expect(amount).toHaveCSS("outline-style", "none");
   await expect(amount.locator("..")).not.toHaveCSS("box-shadow", "none");
+});
+
+test("builds and prepares a full Venus position withdrawal", async ({
+  page,
+}) => {
+  const wallet = "0x2222222222222222222222222222222222222222";
+  const pool = "0x1111111111111111111111111111111111111111";
+  const stock = catalog.bstocks[0].contract;
+  await page.addInitScript((address) => {
+    Object.defineProperty(window, "ethereum", {
+      value: {
+        isMetaMask: true,
+        on() {},
+        removeListener() {},
+        async request({ method }: { method: string }) {
+          if (method === "eth_chainId") return "0x38";
+          if (method === "eth_requestAccounts" || method === "eth_accounts")
+            return [address];
+          if (method === "wallet_requestPermissions")
+            return [{ parentCapability: "eth_accounts" }];
+          throw new Error(`Unsupported test wallet method: ${method}`);
+        },
+      },
+    });
+  }, wallet);
+  await page.route("**/test-api/v1/wallets/*/loans", (route) =>
+    route.fulfill({
+      json: {
+        status: "Ok",
+        result: {
+          chainId: 56,
+          venue: "venus",
+          positions: [
+            {
+              pool,
+              supplied: [
+                {
+                  token: { contract: stock, symbol: "NVDAB" },
+                  amount: "1.25",
+                  valueUsd: "450.00",
+                },
+              ],
+              borrowed: [],
+            },
+          ],
+          totalSuppliedUsd: "450.00",
+          totalBorrowedUsd: "0",
+          observedAtMs: Date.now(),
+        },
+      },
+    }),
+  );
+  await page.route("**/test-api/v1/recipes/preview", async (route) => {
+    const body = route.request().postDataJSON();
+    const nodeId = body.recipe.nodes.find(
+      (node: { kind: string }) => node.kind === "WITHDRAW",
+    ).id;
+    await route.fulfill({
+      json: {
+        status: "Ok",
+        result: {
+          nodes: [
+            {
+              kind: "WITHDRAW",
+              nodeId,
+              state: "READY",
+              position: {
+                token: { contract: stock, symbol: "NVDAB" },
+                amount: "1.25",
+                valueUsd: "450.00",
+              },
+            },
+          ],
+        },
+      },
+    });
+  });
+  await page.route("**/test-api/v1/recipes/prepare", async (route) => {
+    const body = route.request().postDataJSON();
+    const nodeId = body.recipe.nodes.find(
+      (node: { kind: string }) => node.kind === "WITHDRAW",
+    ).id;
+    await route.fulfill({
+      json: {
+        status: "Ok",
+        result: {
+          steps: [
+            {
+              kind: "WITHDRAW",
+              nodeId,
+              action: {
+                transactions: [
+                  {
+                    kind: "WITHDRAW",
+                    to: pool,
+                    data: "0x12345678",
+                    value: "0",
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      },
+    });
+  });
+
+  await page.goto("/");
+  const connect = page.getByRole("button", { name: "Connect wallet" });
+  if (await connect.isVisible()) await connect.click();
+  page.once("dialog", (dialog) => void dialog.accept());
+  await page.getByRole("button", { name: "New recipe" }).click();
+  await page.getByRole("button", { name: /^Supplied position/ }).click();
+  await expect(
+    page.locator(".react-flow__node").getByText("1.25 NVDAB", { exact: true }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Add withdrawal" }).click();
+  await page.getByRole("button", { name: "Preview route" }).click();
+  await expect(
+    page.getByRole("button", { name: "Prepare withdrawal" }),
+  ).toBeEnabled();
+  await page.getByRole("button", { name: "Prepare withdrawal" }).click();
+  await expect(page.getByText("Withdraw all NVDAB from Venus")).toBeVisible();
 });

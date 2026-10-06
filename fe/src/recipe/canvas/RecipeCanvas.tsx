@@ -12,17 +12,24 @@ import {
 import { Braces, Maximize2, Minus, PanelRightClose, Plus } from "lucide-react";
 import { useCallback, useEffect, type DragEvent } from "react";
 import type { RecipePrimitiveKind } from "@/api/generated";
-import type { Address } from "viem";
 import type { RecipeFlowEdge } from "../editor/types";
 import { RecipeAssetEdge } from "./RecipeAssetEdge";
-import { SupplyNode, TradeNode, WalletAssetNode } from "./RecipeNodes";
-import { useRecipeEditor } from "../editor/store";
+import {
+  SuppliedPositionNode,
+  SupplyNode,
+  TradeNode,
+  WalletAssetNode,
+  WithdrawNode,
+} from "./RecipeNodes";
+import { useRecipeEditor, type EditorDefaults } from "../editor/store";
 import styles from "../RecipeBuilder.module.css";
 
 const nodeTypes: NodeTypes = {
   walletAsset: WalletAssetNode,
+  suppliedPosition: SuppliedPositionNode,
   trade: TradeNode,
   supply: SupplyNode,
+  withdraw: WithdrawNode,
 };
 const edgeTypes: EdgeTypes = { asset: RecipeAssetEdge };
 
@@ -32,7 +39,7 @@ export function RecipeCanvas({
   onModeChange,
   onInspectNode,
 }: {
-  defaults: { settlementToken?: Address; bstockToken?: Address };
+  defaults: EditorDefaults;
   mode: "builder" | "debug";
   onModeChange(mode: "builder" | "debug"): void;
   onInspectNode(): void;
@@ -56,12 +63,19 @@ export function RecipeCanvas({
     (connection: Connection | RecipeFlowEdge) => {
       if (!connection.source || !connection.target) return false;
       if (connection.source === connection.target) return false;
-      if (
-        !connection.targetHandle ||
-        !["sell", "asset"].includes(connection.targetHandle)
-      )
-        return false;
+      if (!connection.targetHandle) return false;
       if (!connection.sourceHandle) return false;
+      const source = editor.nodes.find((node) => node.id === connection.source);
+      const validPorts =
+        connection.targetHandle === "position"
+          ? source?.data.kind === "SUPPLIED_POSITION" &&
+            connection.sourceHandle === "position"
+          : ["sell", "asset"].includes(connection.targetHandle) &&
+            ((source?.data.kind === "WALLET_ASSET" &&
+              connection.sourceHandle === "asset") ||
+              (source?.data.kind === "TRADE" &&
+                connection.sourceHandle === "buy"));
+      if (!validPorts) return false;
       return !editor.edges.some(
         (edge) =>
           (edge.target === connection.target &&
@@ -70,7 +84,7 @@ export function RecipeCanvas({
             edge.sourceHandle === connection.sourceHandle),
       );
     },
-    [editor.edges],
+    [editor.edges, editor.nodes],
   );
   const onDrop = useCallback(
     (event: DragEvent) => {
@@ -78,7 +92,16 @@ export function RecipeCanvas({
       const kind = event.dataTransfer.getData(
         "application/stockfront-primitive",
       ) as RecipePrimitiveKind;
-      if (!["WALLET_ASSET", "TRADE", "SUPPLY"].includes(kind)) return;
+      if (
+        ![
+          "WALLET_ASSET",
+          "SUPPLIED_POSITION",
+          "TRADE",
+          "SUPPLY",
+          "WITHDRAW",
+        ].includes(kind)
+      )
+        return;
       editor.addNode(
         kind,
         flow.screenToFlowPosition({ x: event.clientX, y: event.clientY }),

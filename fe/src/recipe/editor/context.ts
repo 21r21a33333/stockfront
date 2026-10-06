@@ -7,9 +7,11 @@ import type {
 } from "@/api/generated";
 import type { ExecutionAttempt } from "../execution/journal";
 import type { AssetOption } from "./types";
+import type { SuppliedPositionOption } from "./withdrawalPolicy";
 
 export interface BuilderContextValue {
   assets: AssetOption[];
+  suppliedPositions: SuppliedPositionOption[];
   diagnostics: RecipeDiagnostic[];
   selectedRoutes: Record<string, TradeQuote>;
   preview?: RecipePreview;
@@ -19,6 +21,7 @@ export interface BuilderContextValue {
   supplyableOutputs: string[];
   appendTrade(sourceId: string): void;
   appendSupply(sourceId: string): void;
+  appendWithdraw(sourceId: string): void;
   openActivity(): void;
 }
 

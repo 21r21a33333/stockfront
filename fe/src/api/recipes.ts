@@ -14,6 +14,12 @@ export const recipesApi = {
     apiResult(api.POST("/v1/recipes/preview", { body })),
   prepare: (body: PrepareRecipeRequest) =>
     apiResult(api.POST("/v1/recipes/prepare", { body })),
+  borrowingAccount: (address: string) =>
+    apiResult(
+      api.GET("/v1/wallets/{address}/loans", {
+        params: { path: { address } },
+      }),
+    ),
   submitOrder: (body: SubmitOrderRequest) =>
     apiResult(api.POST("/v1/bstock-trades/orders", { body })),
   orderStatus: (orderId: string, signal?: AbortSignal) =>

@@ -59,6 +59,14 @@ async function mockApp(
         supplyPolicy: {
           allowedInputs: [{ input: "BSTOCKS", venue: "venus" }],
         },
+        withdrawalPolicy: {
+          allowedInputs: [
+            {
+              venue: "venus",
+              pool: "0x1111111111111111111111111111111111111111",
+            },
+          ],
+        },
         bstocks: [
           {
             chainId: 56,

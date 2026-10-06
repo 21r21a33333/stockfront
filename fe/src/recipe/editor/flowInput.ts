@@ -16,6 +16,18 @@ export function inputForSupply(
   return inputForAction(nodes, edges, supplyId, "asset");
 }
 
+export function inputForWithdraw(
+  nodes: RecipeFlowNode[],
+  edges: RecipeFlowEdge[],
+  withdrawId: string,
+) {
+  const edge = edges.find(
+    (item) => item.target === withdrawId && item.targetHandle === "position",
+  );
+  const source = nodes.find((node) => node.id === edge?.source);
+  return source?.data.kind === "SUPPLIED_POSITION" ? source.data : undefined;
+}
+
 function inputForAction(
   nodes: RecipeFlowNode[],
   edges: RecipeFlowEdge[],

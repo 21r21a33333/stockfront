@@ -236,6 +236,40 @@
           }
         }
       }
+    },
+    "/v1/wallets/{address}/loans": {
+      "get": {
+        "tags": ["super::handlers::borrowing"],
+        "operationId": "account",
+        "parameters": [
+          {
+            "name": "address",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Response_BorrowingAccount"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Response" }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -252,6 +286,53 @@
       "AssetKind": {
         "type": "string",
         "enum": ["stock", "preIpo", "etf", "unknown"]
+      },
+      "BorrowingAccount": {
+        "type": "object",
+        "required": [
+          "venue",
+          "chainId",
+          "positions",
+          "totalSuppliedUsd",
+          "totalBorrowedUsd",
+          "observedAtMs"
+        ],
+        "properties": {
+          "chainId": { "type": "integer", "format": "int64", "minimum": 0 },
+          "healthFactor": { "type": ["string", "null"] },
+          "observedAtMs": { "type": "integer", "format": "int64" },
+          "positions": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/BorrowingPosition" }
+          },
+          "totalBorrowedUsd": { "type": "string" },
+          "totalSuppliedUsd": { "type": "string" },
+          "venue": { "$ref": "#/components/schemas/BorrowingVenue" }
+        }
+      },
+      "BorrowingAsset": {
+        "type": "object",
+        "required": ["token", "amount", "valueUsd"],
+        "properties": {
+          "amount": { "type": "string" },
+          "token": { "$ref": "#/components/schemas/BorrowingToken" },
+          "valueUsd": { "type": "string" }
+        }
+      },
+      "BorrowingPosition": {
+        "type": "object",
+        "required": ["pool", "supplied", "borrowed"],
+        "properties": {
+          "borrowed": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/BorrowingAsset" }
+          },
+          "pool": { "type": "string", "format": "evm-address" },
+          "supplied": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/BorrowingAsset" }
+          }
+        }
       },
       "BorrowingPreview": {
         "type": "object",
@@ -457,6 +538,17 @@
               "kind": { "type": "string", "enum": ["SUPPLY"] },
               "nodeId": { "type": "string", "format": "uuid" }
             }
+          },
+          {
+            "type": "object",
+            "required": ["nodeId", "action", "kind"],
+            "properties": {
+              "action": {
+                "$ref": "#/components/schemas/PreparedBorrowingAction"
+              },
+              "kind": { "type": "string", "enum": ["WITHDRAW"] },
+              "nodeId": { "type": "string", "format": "uuid" }
+            }
           }
         ]
       },
@@ -527,7 +619,8 @@
           "settlementTokens",
           "bstocks",
           "tradePolicy",
-          "supplyPolicy"
+          "supplyPolicy",
+          "withdrawalPolicy"
         ],
         "properties": {
           "bstocks": {
@@ -550,7 +643,10 @@
             "items": { "type": "string", "format": "evm-address" }
           },
           "supplyPolicy": { "$ref": "#/components/schemas/RecipeSupplyPolicy" },
-          "tradePolicy": { "$ref": "#/components/schemas/RecipeTradePolicy" }
+          "tradePolicy": { "$ref": "#/components/schemas/RecipeTradePolicy" },
+          "withdrawalPolicy": {
+            "$ref": "#/components/schemas/RecipeWithdrawalPolicy"
+          }
         }
       },
       "RecipeCompletedNode": {
@@ -630,7 +726,8 @@
           "DISCONNECTED_NODE",
           "INVALID_AMOUNT",
           "UNSUPPORTED_TRADE_PAIR",
-          "UNSUPPORTED_SUPPLY_ASSET"
+          "UNSUPPORTED_SUPPLY_ASSET",
+          "UNSUPPORTED_WITHDRAWAL_POSITION"
         ]
       },
       "RecipeDiagnosticLocation": {
@@ -691,7 +788,7 @@
       },
       "RecipeFieldControl": {
         "type": "string",
-        "enum": ["TOKEN", "AMOUNT", "VENUE"]
+        "enum": ["TOKEN", "AMOUNT", "VENUE", "POSITION"]
       },
       "RecipeFieldDescriptor": {
         "type": "object",
@@ -762,6 +859,33 @@
                 "items": { "type": "string", "format": "uuid" }
               }
             }
+          },
+          {
+            "type": "object",
+            "required": ["nodeId", "state", "kind"],
+            "properties": {
+              "kind": { "type": "string", "enum": ["WITHDRAW"] },
+              "nodeId": { "type": "string", "format": "uuid" },
+              "position": {
+                "oneOf": [
+                  { "type": "null" },
+                  { "$ref": "#/components/schemas/BorrowingAsset" }
+                ]
+              },
+              "state": { "$ref": "#/components/schemas/RecipeNodeState" },
+              "unavailableReason": {
+                "oneOf": [
+                  { "type": "null" },
+                  {
+                    "$ref": "#/components/schemas/RecipeWithdrawalUnavailableReason"
+                  }
+                ]
+              },
+              "waitingFor": {
+                "type": "array",
+                "items": { "type": "string", "format": "uuid" }
+              }
+            }
           }
         ]
       },
@@ -791,7 +915,7 @@
       },
       "RecipeOptionSource": {
         "type": "string",
-        "enum": ["SETTLEMENT_TOKENS", "BSTOCKS"]
+        "enum": ["SETTLEMENT_TOKENS", "BSTOCKS", "SUPPLIED_POSITIONS"]
       },
       "RecipePortDescriptor": {
         "type": "object",
@@ -823,7 +947,10 @@
           "port": { "type": "string" }
         }
       },
-      "RecipePortValueType": { "type": "string", "enum": ["TOKEN_AMOUNT"] },
+      "RecipePortValueType": {
+        "type": "string",
+        "enum": ["TOKEN_AMOUNT", "SUPPLIED_POSITION"]
+      },
       "RecipePreview": {
         "type": "object",
         "required": ["nodes"],
@@ -855,6 +982,16 @@
           },
           {
             "type": "object",
+            "required": ["venue", "pool", "token", "kind"],
+            "properties": {
+              "kind": { "type": "string", "enum": ["SUPPLIED_POSITION"] },
+              "pool": { "type": "string", "format": "evm-address" },
+              "token": { "type": "string", "format": "evm-address" },
+              "venue": { "$ref": "#/components/schemas/BorrowingVenue" }
+            }
+          },
+          {
+            "type": "object",
             "required": ["buyToken", "kind"],
             "properties": {
               "buyToken": { "type": "string", "format": "evm-address" },
@@ -868,6 +1005,11 @@
               "kind": { "type": "string", "enum": ["SUPPLY"] },
               "venue": { "$ref": "#/components/schemas/BorrowingVenue" }
             }
+          },
+          {
+            "type": "object",
+            "required": ["kind"],
+            "properties": { "kind": { "type": "string", "enum": ["WITHDRAW"] } }
           }
         ]
       },
@@ -890,7 +1032,13 @@
       },
       "RecipePrimitiveKind": {
         "type": "string",
-        "enum": ["WALLET_ASSET", "TRADE", "SUPPLY"]
+        "enum": [
+          "WALLET_ASSET",
+          "SUPPLIED_POSITION",
+          "TRADE",
+          "SUPPLY",
+          "WITHDRAW"
+        ]
       },
       "RecipeSupplyPolicy": {
         "type": "object",
@@ -931,12 +1079,65 @@
           "valid": { "type": "boolean" }
         }
       },
+      "RecipeWithdrawalPolicy": {
+        "type": "object",
+        "required": ["allowedInputs"],
+        "properties": {
+          "allowedInputs": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/RecipeWithdrawalRule" }
+          }
+        }
+      },
+      "RecipeWithdrawalRule": {
+        "type": "object",
+        "required": ["venue", "pool"],
+        "properties": {
+          "pool": { "type": "string", "format": "evm-address" },
+          "venue": { "$ref": "#/components/schemas/BorrowingVenue" }
+        }
+      },
+      "RecipeWithdrawalUnavailableReason": {
+        "type": "string",
+        "enum": ["POSITION_NOT_FOUND", "UNSUPPORTED_POOL", "OUTSTANDING_DEBT"]
+      },
       "Response": {
         "type": "object",
         "required": ["status"],
         "properties": {
           "error": { "$ref": "#/components/schemas/Error" },
           "result": { "$ref": "#/components/schemas/TupleUnit" },
+          "status": { "$ref": "#/components/schemas/Status" }
+        }
+      },
+      "Response_BorrowingAccount": {
+        "type": "object",
+        "required": ["status"],
+        "properties": {
+          "error": { "$ref": "#/components/schemas/Error" },
+          "result": {
+            "type": "object",
+            "required": [
+              "venue",
+              "chainId",
+              "positions",
+              "totalSuppliedUsd",
+              "totalBorrowedUsd",
+              "observedAtMs"
+            ],
+            "properties": {
+              "chainId": { "type": "integer", "format": "int64", "minimum": 0 },
+              "healthFactor": { "type": ["string", "null"] },
+              "observedAtMs": { "type": "integer", "format": "int64" },
+              "positions": {
+                "type": "array",
+                "items": { "$ref": "#/components/schemas/BorrowingPosition" }
+              },
+              "totalBorrowedUsd": { "type": "string" },
+              "totalSuppliedUsd": { "type": "string" },
+              "venue": { "$ref": "#/components/schemas/BorrowingVenue" }
+            }
+          },
           "status": { "$ref": "#/components/schemas/Status" }
         }
       },
@@ -971,7 +1172,8 @@
               "settlementTokens",
               "bstocks",
               "tradePolicy",
-              "supplyPolicy"
+              "supplyPolicy",
+              "withdrawalPolicy"
             ],
             "properties": {
               "bstocks": {
@@ -998,6 +1200,9 @@
               },
               "tradePolicy": {
                 "$ref": "#/components/schemas/RecipeTradePolicy"
+              },
+              "withdrawalPolicy": {
+                "$ref": "#/components/schemas/RecipeWithdrawalPolicy"
               }
             }
           },

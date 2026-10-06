@@ -11,7 +11,7 @@ import { inputForTrade } from "../editor/flowInput";
 import { useRecipeEditor } from "../editor/store";
 import { compatibleTradeAssets } from "../editor/tradePolicy";
 import { RoutePreview } from "./RoutePreview";
-import { formatQuote } from "./amounts";
+import { formatQuote } from "../format";
 import styles from "../RecipeBuilder.module.css";
 
 export function TradeFields({

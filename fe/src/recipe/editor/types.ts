@@ -28,11 +28,26 @@ export type SupplyNodeData = {
   venue: BorrowingVenue;
 };
 
+export type SuppliedPositionNodeData = {
+  kind: "SUPPLIED_POSITION";
+  venue: BorrowingVenue;
+  pool?: Address;
+  token?: Address;
+};
+
+export type WithdrawNodeData = {
+  kind: "WITHDRAW";
+};
+
 export type RecipeNodeData =
-  WalletAssetNodeData | TradeNodeData | SupplyNodeData;
+  | WalletAssetNodeData
+  | SuppliedPositionNodeData
+  | TradeNodeData
+  | SupplyNodeData
+  | WithdrawNodeData;
 export type RecipeFlowNode = Node<
   RecipeNodeData,
-  "walletAsset" | "trade" | "supply"
+  "walletAsset" | "suppliedPosition" | "trade" | "supply" | "withdraw"
 >;
 export type RecipeFlowEdge = Edge;
 
@@ -43,6 +58,16 @@ export interface DraftRecipe {
 }
 
 export function flowType(kind: RecipePrimitiveKind): RecipeFlowNode["type"] {
-  if (kind === "WALLET_ASSET") return "walletAsset";
-  return kind === "TRADE" ? "trade" : "supply";
+  switch (kind) {
+    case "WALLET_ASSET":
+      return "walletAsset";
+    case "SUPPLIED_POSITION":
+      return "suppliedPosition";
+    case "TRADE":
+      return "trade";
+    case "SUPPLY":
+      return "supply";
+    case "WITHDRAW":
+      return "withdraw";
+  }
 }

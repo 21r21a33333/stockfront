@@ -112,6 +112,22 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/wallets/{address}/loans": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: operations["account"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -123,6 +139,28 @@ export interface components {
     };
     /** @enum {string} */
     AssetKind: "stock" | "preIpo" | "etf" | "unknown";
+    BorrowingAccount: {
+      /** Format: int64 */
+      chainId: number;
+      healthFactor?: string | null;
+      /** Format: int64 */
+      observedAtMs: number;
+      positions: components["schemas"]["BorrowingPosition"][];
+      totalBorrowedUsd: string;
+      totalSuppliedUsd: string;
+      venue: components["schemas"]["BorrowingVenue"];
+    };
+    BorrowingAsset: {
+      amount: string;
+      token: components["schemas"]["BorrowingToken"];
+      valueUsd: string;
+    };
+    BorrowingPosition: {
+      borrowed: components["schemas"]["BorrowingAsset"][];
+      /** Format: evm-address */
+      pool: `0x${string}`;
+      supplied: components["schemas"]["BorrowingAsset"][];
+    };
     BorrowingPreview: {
       estimatedNetworkFee?: null | components["schemas"]["NetworkFee"];
       healthFactorAfter?: string | null;
@@ -241,6 +279,13 @@ export interface components {
           kind: "SUPPLY";
           /** Format: uuid */
           nodeId: string;
+        }
+      | {
+          action: components["schemas"]["PreparedBorrowingAction"];
+          /** @enum {string} */
+          kind: "WITHDRAW";
+          /** Format: uuid */
+          nodeId: string;
         };
     PreparedTrade:
       | {
@@ -280,6 +325,7 @@ export interface components {
       settlementTokens: `0x${string}`[];
       supplyPolicy: components["schemas"]["RecipeSupplyPolicy"];
       tradePolicy: components["schemas"]["RecipeTradePolicy"];
+      withdrawalPolicy: components["schemas"]["RecipeWithdrawalPolicy"];
     };
     RecipeCompletedNode: {
       /** Format: uuid */
@@ -325,7 +371,8 @@ export interface components {
       | "DISCONNECTED_NODE"
       | "INVALID_AMOUNT"
       | "UNSUPPORTED_TRADE_PAIR"
-      | "UNSUPPORTED_SUPPLY_ASSET";
+      | "UNSUPPORTED_SUPPLY_ASSET"
+      | "UNSUPPORTED_WITHDRAWAL_POSITION";
     RecipeDiagnosticLocation:
       | {
           /** @enum {string} */
@@ -366,7 +413,7 @@ export interface components {
       to: components["schemas"]["RecipePortRef"];
     };
     /** @enum {string} */
-    RecipeFieldControl: "TOKEN" | "AMOUNT" | "VENUE";
+    RecipeFieldControl: "TOKEN" | "AMOUNT" | "VENUE" | "POSITION";
     RecipeFieldDescriptor: {
       control: components["schemas"]["RecipeFieldControl"];
       key: string;
@@ -400,6 +447,17 @@ export interface components {
           nodeId: string;
           state: components["schemas"]["RecipeNodeState"];
           waitingFor?: string[];
+        }
+      | {
+          /** @enum {string} */
+          kind: "WITHDRAW";
+          /** Format: uuid */
+          nodeId: string;
+          position?: null | components["schemas"]["BorrowingAsset"];
+          state: components["schemas"]["RecipeNodeState"];
+          unavailableReason?:
+            null | components["schemas"]["RecipeWithdrawalUnavailableReason"];
+          waitingFor?: string[];
         };
     RecipeNodeSelection: {
       /** @enum {string} */
@@ -417,7 +475,7 @@ export interface components {
       | "OUTPUT_UNAVAILABLE"
       | "UNAVAILABLE";
     /** @enum {string} */
-    RecipeOptionSource: "SETTLEMENT_TOKENS" | "BSTOCKS";
+    RecipeOptionSource: "SETTLEMENT_TOKENS" | "BSTOCKS" | "SUPPLIED_POSITIONS";
     RecipePortDescriptor: {
       direction: components["schemas"]["RecipePortDirection"];
       flow: components["schemas"]["RecipePortFlow"];
@@ -438,7 +496,7 @@ export interface components {
       port: string;
     };
     /** @enum {string} */
-    RecipePortValueType: "TOKEN_AMOUNT";
+    RecipePortValueType: "TOKEN_AMOUNT" | "SUPPLIED_POSITION";
     RecipePreview: {
       nodes: components["schemas"]["RecipeNodePreview"][];
     };
@@ -455,6 +513,15 @@ export interface components {
           token: `0x${string}`;
         }
       | {
+          /** @enum {string} */
+          kind: "SUPPLIED_POSITION";
+          /** Format: evm-address */
+          pool: `0x${string}`;
+          /** Format: evm-address */
+          token: `0x${string}`;
+          venue: components["schemas"]["BorrowingVenue"];
+        }
+      | {
           /** Format: evm-address */
           buyToken: `0x${string}`;
           /** @enum {string} */
@@ -464,6 +531,10 @@ export interface components {
           /** @enum {string} */
           kind: "SUPPLY";
           venue: components["schemas"]["BorrowingVenue"];
+        }
+      | {
+          /** @enum {string} */
+          kind: "WITHDRAW";
         };
     RecipePrimitiveDescriptor: {
       description: string;
@@ -473,7 +544,8 @@ export interface components {
       ports: components["schemas"]["RecipePortDescriptor"][];
     };
     /** @enum {string} */
-    RecipePrimitiveKind: "WALLET_ASSET" | "TRADE" | "SUPPLY";
+    RecipePrimitiveKind:
+      "WALLET_ASSET" | "SUPPLIED_POSITION" | "TRADE" | "SUPPLY" | "WITHDRAW";
     RecipeSupplyPolicy: {
       allowedInputs: components["schemas"]["RecipeSupplyRule"][];
     };
@@ -488,9 +560,35 @@ export interface components {
       diagnostics: components["schemas"]["RecipeDiagnostic"][];
       valid: boolean;
     };
+    RecipeWithdrawalPolicy: {
+      allowedInputs: components["schemas"]["RecipeWithdrawalRule"][];
+    };
+    RecipeWithdrawalRule: {
+      /** Format: evm-address */
+      pool: `0x${string}`;
+      venue: components["schemas"]["BorrowingVenue"];
+    };
+    /** @enum {string} */
+    RecipeWithdrawalUnavailableReason:
+      "POSITION_NOT_FOUND" | "UNSUPPORTED_POOL" | "OUTSTANDING_DEBT";
     Response: {
       error?: components["schemas"]["Error"];
       result?: components["schemas"]["TupleUnit"];
+      status: components["schemas"]["Status"];
+    };
+    Response_BorrowingAccount: {
+      error?: components["schemas"]["Error"];
+      result?: {
+        /** Format: int64 */
+        chainId: number;
+        healthFactor?: string | null;
+        /** Format: int64 */
+        observedAtMs: number;
+        positions: components["schemas"]["BorrowingPosition"][];
+        totalBorrowedUsd: string;
+        totalSuppliedUsd: string;
+        venue: components["schemas"]["BorrowingVenue"];
+      };
       status: components["schemas"]["Status"];
     };
     Response_PreparedRecipe: {
@@ -510,6 +608,7 @@ export interface components {
         settlementTokens: `0x${string}`[];
         supplyPolicy: components["schemas"]["RecipeSupplyPolicy"];
         tradePolicy: components["schemas"]["RecipeTradePolicy"];
+        withdrawalPolicy: components["schemas"]["RecipeWithdrawalPolicy"];
       };
       status: components["schemas"]["Status"];
     };
@@ -675,6 +774,9 @@ export interface components {
 }
 export type ActionWarning = components["schemas"]["ActionWarning"];
 export type AssetKind = components["schemas"]["AssetKind"];
+export type BorrowingAccount = components["schemas"]["BorrowingAccount"];
+export type BorrowingAsset = components["schemas"]["BorrowingAsset"];
+export type BorrowingPosition = components["schemas"]["BorrowingPosition"];
 export type BorrowingPreview = components["schemas"]["BorrowingPreview"];
 export type BorrowingToken = components["schemas"]["BorrowingToken"];
 export type BorrowingVenue = components["schemas"]["BorrowingVenue"];
@@ -735,7 +837,15 @@ export type RecipeSupplyRule = components["schemas"]["RecipeSupplyRule"];
 export type RecipeTradePolicy = components["schemas"]["RecipeTradePolicy"];
 export type RecipeValidationReport =
   components["schemas"]["RecipeValidationReport"];
+export type RecipeWithdrawalPolicy =
+  components["schemas"]["RecipeWithdrawalPolicy"];
+export type RecipeWithdrawalRule =
+  components["schemas"]["RecipeWithdrawalRule"];
+export type RecipeWithdrawalUnavailableReason =
+  components["schemas"]["RecipeWithdrawalUnavailableReason"];
 export type Response = components["schemas"]["Response"];
+export type Response_BorrowingAccount =
+  components["schemas"]["Response_BorrowingAccount"];
 export type Response_PreparedRecipe =
   components["schemas"]["Response_PreparedRecipe"];
 export type Response_RecipeCatalog =
@@ -967,6 +1077,35 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["Response_RecipeValidationReport"];
+        };
+      };
+      default: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Response"];
+        };
+      };
+    };
+  };
+  account: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        address: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Response_BorrowingAccount"];
         };
       };
       default: {

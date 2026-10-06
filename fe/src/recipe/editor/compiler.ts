@@ -37,6 +37,20 @@ export function buildRecipe(
         kind: node.data.kind,
         venue: node.data.venue,
       });
+    } else if (
+      node.data.kind === "SUPPLIED_POSITION" &&
+      node.data.pool &&
+      node.data.token
+    ) {
+      result.push({
+        id: node.id,
+        kind: node.data.kind,
+        venue: node.data.venue,
+        pool: node.data.pool,
+        token: node.data.token,
+      });
+    } else if (node.data.kind === "WITHDRAW") {
+      result.push({ id: node.id, kind: node.data.kind });
     }
     return result;
   }, []);

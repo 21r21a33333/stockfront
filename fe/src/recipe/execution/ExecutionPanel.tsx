@@ -1,6 +1,10 @@
 import { AlertCircle, Check, Clock3, Copy, ExternalLink } from "lucide-react";
 import { useState } from "react";
-import type { PreparedRecipe, RecipeDefinition } from "@/api/generated";
+import type {
+  PreparedRecipe,
+  PreparedRecipeStep,
+  RecipeDefinition,
+} from "@/api/generated";
 import type { AssetOption } from "../editor/types";
 import { shortAddress } from "../assets";
 import {
@@ -85,7 +89,10 @@ export function ExecutionPanel({
           {" / "}
           {
             snapshot.nodes.filter(
-              (node) => node.kind === "TRADE" || node.kind === "SUPPLY",
+              (node) =>
+                node.kind === "TRADE" ||
+                node.kind === "SUPPLY" ||
+                node.kind === "WITHDRAW",
             ).length
           }
         </span>
@@ -113,19 +120,9 @@ export function ExecutionPanel({
             (edge) => edge.to.nodeId === item.nodeId,
           )?.from.nodeId;
           const source = snapshot.nodes.find((node) => node.id === sourceId);
-          const sellToken =
-            source?.kind === "WALLET_ASSET"
-              ? source.token
-              : source?.kind === "TRADE"
-                ? source.buyToken
-                : undefined;
+          const sellToken = sourceToken(source);
           const buyToken = node?.kind === "TRADE" ? node.buyToken : undefined;
-          const label =
-            item.kind === "SUPPLY"
-              ? `Supply ${symbol(sellToken)} to Venus`
-              : item.kind === "APPROVAL"
-                ? `Approve ${symbol(sellToken)}`
-                : `${item.executionMode === "RFQ" ? "RFQ" : "Swap"} ${symbol(sellToken)} → ${symbol(buyToken)}`;
+          const label = actionLabel(item, sellToken, buyToken, symbol);
           const hash = transactionHash(item);
           const attention =
             item.phase === "attention" || item.phase === "failed";
@@ -171,6 +168,12 @@ export function ExecutionPanel({
                   {!item.approvalSkipped && <b>Atomic</b>}
                 </div>
               )}
+              {item.kind === "WITHDRAW" && (
+                <div className={styles.steps}>
+                  <span>Withdraw full position</span>
+                  <span>Return to wallet</span>
+                </div>
+              )}
               {item.error && <p className={styles.notice}>{item.error}</p>}
               {hash && (
                 <div className={styles.reference}>
@@ -209,9 +212,11 @@ export function ExecutionPanel({
                   onClick={() => onRetryFailed(item.nodeId)}
                   disabled={busy}
                 >
-                  {item.kind === "SUPPLY"
-                    ? "Prepare supply again"
-                    : "Refresh route to retry"}
+                  {item.kind === "WITHDRAW"
+                    ? "Prepare withdrawal again"
+                    : item.kind === "SUPPLY"
+                      ? "Prepare supply again"
+                      : "Refresh route to retry"}
                 </button>
               )}
             </li>
@@ -279,19 +284,15 @@ function mergePreparedActions(
   for (const nodeId of new Set(prepared.steps.map((step) => step.nodeId))) {
     if (actions.some((item) => item.nodeId === nodeId)) continue;
     const steps = prepared.steps.filter((step) => step.nodeId === nodeId);
-    const trade = steps.find((step) => step.kind === "TRADE");
     const supply = steps.find((step) => step.kind === "SUPPLY");
+    const action = steps.find((step) => step.kind !== "APPROVAL");
     actions.push({
       id: `prepared:${nodeId}`,
       nodeId,
-      kind: supply ? "SUPPLY" : trade ? "TRADE" : "APPROVAL",
+      kind: action?.kind ?? "APPROVAL",
       attempt: 0,
       phase: "ready",
-      executionMode: supply
-        ? "SUPPLY"
-        : trade?.kind === "TRADE"
-          ? trade.action.executionMode
-          : "SWAP",
+      executionMode: preparedExecutionMode(action),
       steps: steps.map((step) => step.kind),
       approvalSkipped:
         supply?.kind === "SUPPLY" &&
@@ -329,4 +330,38 @@ function referenceLabel(
       ? `Order: ${reference.orderId}`
       : `Submission: ${reference.submissionId}`;
   return `Legacy transaction: ${reference.transactionHash}`;
+}
+
+function sourceToken(
+  node: RecipeDefinition["nodes"][number] | undefined,
+): string | undefined {
+  if (node?.kind === "WALLET_ASSET" || node?.kind === "SUPPLIED_POSITION")
+    return node.token;
+  return node?.kind === "TRADE" ? node.buyToken : undefined;
+}
+
+function actionLabel(
+  item: ActivityItem,
+  sellToken: string | undefined,
+  buyToken: string | undefined,
+  symbol: (token?: string) => string,
+): string {
+  switch (item.kind) {
+    case "WITHDRAW":
+      return `Withdraw all ${symbol(sellToken)} from Venus`;
+    case "SUPPLY":
+      return `Supply ${symbol(sellToken)} to Venus`;
+    case "APPROVAL":
+      return `Approve ${symbol(sellToken)}`;
+    case "TRADE":
+      return `${item.executionMode === "RFQ" ? "RFQ" : "Swap"} ${symbol(sellToken)} → ${symbol(buyToken)}`;
+  }
+}
+
+function preparedExecutionMode(
+  step: PreparedRecipeStep | undefined,
+): ExecutionAttempt["executionMode"] {
+  if (step?.kind === "WITHDRAW") return "WITHDRAW";
+  if (step?.kind === "SUPPLY") return "SUPPLY";
+  return step?.kind === "TRADE" ? step.action.executionMode : "SWAP";
 }

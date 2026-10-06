@@ -13,6 +13,10 @@ const tradeId = "00000000-0000-0000-0000-000000000002";
 const edgeId = "00000000-0000-0000-0000-000000000003";
 const supplyId = "00000000-0000-0000-0000-000000000004";
 const supplyEdgeId = "00000000-0000-0000-0000-000000000005";
+const positionId = "00000000-0000-0000-0000-000000000006";
+const withdrawId = "00000000-0000-0000-0000-000000000007";
+const withdrawEdgeId = "00000000-0000-0000-0000-000000000008";
+const venusPool = "0xfD36E2c2a6789Db23113685031d7F16329158384" as const;
 
 const assets: AssetOption[] = [
   {
@@ -101,6 +105,59 @@ it("serializes the graph into the compiler contract with exact raw units", () =>
       },
     ],
   });
+});
+
+it("serializes a supplied Venus position into a terminal withdrawal", () => {
+  const recipe = buildRecipe(
+    1,
+    [
+      {
+        id: positionId,
+        type: "suppliedPosition",
+        position: { x: 0, y: 0 },
+        data: {
+          kind: "SUPPLIED_POSITION",
+          venue: "venus",
+          pool: venusPool,
+          token: nvdab,
+        },
+      },
+      {
+        id: withdrawId,
+        type: "withdraw",
+        position: { x: 300, y: 0 },
+        data: { kind: "WITHDRAW" },
+      },
+    ],
+    [
+      {
+        id: withdrawEdgeId,
+        source: positionId,
+        sourceHandle: "position",
+        target: withdrawId,
+        targetHandle: "position",
+      },
+    ],
+    assets,
+  );
+
+  expect(recipe.nodes).toEqual([
+    {
+      id: positionId,
+      kind: "SUPPLIED_POSITION",
+      venue: "venus",
+      pool: venusPool,
+      token: nvdab,
+    },
+    { id: withdrawId, kind: "WITHDRAW" },
+  ]);
+  expect(recipe.edges).toEqual([
+    {
+      id: withdrawEdgeId,
+      from: { nodeId: positionId, port: "position" },
+      to: { nodeId: withdrawId, port: "position" },
+    },
+  ]);
 });
 
 it("sends malformed amounts to the compiler as zero for a typed diagnostic", () => {

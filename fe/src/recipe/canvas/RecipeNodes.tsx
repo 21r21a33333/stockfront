@@ -4,6 +4,7 @@ import {
   Check,
   Landmark,
   Plus,
+  Undo2,
   WalletCards,
 } from "lucide-react";
 import { useState } from "react";
@@ -11,10 +12,16 @@ import { formatUnits } from "viem";
 import type { PreparedRecipeStep } from "@/api/generated";
 import { attemptLabel, type ExecutionAttempt } from "../execution/journal";
 import { diagnosticsForNode } from "../editor/compiler";
-import { inputForSupply, inputForTrade } from "../editor/flowInput";
+import {
+  inputForSupply,
+  inputForTrade,
+  inputForWithdraw,
+} from "../editor/flowInput";
 import { useRecipeEditor } from "../editor/store";
 import { useBuilderContext } from "../editor/context";
 import type { AssetOption, RecipeFlowNode } from "../editor/types";
+import { suppliedPositionFor } from "../editor/withdrawalPolicy";
+import { formatPositionAmount, formatUsd } from "../format";
 import styles from "../RecipeBuilder.module.css";
 
 export function WalletAssetNode({
@@ -51,6 +58,66 @@ export function WalletAssetNode({
         position={Position.Right}
         className={styles.handle}
       />
+    </NodeShell>
+  );
+}
+
+export function SuppliedPositionNode({
+  id,
+  data,
+  selected,
+}: NodeProps<RecipeFlowNode>) {
+  const { diagnostics, suppliedPositions, connectedOutputs, appendWithdraw } =
+    useBuilderContext();
+  if (data.kind !== "SUPPLIED_POSITION") return null;
+  const position = suppliedPositionFor(
+    suppliedPositions,
+    data.pool,
+    data.token,
+  );
+  const problem = diagnosticsForNode(diagnostics, id)[0];
+  return (
+    <NodeShell
+      title="Supplied Position"
+      tone="blue"
+      icon={<Landmark size={13} />}
+      selected={selected}
+      problem={problem?.message}
+    >
+      <p>All {position?.catalogAsset.symbol ?? "asset"} supplied to Venus</p>
+      <div className={styles.nodeTags}>
+        <span>
+          {position
+            ? `${formatPositionAmount(position.asset.amount)} ${position.catalogAsset.symbol}`
+            : "Select position"}
+        </span>
+        <span>{position ? formatUsd(position.asset.valueUsd) : "Venus"}</span>
+      </div>
+      <Handle
+        id="position"
+        type="source"
+        position={Position.Right}
+        className={styles.handle}
+      />
+      {!connectedOutputs.includes(id) && position ? (
+        <div className={styles.nextActionAnchor}>
+          <span className={styles.nextOutputLabel}>
+            All supplied {position.catalogAsset.symbol}
+          </span>
+          <button
+            type="button"
+            className={`${styles.nextActionButton} nodrag nopan`}
+            aria-label="Add withdrawal"
+            onClick={(event) => {
+              event.stopPropagation();
+              appendWithdraw(id);
+            }}
+          >
+            <Plus size={17} />
+          </button>
+          <span className={styles.nextActionHint}>Withdraw</span>
+        </div>
+      ) : null}
     </NodeShell>
   );
 }
@@ -261,6 +328,69 @@ export function SupplyNode({ id, data, selected }: NodeProps<RecipeFlowNode>) {
   );
 }
 
+export function WithdrawNode({
+  id,
+  data,
+  selected,
+}: NodeProps<RecipeFlowNode>) {
+  const nodes = useRecipeEditor((state) => state.nodes);
+  const edges = useRecipeEditor((state) => state.edges);
+  const { assets, diagnostics, preview, prepared, execution, openActivity } =
+    useBuilderContext();
+  if (data.kind !== "WITHDRAW") return null;
+  const input = inputForWithdraw(nodes, edges, id);
+  const asset = assets.find(
+    (candidate) =>
+      candidate.address.toLowerCase() === input?.token?.toLowerCase(),
+  );
+  const candidate = preview?.nodes.find((item) => item.nodeId === id);
+  const previewNode = candidate?.kind === "WITHDRAW" ? candidate : undefined;
+  const progress = execution.find(
+    (item) => item.nodeId === id && item.kind === "WITHDRAW",
+  );
+  const actions =
+    prepared?.steps
+      .map((step, index) => ({ step, index }))
+      .filter(({ step }) => step.nodeId === id) ?? [];
+  const problem = diagnosticsForNode(diagnostics, id)[0];
+  return (
+    <NodeShell
+      title="Withdraw"
+      tone="blue"
+      icon={<Undo2 size={13} />}
+      selected={selected}
+      problem={problem?.message}
+    >
+      <p>Withdraw all {asset?.symbol ?? "supplied asset"} from Venus</p>
+      <div className={styles.nodeTags}>
+        <span>Full position</span>
+        <span>
+          {progress
+            ? attemptLabel(progress)
+            : previewNode?.state === "READY"
+              ? "Ready"
+              : "Preview withdrawal"}
+        </span>
+      </div>
+      <Handle
+        id="position"
+        type="target"
+        position={Position.Left}
+        className={styles.handle}
+      />
+      {actions.length > 0 ? (
+        <PreparedActionBranch
+          actions={actions}
+          assets={assets}
+          inputSymbol={asset?.symbol}
+          execution={execution}
+          onOpen={openActivity}
+        />
+      ) : null}
+    </NodeShell>
+  );
+}
+
 function PreparedActionBranch({
   actions,
   assets,
@@ -280,7 +410,13 @@ function PreparedActionBranch({
   const trade = actions.find(({ step }) => step.kind === "TRADE")?.step;
   const supplyStep = actions.find(({ step }) => step.kind === "SUPPLY")?.step;
   const supply = supplyStep?.kind === "SUPPLY" ? supplyStep : undefined;
-  const nodeId = trade?.nodeId ?? supply?.nodeId ?? approval?.nodeId;
+  const withdrawalStep = actions.find(
+    ({ step }) => step.kind === "WITHDRAW",
+  )?.step;
+  const withdrawal =
+    withdrawalStep?.kind === "WITHDRAW" ? withdrawalStep : undefined;
+  const nodeId =
+    trade?.nodeId ?? supply?.nodeId ?? withdrawal?.nodeId ?? approval?.nodeId;
   const state = execution.find((item) => item.nodeId === nodeId)?.phase;
   const approvedAsset =
     approval?.kind === "APPROVAL"
@@ -293,6 +429,7 @@ function PreparedActionBranch({
     approval,
     trade,
     supply,
+    withdrawal,
     approvedSymbol: approvedAsset?.symbol,
     buySymbol,
     inputSymbol,
@@ -325,6 +462,7 @@ function preparedActionLabel({
   approval,
   trade,
   supply,
+  withdrawal,
   approvedSymbol,
   buySymbol,
   inputSymbol,
@@ -332,10 +470,13 @@ function preparedActionLabel({
   approval?: PreparedRecipeStep;
   trade?: PreparedRecipeStep;
   supply?: PreparedRecipeStep;
+  withdrawal?: PreparedRecipeStep;
   approvedSymbol?: string;
   buySymbol?: string;
   inputSymbol?: string;
 }): string {
+  if (withdrawal?.kind === "WITHDRAW")
+    return `Withdraw all ${inputSymbol ?? "asset"}`;
   if (supply?.kind === "SUPPLY") {
     const needsApproval = supply.action.transactions.some(
       (transaction) => transaction.kind === "APPROVE",
@@ -357,7 +498,7 @@ function NodeShell({
   children,
 }: {
   title: string;
-  tone: "purple" | "orange" | "green";
+  tone: "purple" | "orange" | "green" | "blue";
   icon: React.ReactNode;
   selected: boolean;
   problem?: string;

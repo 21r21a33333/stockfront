@@ -3,10 +3,13 @@ import {
   Boxes,
   CircleDollarSign,
   GripVertical,
+  Landmark,
   Layers3,
   Search,
   ShieldCheck,
+  Undo2,
   WalletCards,
+  type LucideIcon,
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import type {
@@ -21,6 +24,37 @@ const upcoming = [
   ["Earn deposit", Layers3],
   ["Liquidity provision", Boxes],
 ] as const;
+
+const primitivePresentation: Record<
+  RecipePrimitiveKind,
+  { className: string; badge: "Source" | "Live"; Icon: LucideIcon }
+> = {
+  WALLET_ASSET: {
+    className: styles.walletPalette,
+    badge: "Source",
+    Icon: WalletCards,
+  },
+  SUPPLIED_POSITION: {
+    className: styles.positionPalette,
+    badge: "Source",
+    Icon: Landmark,
+  },
+  TRADE: {
+    className: styles.tradePalette,
+    badge: "Live",
+    Icon: ArrowRightLeft,
+  },
+  SUPPLY: {
+    className: styles.supplyPalette,
+    badge: "Live",
+    Icon: ShieldCheck,
+  },
+  WITHDRAW: {
+    className: styles.positionPalette,
+    badge: "Live",
+    Icon: Undo2,
+  },
+};
 
 export function ActionPalette({
   primitives,
@@ -87,38 +121,34 @@ export function ActionPalette({
           <small>ACTIONS</small>
           <code>recipe-primitives</code>
         </header>
-        {visiblePrimitives.map((primitive) => (
-          <button
-            key={primitive.kind}
-            type="button"
-            draggable
-            onDragStart={(event) => {
-              event.dataTransfer.setData(
-                "application/stockfront-primitive",
-                primitive.kind,
-              );
-              event.dataTransfer.effectAllowed = "move";
-            }}
-            onClick={() => onAdd(primitive.kind)}
-            className={`${styles.paletteItem} ${primitive.kind === "TRADE" ? styles.tradePalette : primitive.kind === "SUPPLY" ? styles.supplyPalette : styles.walletPalette}`}
-            title={primitive.description}
-          >
-            <GripVertical size={13} />
-            <span className={styles.paletteIcon}>
-              {primitive.kind === "TRADE" ? (
-                <ArrowRightLeft size={12} />
-              ) : primitive.kind === "SUPPLY" ? (
-                <ShieldCheck size={12} />
-              ) : (
-                <WalletCards size={12} />
-              )}
-            </span>
-            <strong>{primitive.name}</strong>
-            <small>
-              {primitive.kind === "WALLET_ASSET" ? "Source" : "Live"}
-            </small>
-          </button>
-        ))}
+        {visiblePrimitives.map((primitive) => {
+          const { className, badge, Icon } =
+            primitivePresentation[primitive.kind];
+          return (
+            <button
+              key={primitive.kind}
+              type="button"
+              draggable
+              onDragStart={(event) => {
+                event.dataTransfer.setData(
+                  "application/stockfront-primitive",
+                  primitive.kind,
+                );
+                event.dataTransfer.effectAllowed = "move";
+              }}
+              onClick={() => onAdd(primitive.kind)}
+              className={`${styles.paletteItem} ${className}`}
+              title={primitive.description}
+            >
+              <GripVertical size={13} />
+              <span className={styles.paletteIcon}>
+                <Icon size={12} />
+              </span>
+              <strong>{primitive.name}</strong>
+              <small>{badge}</small>
+            </button>
+          );
+        })}
         {visibleUpcoming.map(([label, Icon]) => (
           <div className={styles.upcoming} key={label}>
             <Icon size={13} />

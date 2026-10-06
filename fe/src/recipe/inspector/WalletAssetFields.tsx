@@ -3,7 +3,7 @@ import { formatUnits } from "viem";
 import { AssetSelect } from "@/ui/assets/AssetSelect";
 import type { AssetOption, RecipeFlowNode } from "../editor/types";
 import { useRecipeEditor } from "../editor/store";
-import { formatDisplayAmount } from "./amounts";
+import { formatDisplayAmount } from "../format";
 import styles from "../RecipeBuilder.module.css";
 
 export function WalletAssetFields({

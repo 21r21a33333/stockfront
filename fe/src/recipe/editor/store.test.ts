@@ -75,6 +75,35 @@ it("appends a terminal Venus supply to a trade output once", () => {
   expect(useRecipeEditor.getState().nodes).toHaveLength(3);
 });
 
+it("appends a terminal withdrawal to a supplied position once", () => {
+  const pool = "0xfD36E2c2a6789Db23113685031d7F16329158384" as const;
+  const token = "0x02Fca66C1D1aFB4E2A7884261eB00F63598a7436" as const;
+  useRecipeEditor
+    .getState()
+    .addNode(
+      "SUPPLIED_POSITION",
+      { x: 70, y: 180 },
+      { suppliedPosition: { venue: "venus", pool, token } },
+    );
+  const source = useRecipeEditor.getState().nodes[0].id;
+
+  useRecipeEditor.getState().appendWithdraw(source);
+
+  const state = useRecipeEditor.getState();
+  expect(state.nodes[1]).toMatchObject({
+    type: "withdraw",
+    data: { kind: "WITHDRAW" },
+  });
+  expect(state.edges[0]).toMatchObject({
+    source,
+    sourceHandle: "position",
+    target: state.nodes[1].id,
+    targetHandle: "position",
+  });
+  useRecipeEditor.getState().appendWithdraw(source);
+  expect(useRecipeEditor.getState().nodes).toHaveLength(2);
+});
+
 it("starts a new recipe with an empty board and removes the saved draft", () => {
   useRecipeEditor.getState().initialize({
     settlementToken: "0x55d398326f99059fF775485246999027B3197955",

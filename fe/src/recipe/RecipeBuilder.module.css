@@ -236,8 +236,14 @@
   color: var(--success);
 }
 
+.positionPalette .paletteIcon {
+  background: #eef4ff;
+  color: #3569b7;
+}
+
 .tradePalette small,
-.supplyPalette small {
+.supplyPalette small,
+.positionPalette small {
   color: var(--success);
 }
 
@@ -526,6 +532,9 @@
 .selectedNode.green {
   border: 1.5px solid var(--success);
 }
+.selectedNode.blue {
+  border: 1.5px solid #4f7fbd;
+}
 .problemNode {
   border-color: var(--danger) !important;
 }
@@ -551,6 +560,10 @@
   background: var(--success-soft);
   color: #167551;
 }
+.blue .nodeHead {
+  background: #eef4ff;
+  color: #3569b7;
+}
 
 .nodeHead > span {
   width: 16px;
@@ -569,6 +582,9 @@
 }
 .green .nodeHead > span {
   background: var(--success);
+}
+.blue .nodeHead > span {
+  background: #4f7fbd;
 }
 
 .nodeHead strong {
@@ -886,6 +902,10 @@
 
 .greenIcon {
   background: var(--success);
+}
+
+.blueIcon {
+  background: #4f7fbd;
 }
 
 .inspectorScroll {
@@ -1243,6 +1263,93 @@
   margin: 0;
   color: var(--ink);
   text-align: right;
+}
+
+.positionList {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.positionList > button {
+  min-height: 54px;
+  padding: 9px 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: white;
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.positionList > button[aria-pressed="true"] {
+  border-color: #8cadd8;
+  box-shadow: inset 0 0 0 1px #dce8f8;
+}
+
+.positionList > button > span:last-child,
+.withdrawAsset > span:last-child {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  font-size: 10px;
+}
+
+.positionList small,
+.withdrawAsset small {
+  color: var(--muted);
+}
+
+.emptyPosition {
+  padding: 18px 12px;
+  display: grid;
+  place-items: center;
+  gap: 6px;
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+  color: var(--muted);
+  text-align: center;
+}
+
+.emptyPosition strong {
+  color: var(--ink-soft);
+  font-size: 11px;
+}
+
+.emptyPosition p,
+.positionSummary p {
+  margin: 0;
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.positionSummary {
+  margin-top: 10px;
+  padding: 10px;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 6px;
+  border-radius: 9px;
+  background: #f6f8fb;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.positionSummary p {
+  grid-column: 1 / -1;
+}
+
+.withdrawAsset {
+  margin-bottom: 13px;
+  padding-bottom: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid #e5eee9;
 }
 .route strong {
   font-size: 11.5px;

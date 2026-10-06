@@ -126,6 +126,11 @@ function validRecipe(
         nonEmpty(node.id) &&
         ((node.kind === "TRADE" && address(node.buyToken)) ||
           (node.kind === "SUPPLY" && node.venue === "venus") ||
+          (node.kind === "SUPPLIED_POSITION" &&
+            node.venue === "venus" &&
+            address(node.pool) &&
+            address(node.token)) ||
+          node.kind === "WITHDRAW" ||
           (node.kind === "WALLET_ASSET" &&
             address(node.token) &&
             unsigned(node.rawAmount))),
@@ -168,14 +173,19 @@ function validAttempt(value: unknown, recipe: RecipeDefinition): boolean {
     recipe.nodes.some((node) => node.id === value.nodeId) &&
     (value.kind === "APPROVAL" ||
       value.kind === "TRADE" ||
-      value.kind === "SUPPLY") &&
+      value.kind === "SUPPLY" ||
+      value.kind === "WITHDRAW") &&
     PHASES.includes(value.phase as ExecutionPhase) &&
     Number.isInteger(value.attempt) &&
     Number(value.attempt) > 0 &&
     Array.isArray(value.steps) &&
     value.steps.length > 0 &&
     value.steps.every(
-      (step) => step === "APPROVAL" || step === "TRADE" || step === "SUPPLY",
+      (step) =>
+        step === "APPROVAL" ||
+        step === "TRADE" ||
+        step === "SUPPLY" ||
+        step === "WITHDRAW",
     ) &&
     optionalString(value.error) &&
     optionalBoolean(value.approvalSkipped) &&
@@ -184,7 +194,8 @@ function validAttempt(value: unknown, recipe: RecipeDefinition): boolean {
     (value.executionMode === undefined ||
       value.executionMode === "SWAP" ||
       value.executionMode === "RFQ" ||
-      value.executionMode === "SUPPLY") &&
+      value.executionMode === "SUPPLY" ||
+      value.executionMode === "WITHDRAW") &&
     validReference(value.reference) &&
     outputMatchesNode
   );

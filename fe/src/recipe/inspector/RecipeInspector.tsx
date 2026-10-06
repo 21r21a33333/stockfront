@@ -8,7 +8,11 @@ import type {
   RecipeTradePolicy,
   TradeQuote,
 } from "@/api/generated";
-import type { AssetOption, RecipeFlowNode } from "../editor/types";
+import type {
+  AssetOption,
+  RecipeFlowNode,
+  RecipeNodeData,
+} from "../editor/types";
 import { diagnosticsForNode } from "../editor/compiler";
 import { canSupplyAsset } from "../editor/supplyPolicy";
 import { useRecipeEditor } from "../editor/store";
@@ -17,12 +21,16 @@ import styles from "../RecipeBuilder.module.css";
 import { WalletAssetFields } from "./WalletAssetFields";
 import { TradeFields } from "./TradeFields";
 import { SupplyFields } from "./SupplyFields";
+import { SuppliedPositionFields } from "./SuppliedPositionFields";
+import { WithdrawFields } from "./WithdrawFields";
+import type { SuppliedPositionOption } from "../editor/withdrawalPolicy";
 
 export function RecipeInspector({
   node,
   assets,
   tradePolicy,
   supplyPolicy,
+  suppliedPositions = [],
   diagnostics,
   preview,
   selectedRouteId,
@@ -40,6 +48,7 @@ export function RecipeInspector({
   assets: AssetOption[];
   tradePolicy: RecipeTradePolicy;
   supplyPolicy: RecipeSupplyPolicy;
+  suppliedPositions?: SuppliedPositionOption[];
   diagnostics: RecipeDiagnostic[];
   preview?: RecipePreview;
   selectedRouteId?: string;
@@ -66,6 +75,7 @@ export function RecipeInspector({
     );
   }
   const showingActivity = view === "activity" && Boolean(activity);
+  const nodeKind = node?.data.kind;
   const problems = node ? diagnosticsForNode(diagnostics, node.id) : [];
   const connectedSupply =
     node?.data.kind === "WALLET_ASSET"
@@ -84,21 +94,13 @@ export function RecipeInspector({
     <aside className={styles.inspector}>
       <header className={styles.inspectorHeader}>
         <span
-          className={`${styles.inspectorIcon} ${!showingActivity && node?.data.kind === "TRADE" ? styles.orangeIcon : !showingActivity && node?.data.kind === "SUPPLY" ? styles.greenIcon : ""}`}
+          className={`${styles.inspectorIcon} ${showingActivity ? "" : inspectorTone(nodeKind)}`}
         >
           ●
         </span>
         <div>
           <strong>
-            {showingActivity
-              ? "Recipe activity"
-              : node?.data.kind === "TRADE"
-                ? "Trade"
-                : node?.data.kind === "SUPPLY"
-                  ? "Supply"
-                  : node
-                    ? "Wallet Asset"
-                    : "Recipe"}
+            {showingActivity ? "Recipe activity" : inspectorTitle(nodeKind)}
           </strong>
           <small>
             {showingActivity
@@ -171,11 +173,27 @@ export function RecipeInspector({
                 onRouteSelect={onRouteSelect}
                 onPrepare={onPrepare}
               />
-            ) : (
+            ) : node.data.kind === "SUPPLY" ? (
               <SupplyFields
                 node={node}
                 assets={assets}
                 supplyPolicy={supplyPolicy}
+                preview={preview}
+                prepared={prepared}
+                completed={completed}
+                preparing={preparing}
+                onPrepare={onPrepare}
+              />
+            ) : node.data.kind === "SUPPLIED_POSITION" ? (
+              <SuppliedPositionFields
+                node={node}
+                positions={suppliedPositions}
+              />
+            ) : (
+              <WithdrawFields
+                node={node}
+                assets={assets}
+                positions={suppliedPositions}
                 preview={preview}
                 prepared={prepared}
                 completed={completed}
@@ -223,4 +241,35 @@ export function RecipeInspector({
       )}
     </aside>
   );
+}
+
+function inspectorTitle(kind: RecipeNodeData["kind"] | undefined): string {
+  switch (kind) {
+    case "WALLET_ASSET":
+      return "Wallet Asset";
+    case "SUPPLIED_POSITION":
+      return "Supplied position";
+    case "TRADE":
+      return "Trade";
+    case "SUPPLY":
+      return "Supply";
+    case "WITHDRAW":
+      return "Withdraw";
+    default:
+      return "Recipe";
+  }
+}
+
+function inspectorTone(kind: RecipeNodeData["kind"] | undefined): string {
+  switch (kind) {
+    case "TRADE":
+      return styles.orangeIcon;
+    case "SUPPLY":
+      return styles.greenIcon;
+    case "SUPPLIED_POSITION":
+    case "WITHDRAW":
+      return styles.blueIcon;
+    default:
+      return "";
+  }
 }
