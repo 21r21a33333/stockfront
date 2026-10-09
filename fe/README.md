@@ -1,4 +1,4 @@
-# Recipe builder
+# Stockfront web app
 
 ```sh
 pnpm install
@@ -9,13 +9,15 @@ Vite forwards `/api` to the Stockfront backend. See `.env.example` for local con
 
 ## Layout
 
-- `src/api`: typed HTTP client and generated API types.
-- `src/recipe`: page composition, header, action palette and shared styling.
-  - `canvas/`: graph rendering, nodes and asset edges.
-  - `inspector/`: asset configuration, route preview and transaction controls.
-  - `editor/`: draft state, graph types and conversion to API recipes.
-- `src/wallet`: connection and wallet-signed execution.
-- `src/ui/assets`: shared token selector, identity components and their styles.
+- `src/app`: routing (`#/`, `#/compose`, `#/builder`, `#/run`), header and error boundary.
+- `src/landing`: the marketing page.
+- `src/compose`: the AI strategy composer (`/v1/strategies/compose`) and its plan card.
+- `src/builder`: the block canvas, palette and inspector.
+- `src/run`: step-by-step signing, price-change and recovery states, and the finish screen.
+- `src/positions`: the positions slide-over.
+- `src/session`: the shared recipe session (catalog, balances, validation, live preview, fresh preparation, execution).
+- `src/recipe`: editor state, recipe compilation and the wallet execution engine.
+- `src/wallet`, `src/api`, `src/ui`: wallet connection, the typed API client, and shared visual pieces.
 
 Tests stay beside the code they cover. Imports point directly to their owning
 module; there are no barrel files or extra service layers.

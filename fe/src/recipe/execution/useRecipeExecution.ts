@@ -347,6 +347,27 @@ export function useRecipeExecution({
     );
   }
 
+  /**
+   * Forgets the saved run even when an action is unresolved. The caller must
+   * have the user confirm that nothing is still pending in their wallet, because
+   * the journal is the only guard against submitting the same spend twice.
+   */
+  async function abandonRun(): Promise<void> {
+    if (!current || running.current || !navigator.locks) return;
+    await navigator.locks.request(
+      runKey(current.wallet, current.chainId),
+      { ifAvailable: true },
+      (lock) => {
+        if (!lock) return;
+        localStorage.removeItem(runKey(current.wallet, current.chainId));
+        memory.current.delete(runKey(current.wallet, current.chainId));
+        signedOrders.current.clear();
+        setRun(undefined);
+        setError(undefined);
+      },
+    );
+  }
+
   async function withRunLock(
     snapshot: ExecutionRun,
     action: (saved: ExecutionRun) => void | Promise<void>,
@@ -425,6 +446,7 @@ export function useRecipeExecution({
     checkStatus: status.checkStatus,
     retrySubmission,
     startNewRun,
+    abandonRun,
   };
 }
 

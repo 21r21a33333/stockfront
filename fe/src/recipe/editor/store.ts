@@ -1,12 +1,3 @@
-import {
-  addEdge,
-  applyEdgeChanges,
-  applyNodeChanges,
-  type Connection,
-  type EdgeChange,
-  type NodeChange,
-  type XYPosition,
-} from "@xyflow/react";
 import { create } from "zustand";
 import type { Address } from "viem";
 import type { RecipePrimitiveKind } from "@/api/generated";
@@ -17,6 +8,9 @@ import type {
   RecipeNodeData,
 } from "./types";
 import { flowType } from "./types";
+import { chainOrder, linearGraph, nextKinds } from "./graphs";
+
+type Position = RecipeFlowNode["position"];
 
 const DRAFT_KEY = "stockfront.recipe-builder.draft.v1";
 
@@ -45,7 +39,7 @@ interface RecipeEditorState {
   initialize(defaults: EditorDefaults): void;
   addNode(
     kind: RecipePrimitiveKind,
-    position: XYPosition,
+    position: Position,
     defaults: EditorDefaults,
   ): void;
   appendTrade(sourceId: string, buyToken?: Address): void;
@@ -56,9 +50,6 @@ interface RecipeEditorState {
   updateNode(id: string, patch: Partial<RecipeNodeData>): void;
   selectNode(id?: string): void;
   removeSelected(): void;
-  connect(connection: Connection): void;
-  onNodesChange(changes: NodeChange<RecipeFlowNode>[]): void;
-  onEdgesChange(changes: EdgeChange<RecipeFlowEdge>[]): void;
   setMode(mode: "builder" | "debug"): void;
   startNewRecipe(): void;
   startWithdrawalRecipe(
@@ -66,11 +57,21 @@ interface RecipeEditorState {
   ): void;
   saveDraft(): void;
   restoreDraft(): boolean;
+  name: string;
+  setName(name: string): void;
+  loadGraph(
+    graph: { nodes: RecipeFlowNode[]; edges: RecipeFlowEdge[] },
+    name: string,
+  ): void;
+  /** Adds a block to the end of the chain when the compiler accepts it there. */
+  appendToChain(kind: RecipePrimitiveKind, defaults: EditorDefaults): boolean;
+  /** Removes a block and everything after it, since later blocks consume its output. */
+  removeFrom(id: string): void;
 }
 
 function nodeFor(
   kind: RecipePrimitiveKind,
-  position: XYPosition,
+  position: Position,
   defaults: EditorDefaults,
 ): RecipeFlowNode {
   const id = crypto.randomUUID();
@@ -174,6 +175,42 @@ export const useRecipeEditor = create<RecipeEditorState>((set, get) => ({
   edges: [],
   mode: "builder",
   initialized: false,
+  name: "Untitled strategy",
+  setName: (name) => set({ name }),
+  loadGraph: (graph, name) => {
+    localStorage.removeItem(DRAFT_KEY);
+    set({
+      nodes: graph.nodes,
+      edges: graph.edges,
+      name,
+      selectedNodeId: graph.nodes.at(-1)?.id,
+      mode: "builder",
+      initialized: true,
+    });
+  },
+  appendToChain: (kind, defaults) => {
+    const { nodes, edges } = get();
+    const ordered = chainOrder(nodes, edges);
+    const last = ordered.at(-1);
+    if (!nextKinds(last?.data.kind).includes(kind)) return false;
+    const node = nodeFor(kind, { x: 0, y: 0 }, defaults);
+    const graph = linearGraph([
+      ...ordered.map((item) => ({ id: item.id, data: item.data })),
+      { id: node.id, data: node.data },
+    ]);
+    set({ nodes: graph.nodes, edges: graph.edges, selectedNodeId: node.id });
+    return true;
+  },
+  removeFrom: (id) => {
+    const ordered = chainOrder(get().nodes, get().edges);
+    const index = ordered.findIndex((node) => node.id === id);
+    if (index < 0) return;
+    const kept = ordered.slice(0, index);
+    const graph = linearGraph(
+      kept.map((item) => ({ id: item.id, data: item.data })),
+    );
+    set({ ...graph, selectedNodeId: kept.at(-1)?.id });
+  },
   initialize: (defaults) => {
     if (get().initialized) return;
     if (get().restoreDraft()) return;
@@ -382,21 +419,11 @@ export const useRecipeEditor = create<RecipeEditorState>((set, get) => ({
       selectedNodeId: undefined,
     }));
   },
-  connect: (connection) =>
-    set((state) => ({
-      edges: addEdge(
-        { ...connection, id: crypto.randomUUID(), type: "asset" },
-        state.edges,
-      ),
-    })),
-  onNodesChange: (changes) =>
-    set((state) => ({ nodes: applyNodeChanges(changes, state.nodes) })),
-  onEdgesChange: (changes) =>
-    set((state) => ({ edges: applyEdgeChanges(changes, state.edges) })),
   setMode: (mode) => set({ mode }),
   startNewRecipe: () => {
     localStorage.removeItem(DRAFT_KEY);
     set({
+      name: "Untitled strategy",
       nodes: [],
       edges: [],
       selectedNodeId: undefined,
@@ -434,8 +461,8 @@ export const useRecipeEditor = create<RecipeEditorState>((set, get) => ({
     });
   },
   saveDraft: () => {
-    const { nodes, edges } = get();
-    const draft: DraftRecipe = { version: 1, nodes, edges };
+    const { nodes, edges, name } = get();
+    const draft: DraftRecipe = { version: 1, nodes, edges, name };
     localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
   },
   restoreDraft: () => {
@@ -445,6 +472,7 @@ export const useRecipeEditor = create<RecipeEditorState>((set, get) => ({
       const draft = JSON.parse(value) as DraftRecipe;
       if (draft.version !== 1 || !Array.isArray(draft.nodes)) return false;
       set({
+        name: typeof draft.name === "string" ? draft.name : "Untitled strategy",
         nodes: draft.nodes,
         edges: Array.isArray(draft.edges)
           ? draft.edges.map((edge) => ({ ...edge, type: "asset" }))

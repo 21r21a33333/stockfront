@@ -23,7 +23,6 @@ export default defineConfig({
     rollupOptions: {
       output: {
         manualChunks: {
-          flow: ["@xyflow/react"],
           query: ["@tanstack/react-query"],
           web3: ["viem", "wagmi"],
         },

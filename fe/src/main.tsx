@@ -1,14 +1,16 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { WagmiProvider } from "wagmi";
-import { walletConfig } from "@/wallet/config";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { RecipeBuilderPage } from "@/recipe/RecipeBuilderPage";
+import { walletConfig } from "@/wallet/config";
+import { App } from "@/app/App";
+import { ErrorBoundary } from "@/app/ErrorBoundary";
 
 import "@fontsource-variable/geist";
 import "@fontsource/geist-mono/400.css";
 import "@fontsource/geist-mono/500.css";
-import "@xyflow/react/dist/style.css";
+import "@fontsource/space-grotesk/500.css";
+import "@fontsource/space-grotesk/600.css";
 import "./styles/tokens.css";
 import "./styles/base.css";
 
@@ -23,10 +25,12 @@ const queryClient = new QueryClient({
 
 createRoot(root).render(
   <StrictMode>
-    <WagmiProvider config={walletConfig}>
-      <QueryClientProvider client={queryClient}>
-        <RecipeBuilderPage />
-      </QueryClientProvider>
-    </WagmiProvider>
+    <ErrorBoundary>
+      <WagmiProvider config={walletConfig}>
+        <QueryClientProvider client={queryClient}>
+          <App />
+        </QueryClientProvider>
+      </WagmiProvider>
+    </ErrorBoundary>
   </StrictMode>,
 );

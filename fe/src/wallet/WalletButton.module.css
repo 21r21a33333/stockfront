@@ -1,79 +1,107 @@
-.connect,
-.warning,
-.wallet {
-  border: 1px solid var(--border);
-  background: white;
-  color: var(--ink);
-  border-radius: 12px;
-  font: inherit;
-  cursor: pointer;
-}
-
-.connect,
-.warning {
-  width: 100%;
-  min-height: 42px;
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.warning {
-  border-color: #e8c795;
-  color: #995f11;
-  background: #fff9ef;
-}
-
-.wallet {
-  width: 100%;
-  min-height: 52px;
-  padding: 8px;
-  display: grid;
-  grid-template-columns: 30px 1fr 14px;
-  align-items: center;
-  gap: 9px;
-  text-align: left;
+.anchor {
   position: relative;
+  display: inline-flex;
 }
 
-.wallet strong,
-.wallet small {
-  display: block;
+.connect,
+.wallet,
+.warning {
+  height: 38px;
+  border-radius: 10px;
+  border: 0;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
-.wallet strong {
-  font: 500 11px var(--mono);
+.connect {
+  padding: 0 14px;
+  background: var(--ink);
+  color: #ffffff;
+  font-weight: 500;
 }
 
-.wallet small {
-  color: var(--muted);
-  margin-top: 3px;
-  font-size: 10.5px;
+.glass {
+  height: 44px;
+  padding: 0 18px;
+  border-radius: 999px;
+  border: 1px solid rgba(15, 17, 14, 0.14);
+  background: rgba(255, 255, 255, 0.55);
+  backdrop-filter: blur(14px);
+  font-family: var(--mono);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.wallet {
+  padding: 0 12px 0 6px;
+  background: var(--ink);
+  color: #ffffff;
+  font-size: 12px;
+}
+
+.warning {
+  padding: 0 14px;
+  background: var(--warn);
+  color: var(--ink);
+  font-weight: 500;
 }
 
 .avatar {
-  width: 30px;
-  height: 30px;
-  border-radius: 9px;
-  display: grid;
-  place-items: center;
-  background: var(--purple-soft);
-  color: var(--purple);
-  text-transform: uppercase;
-  font-size: 10px;
-  font-weight: 650;
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  background: linear-gradient(135deg, var(--lime), var(--sky));
 }
 
-.unplug {
-  display: none;
+.menu,
+.popover {
   position: absolute;
-  right: 10px;
-  color: var(--danger);
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 40;
+  min-width: 220px;
+  padding: 6px;
+  border-radius: 14px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  box-shadow: 0 24px 50px -28px rgba(15, 17, 14, 0.45);
+  display: flex;
+  flex-direction: column;
+  animation: fadeUp 0.2s var(--ease) both;
 }
 
-.wallet:hover .unplug {
-  display: block;
+.popover {
+  padding: 14px;
+  font-size: 13px;
+  line-height: 1.5;
+  width: 280px;
 }
 
-.wallet:hover > svg:not(.unplug) {
-  display: none;
+.menu button,
+.menu a {
+  text-align: left;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  font-size: 14px;
+}
+
+.menu button:hover,
+.menu a:hover {
+  background: var(--bg-soft);
+}
+
+@keyframes fadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
 }

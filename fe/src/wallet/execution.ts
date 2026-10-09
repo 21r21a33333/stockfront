@@ -9,6 +9,10 @@ export function useWalletSession() {
   const connector = connect.connectors[0];
   return {
     ...account,
+    hasInjectedWallet:
+      typeof window !== "undefined" &&
+      "ethereum" in window &&
+      Boolean(window.ethereum),
     connect: () => connector && connect.connect({ connector }),
     disconnect: () => disconnect.disconnect(),
     switchToBnb: () => switchChain.switchChain({ chainId: stockfrontChain.id }),

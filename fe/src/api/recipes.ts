@@ -1,5 +1,6 @@
 import { api, apiResult } from "./client";
 import type {
+  ComposeStrategyRequest,
   PrepareRecipeRequest,
   RecipeDefinition,
   RecipePreviewRequest,
@@ -8,6 +9,8 @@ import type {
 
 export const recipesApi = {
   catalog: () => apiResult(api.GET("/v1/recipe-primitives")),
+  compose: (body: ComposeStrategyRequest) =>
+    apiResult(api.POST("/v1/strategies/compose", { body })),
   validate: (body: RecipeDefinition) =>
     apiResult(api.POST("/v1/recipes/validate", { body })),
   preview: (body: RecipePreviewRequest) =>

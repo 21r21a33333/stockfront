@@ -1,4 +1,3 @@
-import type { Edge, Node } from "@xyflow/react";
 import type { Address } from "viem";
 import type { BorrowingVenue, RecipePrimitiveKind } from "@/api/generated";
 
@@ -65,23 +64,35 @@ export type RecipeNodeData =
   | WithdrawNodeData
   | BorrowNodeData
   | RepayNodeData;
-export type RecipeFlowNode = Node<
-  RecipeNodeData,
-  | "walletAsset"
-  | "suppliedPosition"
-  | "borrowedPosition"
-  | "trade"
-  | "supply"
-  | "withdraw"
-  | "borrow"
-  | "repay"
->;
-export type RecipeFlowEdge = Edge;
+export interface RecipeFlowNode {
+  id: string;
+  type:
+    | "walletAsset"
+    | "suppliedPosition"
+    | "borrowedPosition"
+    | "trade"
+    | "supply"
+    | "withdraw"
+    | "borrow"
+    | "repay";
+  position: { x: number; y: number };
+  data: RecipeNodeData;
+}
+
+export interface RecipeFlowEdge {
+  id: string;
+  source: string;
+  sourceHandle?: string | null;
+  target: string;
+  targetHandle?: string | null;
+  type?: string;
+}
 
 export interface DraftRecipe {
   version: 1;
   nodes: RecipeFlowNode[];
   edges: RecipeFlowEdge[];
+  name?: string;
 }
 
 export function flowType(kind: RecipePrimitiveKind): RecipeFlowNode["type"] {
