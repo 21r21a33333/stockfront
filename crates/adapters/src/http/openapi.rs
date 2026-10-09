@@ -13,13 +13,15 @@ use utoipa::OpenApi;
         stockfront_core::recipes::RecipePreview,
         stockfront_core::recipes::PreparedRecipe,
         stockfront_core::bstock_borrowing::BorrowingAccount,
-        stockfront_core::bstock_trade::SubmittedOrder
+        stockfront_core::bstock_trade::SubmittedOrder,
+        stockfront_core::strategy_composer::ComposedStrategy
     )),
     paths(
         super::handlers::recipes::primitives,
         super::handlers::recipes::validate,
         super::handlers::recipes::preview,
         super::handlers::recipes::prepare,
+        super::handlers::strategies::compose,
         super::handlers::borrowing::account,
         super::handlers::trades::submit_order,
         super::handlers::trades::order_status,

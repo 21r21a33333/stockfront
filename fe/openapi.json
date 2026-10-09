@@ -237,6 +237,42 @@
         }
       }
     },
+    "/v1/strategies/compose": {
+      "post": {
+        "tags": ["super::handlers::strategies"],
+        "operationId": "compose",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ComposeStrategyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Response_ComposedStrategy"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Response" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/wallets/{address}/loans": {
       "get": {
         "tags": ["super::handlers::borrowing"],
@@ -473,6 +509,48 @@
             }
           }
         ]
+      },
+      "ComposeStrategyRequest": {
+        "type": "object",
+        "required": ["prompt"],
+        "properties": {
+          "previous": {
+            "oneOf": [
+              { "type": "null" },
+              {
+                "$ref": "#/components/schemas/StrategyIntent",
+                "description": "The intent returned by an earlier composition, sent back to refine it."
+              }
+            ]
+          },
+          "prompt": { "type": "string" },
+          "wallet": { "type": ["string", "null"], "format": "evm-address" }
+        }
+      },
+      "ComposedStrategy": {
+        "type": "object",
+        "required": ["summary", "intent", "assumptions", "missingInputs"],
+        "properties": {
+          "assumptions": { "type": "array", "items": { "type": "string" } },
+          "intent": { "$ref": "#/components/schemas/StrategyIntent" },
+          "missingInputs": { "type": "array", "items": { "type": "string" } },
+          "recipe": {
+            "oneOf": [
+              { "type": "null" },
+              {
+                "$ref": "#/components/schemas/RecipeDefinition",
+                "description": "Present only when the strategy resolved and passed recipe validation."
+              }
+            ]
+          },
+          "summary": { "type": "string" },
+          "validation": {
+            "oneOf": [
+              { "type": "null" },
+              { "$ref": "#/components/schemas/RecipeValidationReport" }
+            ]
+          }
+        }
       },
       "Error": {
         "type": "object",
@@ -1410,6 +1488,42 @@
           "status": { "$ref": "#/components/schemas/Status" }
         }
       },
+      "Response_ComposedStrategy": {
+        "type": "object",
+        "required": ["status"],
+        "properties": {
+          "error": { "$ref": "#/components/schemas/Error" },
+          "result": {
+            "type": "object",
+            "required": ["summary", "intent", "assumptions", "missingInputs"],
+            "properties": {
+              "assumptions": { "type": "array", "items": { "type": "string" } },
+              "intent": { "$ref": "#/components/schemas/StrategyIntent" },
+              "missingInputs": {
+                "type": "array",
+                "items": { "type": "string" }
+              },
+              "recipe": {
+                "oneOf": [
+                  { "type": "null" },
+                  {
+                    "$ref": "#/components/schemas/RecipeDefinition",
+                    "description": "Present only when the strategy resolved and passed recipe validation."
+                  }
+                ]
+              },
+              "summary": { "type": "string" },
+              "validation": {
+                "oneOf": [
+                  { "type": "null" },
+                  { "$ref": "#/components/schemas/RecipeValidationReport" }
+                ]
+              }
+            }
+          },
+          "status": { "$ref": "#/components/schemas/Status" }
+        }
+      },
       "Response_PreparedRecipe": {
         "type": "object",
         "required": ["status"],
@@ -1603,6 +1717,78 @@
         }
       },
       "Status": { "type": "string", "enum": ["Ok", "Error"] },
+      "StrategyIntent": {
+        "type": "object",
+        "description": "A strategy in human terms: symbols and decimal amounts, ordered as a chain.\n\nAddresses, raw units and graph edges are deliberately absent. They are\nderived by Stockfront from live data so a language model cannot invent them.",
+        "required": ["steps"],
+        "properties": {
+          "steps": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/StrategyStep" }
+          }
+        }
+      },
+      "StrategyStep": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": ["symbol", "kind"],
+            "properties": {
+              "amount": { "type": ["string", "null"] },
+              "kind": { "type": "string", "enum": ["WALLET_ASSET"] },
+              "symbol": { "type": "string" }
+            }
+          },
+          {
+            "type": "object",
+            "required": ["symbol", "kind"],
+            "properties": {
+              "kind": { "type": "string", "enum": ["SUPPLIED_POSITION"] },
+              "symbol": { "type": "string" }
+            }
+          },
+          {
+            "type": "object",
+            "required": ["symbol", "kind"],
+            "properties": {
+              "kind": { "type": "string", "enum": ["BORROWED_POSITION"] },
+              "symbol": { "type": "string" }
+            }
+          },
+          {
+            "type": "object",
+            "required": ["buySymbol", "kind"],
+            "properties": {
+              "buySymbol": { "type": "string" },
+              "kind": { "type": "string", "enum": ["TRADE"] }
+            }
+          },
+          {
+            "type": "object",
+            "required": ["kind"],
+            "properties": { "kind": { "type": "string", "enum": ["SUPPLY"] } }
+          },
+          {
+            "type": "object",
+            "required": ["kind"],
+            "properties": { "kind": { "type": "string", "enum": ["WITHDRAW"] } }
+          },
+          {
+            "type": "object",
+            "required": ["symbol", "kind"],
+            "properties": {
+              "amount": { "type": ["string", "null"] },
+              "kind": { "type": "string", "enum": ["BORROW"] },
+              "symbol": { "type": "string" }
+            }
+          },
+          {
+            "type": "object",
+            "required": ["kind"],
+            "properties": { "kind": { "type": "string", "enum": ["REPAY"] } }
+          }
+        ]
+      },
       "SubmitOrderRequest": {
         "type": "object",
         "required": ["submissionId", "routeQuoteId", "venue", "signature"],

@@ -55,3 +55,16 @@ where
         .parse()
         .map_err(de::Error::custom)
 }
+
+pub(crate) fn deserialize_optional_from_string<'de, T, D>(
+    deserializer: D,
+) -> Result<Option<T>, D::Error>
+where
+    T: FromStr,
+    T::Err: Display,
+    D: Deserializer<'de>,
+{
+    Option::<String>::deserialize(deserializer)?
+        .map(|value| value.parse().map_err(de::Error::custom))
+        .transpose()
+}

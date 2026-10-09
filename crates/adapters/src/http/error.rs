@@ -16,6 +16,7 @@ use stockfront_core::managed_portfolios::{
     ManagedPortfolioProviderError, ManagedPortfolioServiceError,
 };
 use stockfront_core::recipes::{RecipeDiagnostic, RecipeError};
+use stockfront_core::strategy_composer::{StrategyComposerError, StrategyModelError};
 use stockfront_core::wallet_portfolio::{
     BalanceReaderError, WalletAddressError, WalletPortfolioError,
 };
@@ -341,6 +342,26 @@ impl ApiError {
         "recipe_step_not_ready",
         "the recipe step depends on an earlier transaction result",
     );
+    const INVALID_STRATEGY_PROMPT: Self = Self::fixed(
+        StatusCode::BAD_REQUEST,
+        "invalid_strategy_prompt",
+        "the strategy prompt must contain between 1 and 1000 characters",
+    );
+    const AI_RATE_LIMITED: Self = Self::fixed(
+        StatusCode::SERVICE_UNAVAILABLE,
+        "ai_rate_limited",
+        "the AI strategy model is rate limited; try again shortly",
+    );
+    const AI_UNAVAILABLE: Self = Self::fixed(
+        StatusCode::SERVICE_UNAVAILABLE,
+        "ai_unavailable",
+        "the AI strategy model is temporarily unavailable",
+    );
+    const INVALID_AI_RESPONSE: Self = Self::fixed(
+        StatusCode::BAD_GATEWAY,
+        "invalid_ai_response",
+        "the AI strategy model did not return a usable strategy",
+    );
     const fn fixed(status: StatusCode, code: &'static str, message: &'static str) -> Self {
         Self {
             status,
@@ -377,6 +398,21 @@ impl From<RecipeError> for ApiError {
             RecipeError::Market(error) => error.into(),
             RecipeError::Trade(error) => error.into(),
             RecipeError::Borrowing(error) => error.into(),
+        }
+    }
+}
+
+impl From<StrategyComposerError> for ApiError {
+    fn from(error: StrategyComposerError) -> Self {
+        match error {
+            StrategyComposerError::InvalidPrompt => Self::INVALID_STRATEGY_PROMPT,
+            StrategyComposerError::Recipe(error) => error.into(),
+            StrategyComposerError::Borrowing(error) => error.into(),
+            StrategyComposerError::Model(StrategyModelError::RateLimited) => Self::AI_RATE_LIMITED,
+            StrategyComposerError::Model(StrategyModelError::Unavailable) => Self::AI_UNAVAILABLE,
+            StrategyComposerError::Model(StrategyModelError::InvalidResponse) => {
+                Self::INVALID_AI_RESPONSE
+            }
         }
     }
 }

@@ -112,6 +112,22 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/strategies/compose": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post: operations["compose"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/wallets/{address}/loans": {
     parameters: {
       query?: never;
@@ -239,6 +255,20 @@ export interface components {
       underlyingName: string;
       underlyingTicker: string;
       volume24hUsd?: string;
+    };
+    ComposeStrategyRequest: {
+      previous?: null | components["schemas"]["StrategyIntent"];
+      prompt: string;
+      /** Format: evm-address */
+      wallet?: `0x${string}`;
+    };
+    ComposedStrategy: {
+      assumptions: string[];
+      intent: components["schemas"]["StrategyIntent"];
+      missingInputs: string[];
+      recipe?: null | components["schemas"]["RecipeDefinition"];
+      summary: string;
+      validation?: null | components["schemas"]["RecipeValidationReport"];
     };
     Error: {
       code: string;
@@ -761,6 +791,18 @@ export interface components {
       };
       status: components["schemas"]["Status"];
     };
+    Response_ComposedStrategy: {
+      error?: components["schemas"]["Error"];
+      result?: {
+        assumptions: string[];
+        intent: components["schemas"]["StrategyIntent"];
+        missingInputs: string[];
+        recipe?: null | components["schemas"]["RecipeDefinition"];
+        summary: string;
+        validation?: null | components["schemas"]["RecipeValidationReport"];
+      };
+      status: components["schemas"]["Status"];
+    };
     Response_PreparedRecipe: {
       error?: components["schemas"]["Error"];
       result?: {
@@ -847,6 +889,55 @@ export interface components {
     };
     /** @enum {string} */
     Status: "Ok" | "Error";
+    /**
+     * @description A strategy in human terms: symbols and decimal amounts, ordered as a chain.
+     *
+     *     Addresses, raw units and graph edges are deliberately absent. They are
+     *     derived by Stockfront from live data so a language model cannot invent them.
+     */
+    StrategyIntent: {
+      steps: components["schemas"]["StrategyStep"][];
+    };
+    StrategyStep:
+      | {
+          amount?: string | null;
+          /** @enum {string} */
+          kind: "WALLET_ASSET";
+          symbol: string;
+        }
+      | {
+          /** @enum {string} */
+          kind: "SUPPLIED_POSITION";
+          symbol: string;
+        }
+      | {
+          /** @enum {string} */
+          kind: "BORROWED_POSITION";
+          symbol: string;
+        }
+      | {
+          buySymbol: string;
+          /** @enum {string} */
+          kind: "TRADE";
+        }
+      | {
+          /** @enum {string} */
+          kind: "SUPPLY";
+        }
+      | {
+          /** @enum {string} */
+          kind: "WITHDRAW";
+        }
+      | {
+          amount?: string | null;
+          /** @enum {string} */
+          kind: "BORROW";
+          symbol: string;
+        }
+      | {
+          /** @enum {string} */
+          kind: "REPAY";
+        };
     SubmitOrderRequest: {
       routeQuoteId: string;
       signature: string;
@@ -958,6 +1049,9 @@ export type BorrowingToken = components["schemas"]["BorrowingToken"];
 export type BorrowingVenue = components["schemas"]["BorrowingVenue"];
 export type BstockId = components["schemas"]["BstockId"];
 export type BstockSummary = components["schemas"]["BstockSummary"];
+export type ComposeStrategyRequest =
+  components["schemas"]["ComposeStrategyRequest"];
+export type ComposedStrategy = components["schemas"]["ComposedStrategy"];
 export type Error = components["schemas"]["Error"];
 export type MarketStatus = components["schemas"]["MarketStatus"];
 export type NetworkFee = components["schemas"]["NetworkFee"];
@@ -1029,6 +1123,8 @@ export type RepaymentCapabilityUnavailableReason =
 export type Response = components["schemas"]["Response"];
 export type Response_BorrowingAccount =
   components["schemas"]["Response_BorrowingAccount"];
+export type Response_ComposedStrategy =
+  components["schemas"]["Response_ComposedStrategy"];
 export type Response_PreparedRecipe =
   components["schemas"]["Response_PreparedRecipe"];
 export type Response_RecipeCatalog =
@@ -1046,6 +1142,8 @@ export type Response_TradeTransactionStatus =
 export type RfqVenue = components["schemas"]["RfqVenue"];
 export type SettledTokenAmount = components["schemas"]["SettledTokenAmount"];
 export type Status = components["schemas"]["Status"];
+export type StrategyIntent = components["schemas"]["StrategyIntent"];
+export type StrategyStep = components["schemas"]["StrategyStep"];
 export type SubmitOrderRequest = components["schemas"]["SubmitOrderRequest"];
 export type SubmittedOrder = components["schemas"]["SubmittedOrder"];
 export type SupplyMarket = components["schemas"]["SupplyMarket"];
@@ -1260,6 +1358,37 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["Response_RecipeValidationReport"];
+        };
+      };
+      default: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Response"];
+        };
+      };
+    };
+  };
+  compose: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["ComposeStrategyRequest"];
+      };
+    };
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Response_ComposedStrategy"];
         };
       };
       default: {
