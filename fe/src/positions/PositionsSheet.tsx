@@ -8,6 +8,7 @@ import {
   formatUsd,
 } from "@/recipe/format";
 import { useRecipeSession } from "@/session/context";
+import { useConnectModal } from "@/wallet/connectModal";
 import { BlockIcon } from "@/ui/BlockIcon";
 import { HealthGauge } from "@/ui/HealthGauge";
 import styles from "./PositionsSheet.module.css";
@@ -15,6 +16,7 @@ import styles from "./PositionsSheet.module.css";
 export function PositionsSheet() {
   const { open, setOpen } = usePositionsSheet();
   const session = useRecipeSession();
+  const openConnect = useConnectModal((state) => state.setOpen);
 
   useEffect(() => {
     if (!open) return;
@@ -84,9 +86,20 @@ export function PositionsSheet() {
         </div>
 
         {!session.walletReady ? (
-          <p className={styles.empty}>
-            Connect a wallet on BNB Chain to see your positions.
-          </p>
+          <div className={styles.emptyState}>
+            <strong className="disp">No wallet connected.</strong>
+            <p>Connect a wallet on BNB Chain to see your positions.</p>
+            <button
+              type="button"
+              className={`lift ${styles.primary}`}
+              onClick={() => {
+                setOpen(false);
+                openConnect(true);
+              }}
+            >
+              Connect wallet
+            </button>
+          </div>
         ) : empty ? (
           <div className={styles.emptyState}>
             <strong className="disp">Nothing here yet.</strong>

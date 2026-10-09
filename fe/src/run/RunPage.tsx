@@ -28,6 +28,7 @@ import {
 import { useRecipeSession, type FreshPreparation } from "@/session/context";
 import { ArrowUpRight, BlockIcon, Check } from "@/ui/BlockIcon";
 import { blockKind } from "@/ui/blocks";
+import { useConnectModal } from "@/wallet/connectModal";
 import { formatHealth, healthZone, zoneColors } from "@/ui/health";
 import { priceMoved, runSteps, type RunStep } from "./steps";
 import styles from "./RunPage.module.css";
@@ -39,6 +40,7 @@ export function RunPage() {
   const editorName = useRecipeEditor((state) => state.name);
   const execution = session.execution;
   const openPositions = usePositionsSheet((state) => state.setOpen);
+  const openConnect = useConnectModal((state) => state.setOpen);
   const definition = execution.run?.recipe ?? session.recipe;
   const nodes = useMemo(() => orderDefinition(definition), [definition]);
   const steps = runSteps(nodes, execution.run?.attempts ?? [], execution.busy);
@@ -164,7 +166,15 @@ export function RunPage() {
         <Notice
           title="Connect your wallet"
           body="Connect a wallet on BNB Chain to sign this strategy. Nothing is sent until you approve each step."
-        />
+        >
+          <button
+            type="button"
+            className={`lift ${styles.primary}`}
+            onClick={() => openConnect(true)}
+          >
+            Connect wallet
+          </button>
+        </Notice>
       </Shell>
     );
   }

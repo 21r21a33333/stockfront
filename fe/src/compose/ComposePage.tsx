@@ -17,6 +17,7 @@ import { ArrowUpRight, BlockIcon, Check, Sparkle } from "@/ui/BlockIcon";
 import { blockKind, blockTints, type BlockKind } from "@/ui/blocks";
 import { formatHealth, healthZone } from "@/ui/health";
 import { marketNote } from "@/ui/market";
+import { TokenDot } from "@/ui/TokenDot";
 import { useComposeStore } from "./composeStore";
 import { planBlocks, planTitle } from "./plan";
 import styles from "./ComposePage.module.css";
@@ -351,12 +352,10 @@ export function ComposePage() {
 
         {phase === "plan" && composed ? (
           <section aria-label="AI plan" className={styles.plan}>
-            <div className={styles.planHead}>
+            <header className={styles.planHead}>
               <div className={styles.planMeta}>
-                <span className="eyebrow">Strategy draft</span>
                 <span
-                  className={`mono ${styles.pill}`}
-                  style={{ background: ready ? "var(--lime)" : "var(--warn)" }}
+                  className={`mono ${styles.planStatus} ${ready ? styles.statusReady : styles.statusWarn}`}
                 >
                   <span />
                   {ready
@@ -365,45 +364,69 @@ export function ComposePage() {
                       ? "Not supported yet"
                       : "Needs your input"}
                 </span>
+                {blocks.length > 0 ? (
+                  <span className={`mono ${styles.stepCount}`}>
+                    {blocks.length} {blocks.length === 1 ? "step" : "steps"}
+                  </span>
+                ) : null}
               </div>
               <h2 className={`disp ${styles.planTitle}`}>
                 {planTitle(steps, stablecoins)}
               </h2>
               <p className={styles.summary}>{composed.summary}</p>
-            </div>
+            </header>
 
             {blocks.length > 0 ? (
-              <div className={styles.flow}>
-                <div className={styles.flowRow}>
-                  {blocks.map((block, index) => (
-                    <div
-                      key={`${block.name}-${index}`}
-                      className={styles.flowItem}
-                    >
-                      <div
-                        className={`${styles.planBlock} ${index === blocks.length - 1 ? styles.planBlockDark : ""}`}
-                        style={{ animationDelay: `${0.15 + index * 0.18}s` }}
+              <div
+                className={`${styles.planBody} ${stats.length > 0 ? styles.planBodySplit : ""}`}
+              >
+                <div className={styles.panel}>
+                  <span className={`mono ${styles.panelLabel}`}>Steps</span>
+                  <ol className={styles.steps}>
+                    {blocks.map((block, index) => (
+                      <li
+                        key={`${block.name}-${index}`}
+                        className={styles.step}
+                        style={{ animationDelay: `${0.08 + index * 0.1}s` }}
                       >
-                        <BlockIcon kind={block.kind} size={32} radius={10} />
-                        <span className={styles.blockName}>{block.name}</span>
-                        <span className={`mono ${styles.blockDetail}`}>
-                          {block.detail}
+                        <BlockIcon kind={block.kind} size={38} radius={11} />
+                        <span className={styles.stepText}>
+                          <strong>{block.name}</strong>
+                          <small>{block.detail}</small>
                         </span>
-                      </div>
-                      {index < blocks.length - 1 ? (
-                        <div className={styles.planLink}>
-                          <div
-                            className={`flowLine ${styles.planLinkLine}`}
-                            style={{ animationDelay: `${0.3 + index * 0.18}s` }}
-                          />
-                          <span className={`mono ${styles.planLinkLabel}`}>
-                            {block.link}
-                          </span>
-                        </div>
-                      ) : null}
-                    </div>
-                  ))}
+                        <span className={`mono ${styles.stepIndex}`}>
+                          {String(index + 1).padStart(2, "0")}
+                        </span>
+                      </li>
+                    ))}
+                  </ol>
                 </div>
+                {stats.length > 0 ? (
+                  <div className={`${styles.panel} ${styles.quote}`}>
+                    <span className={`mono ${styles.panelLabel}`}>
+                      Live quote
+                    </span>
+                    <dl className={styles.quoteList}>
+                      {stats.map((stat) => (
+                        <div key={stat.label} className={styles.quoteRow}>
+                          <dt>{stat.label}</dt>
+                          <dd>
+                            <strong
+                              className="mono"
+                              style={{ color: stat.color }}
+                            >
+                              {stat.symbol ? (
+                                <TokenDot symbol={stat.symbol} size={18} />
+                              ) : null}
+                              {stat.value}
+                            </strong>
+                            <small>{stat.sub}</small>
+                          </dd>
+                        </div>
+                      ))}
+                    </dl>
+                  </div>
+                ) : null}
               </div>
             ) : null}
 
@@ -440,29 +463,13 @@ export function ComposePage() {
               </form>
             ) : null}
 
-            {stats.length > 0 ? (
-              <div className={styles.stats}>
-                {stats.map((stat) => (
-                  <div key={stat.label} className={styles.stat}>
-                    <span className="mono">{stat.label}</span>
-                    <strong className="mono" style={{ color: stat.color }}>
-                      {stat.value}
-                    </strong>
-                    <small>{stat.sub}</small>
-                  </div>
-                ))}
-              </div>
-            ) : null}
-
             {notes.length > 0 ? (
               <ul className={styles.notes}>
                 {notes.map((note) => (
-                  <li key={note.text}>
-                    <span
-                      className={`mono ${note.warn ? styles.noteWarn : styles.noteInfo}`}
-                    >
-                      {note.warn ? "!" : "i"}
-                    </span>
+                  <li
+                    key={note.text}
+                    className={note.warn ? styles.noteWarn : undefined}
+                  >
                     {note.text}
                   </li>
                 ))}
@@ -519,7 +526,7 @@ export function ComposePage() {
               </button>
               <button
                 type="button"
-                className={styles.ghost}
+                className={`${styles.ghost} ${styles.startOver}`}
                 onClick={() => {
                   store.setComposed(undefined);
                   store.setPrompt("");
@@ -573,14 +580,22 @@ function planNotes(
   return notes;
 }
 
+interface PlanStat {
+  label: string;
+  value: string;
+  sub: string;
+  color?: string;
+  /** Token whose icon leads the value. */
+  symbol?: string;
+}
+
 function planStats(
   preview: RecipePreview,
   assets: ReturnType<typeof useRecipeSession>["assets"],
-): { label: string; value: string; sub: string; color?: string }[] {
+): PlanStat[] {
   const symbolOf = (token: string) =>
     assets.find((asset) => asset.address.toLowerCase() === token.toLowerCase());
-  const stats: { label: string; value: string; sub: string; color?: string }[] =
-    [];
+  const stats: PlanStat[] = [];
   for (const node of preview.nodes) {
     if (node.kind === "TRADE" && node.routes?.[0]) {
       const route = node.routes[0];
@@ -591,11 +606,13 @@ function planStats(
           label: "You spend",
           value: `${formatDisplayAmount(formatUnits(BigInt(route.sell.amount), sell?.decimals ?? 18))} ${sell?.symbol ?? ""}`,
           sub: "From your wallet",
+          symbol: sell?.symbol,
         },
         {
           label: "You get",
-          value: `${formatDisplayAmount(formatUnits(BigInt(route.buy.amount), buy?.decimals ?? 18))} ${buy?.symbol ?? ""}`,
-          sub: `via ${route.venue}`,
+          value: `≈ ${formatDisplayAmount(formatUnits(BigInt(route.buy.amount), buy?.decimals ?? 18))} ${buy?.symbol ?? ""}`,
+          sub: `Best quote via ${route.venue}`,
+          symbol: buy?.symbol,
         },
         {
           label: "Price impact",
@@ -624,6 +641,7 @@ function planStats(
         {
           label: "You borrow",
           value: `${formatPositionAmount(capability.requestedAmount)} ${capability.debt.symbol}`,
+          symbol: capability.debt.symbol,
           sub: `Safe max ${formatPositionAmount(capability.conservativeMaxAmount)} ${capability.debt.symbol}`,
         },
         {
@@ -649,6 +667,7 @@ function planStats(
           label: "You repay",
           value: `${formatPositionAmount(capability.debtAmount)} ${capability.debt.symbol}`,
           sub: "Includes accrued interest",
+          symbol: capability.debt.symbol,
         },
         {
           label: "Wallet balance",
@@ -666,6 +685,7 @@ function planStats(
       stats.push({
         label: "You get back",
         value: `${formatPositionAmount(node.position.amount)} ${node.position.token.symbol}`,
+        symbol: node.position.token.symbol,
         sub:
           node.unavailableReason === "OUTSTANDING_DEBT"
             ? "Repay your debt first"

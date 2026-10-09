@@ -5,8 +5,6 @@ export interface PlanBlock {
   kind: BlockKind;
   name: string;
   detail: string;
-  /** What flows to the next block. */
-  link?: string;
 }
 
 /** Describes a composed intent in the same words the builder uses for blocks. */
@@ -23,21 +21,18 @@ export function planBlocks(
           detail: step.amount
             ? `${step.amount} ${step.symbol}`
             : "Amount needed",
-          link: step.symbol,
         };
       case "SUPPLIED_POSITION":
         return {
           kind: "supplied",
           name: `Supplied ${step.symbol}`,
           detail: "On Venus",
-          link: "Collateral",
         };
       case "BORROWED_POSITION":
         return {
           kind: "debt",
           name: `${step.symbol} debt`,
           detail: "On Venus",
-          link: step.symbol,
         };
       case "TRADE":
         return {
@@ -46,14 +41,12 @@ export function planBlocks(
             ? `Sell for ${step.buySymbol}`
             : `Buy ${step.buySymbol}`,
           detail: "Best live route",
-          link: step.buySymbol,
         };
       case "SUPPLY":
         return {
           kind: "supply",
           name: "Supply to Venus",
           detail: "Becomes collateral",
-          link: "Supplied",
         };
       case "BORROW":
         return {
@@ -62,14 +55,12 @@ export function planBlocks(
           detail: step.amount
             ? `${step.amount} ${step.symbol}`
             : "Amount needed",
-          link: step.symbol,
         };
       case "REPAY":
         return {
           kind: "repay",
           name: "Repay",
           detail: "Full debt",
-          link: "Loan closed",
         };
       case "WITHDRAW":
         return { kind: "withdraw", name: "Withdraw", detail: "All supplied" };

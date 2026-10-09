@@ -293,7 +293,10 @@ export function BuilderPage() {
                     {item.name}
                   </button>
                 ))}
-                <a href="#/compose" className={`lift ${styles.askAi}`}>
+                <a
+                  href="#/compose"
+                  className={`lift ${styles.askAi} ${styles.askAiBlock}`}
+                >
                   <Sparkle size={15} />
                   Ask AI
                 </a>

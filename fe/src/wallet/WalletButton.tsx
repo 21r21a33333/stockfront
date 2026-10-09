@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { shortAddress } from "@/recipe/assets";
 import { useWalletSession } from "@/wallet/execution";
+import { useConnectModal } from "./connectModal";
 import styles from "./WalletButton.module.css";
 
 /** `glass` sits on the landing sky; `app` is the dark chip used inside the app header. */
@@ -13,7 +14,7 @@ export function WalletButton({
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const anchor = useRef<HTMLSpanElement>(null);
-  const missing = !wallet.hasInjectedWallet;
+  const openConnect = useConnectModal((state) => state.setOpen);
 
   useEffect(() => {
     if (!open) return;
@@ -41,24 +42,13 @@ export function WalletButton({
 
   if (!wallet.isConnected || !wallet.address) {
     return (
-      <span ref={anchor} className={styles.anchor}>
-        <button
-          type="button"
-          className={`lift ${variant === "glass" ? styles.glass : styles.connect}`}
-          onClick={() =>
-            missing ? setOpen((value) => !value) : wallet.connect()
-          }
-          disabled={wallet.connecting}
-        >
-          {wallet.connecting ? "Connecting…" : "Connect wallet"}
-        </button>
-        {open && missing ? (
-          <span role="status" className={styles.popover}>
-            No browser wallet found. Install MetaMask or Rabby, set it to BNB
-            Chain, then reload this page.
-          </span>
-        ) : null}
-      </span>
+      <button
+        type="button"
+        className={`lift ${variant === "glass" ? styles.glass : styles.connect}`}
+        onClick={() => openConnect(true)}
+      >
+        Connect wallet
+      </button>
     );
   }
   if (wallet.chainId !== 56) {

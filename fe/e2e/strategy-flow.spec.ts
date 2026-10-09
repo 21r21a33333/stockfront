@@ -3,6 +3,7 @@ import type { ComposedStrategy, RecipeCatalog } from "../src/api/generated";
 
 const usdt = "0x55d398326f99059fF775485246999027B3197955";
 const nvda = "0x02Fca66C1D1aFB4E2A7884261eB00F63598a7436";
+const tsla = "0x2222222222222222222222222222222222222222";
 const pool = "0x1111111111111111111111111111111111111111";
 
 const catalog = {
@@ -39,6 +40,21 @@ const catalog = {
       tokenToShareRatio: "1",
       tokenPriceUsd: "182.10",
       referencePriceUsd: "182.50",
+      marketStatus: { session: "closed" },
+      tags: [],
+    },
+    {
+      chainId: 56,
+      contract: tsla,
+      tokenName: "Tesla (bStocks)",
+      tokenSymbol: "TSLAB",
+      tokenDecimals: 18,
+      underlyingTicker: "TSLA",
+      underlyingName: "Tesla, Inc.",
+      assetKind: "stock",
+      tokenToShareRatio: "1",
+      tokenPriceUsd: "430.10",
+      referencePriceUsd: "430.50",
       marketStatus: { session: "closed" },
       tags: [],
     },
@@ -194,4 +210,42 @@ test("a rate-limited AI shows a plain explanation and nothing is opened", async 
     "The AI is busy right now.",
   );
   await expect(page.getByRole("region", { name: "AI plan" })).toHaveCount(0);
+});
+
+test("the stock picker finds a stock by company name", async ({ page }) => {
+  await mockApi(page, {
+    status: 200,
+    body: { status: "Ok", result: buyNvidia },
+  });
+  await page.goto("/#/compose");
+  await page.getByLabel("Describe your strategy").fill("Buy $6 of Nvidia");
+  await page.getByRole("button", { name: "Compose", exact: true }).click();
+  await page
+    .getByRole("region", { name: "AI plan" })
+    .getByRole("button", { name: "Open in builder" })
+    .click();
+
+  const canvas = page.getByRole("region", { name: "Strategy canvas" });
+  await canvas.getByRole("button", { name: /Buy NVDAB/ }).click();
+  const picker = page.getByRole("combobox", { name: "Stock" });
+  await picker.click();
+  await picker.fill("tesla");
+
+  const options = page.getByRole("option");
+  await expect(options).toHaveCount(1);
+  await expect(options.first()).toContainText("Tesla, Inc.");
+  await picker.press("Enter");
+
+  await expect(canvas.getByRole("button", { name: /Buy TSLAB/ })).toBeVisible();
+  await expect(page.getByRole("listbox")).toBeHidden();
+
+  await picker.click();
+  await expect(page.getByRole("option")).toHaveCount(2);
+  await page.getByRole("option", { name: /NVDAB/ }).hover();
+  await page
+    .getByRole("complementary", { name: "Inspector" })
+    .getByText("Buy TSLAB", { exact: true })
+    .click();
+  await expect(page.getByRole("listbox")).toBeHidden();
+  await expect(canvas.getByRole("button", { name: /Buy TSLAB/ })).toBeVisible();
 });
