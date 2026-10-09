@@ -10,6 +10,7 @@ use thiserror::Error;
 const BINANCE_WEB3_API_KEY: &str = "#ENV:BINANCE_WEB3_API_KEY";
 const BINANCE_WEB3_API_SECRET: &str = "#ENV:BINANCE_WEB3_API_SECRET";
 const GLIDER_API_KEY: &str = "#ENV:GLIDER_API_KEY";
+const GEMINI_API_KEY: &str = "#ENV:GEMINI_API_KEY";
 const DEFAULT_BINANCE_WEB3_BASE_URL: &str = "https://web3.binance.com/build";
 const DEFAULT_BIND_ADDRESS: &str = "127.0.0.1:3000";
 const DEFAULT_TRADE_SETTLEMENT_TOKENS: &str =
@@ -26,6 +27,8 @@ const DEFAULT_LIQUIDITY_INVESTMENT_IDS: &str = "";
 const DEFAULT_LIQUIDITY_SLIPPAGE_BPS: &str = "100";
 const DEFAULT_RESERVE_API_BASE_URL: &str = "https://api.reserve.org";
 const DEFAULT_GLIDER_API_BASE_URL: &str = "https://api.glider.fi/v2";
+const DEFAULT_GEMINI_API_BASE_URL: &str = "https://generativelanguage.googleapis.com/v1beta";
+const DEFAULT_GEMINI_MODEL: &str = "gemini-flash-latest";
 
 #[derive(Deserialize)]
 pub(super) struct Settings {
@@ -59,6 +62,18 @@ pub(super) struct Settings {
     #[serde(deserialize_with = "deserialize_env_field")]
     pub(super) glider_api_key: String,
     pub(super) glider_api_base_url: String,
+    #[serde(flatten)]
+    pub(super) gemini: GeminiSettings,
+}
+
+#[derive(Deserialize)]
+pub(super) struct GeminiSettings {
+    #[serde(rename = "gemini_api_key", deserialize_with = "deserialize_env_field")]
+    pub(super) api_key: String,
+    #[serde(rename = "gemini_api_base_url")]
+    pub(super) api_base_url: String,
+    #[serde(rename = "gemini_model")]
+    pub(super) model: String,
 }
 
 impl Settings {
@@ -93,6 +108,10 @@ impl Settings {
             .unwrap_or_else(|_| DEFAULT_RESERVE_API_BASE_URL.to_owned());
         let glider_api_base_url = env::var("GLIDER_API_BASE_URL")
             .unwrap_or_else(|_| DEFAULT_GLIDER_API_BASE_URL.to_owned());
+        let gemini_api_base_url = env::var("GEMINI_API_BASE_URL")
+            .unwrap_or_else(|_| DEFAULT_GEMINI_API_BASE_URL.to_owned());
+        let gemini_model =
+            env::var("GEMINI_MODEL").unwrap_or_else(|_| DEFAULT_GEMINI_MODEL.to_owned());
         let fields = [
             ("binance_web3_api_key", BINANCE_WEB3_API_KEY),
             ("binance_web3_api_secret", BINANCE_WEB3_API_SECRET),
@@ -118,6 +137,9 @@ impl Settings {
             ("reserve_api_base_url", reserve_api_base_url.as_str()),
             ("glider_api_key", GLIDER_API_KEY),
             ("glider_api_base_url", glider_api_base_url.as_str()),
+            ("gemini_api_key", GEMINI_API_KEY),
+            ("gemini_api_base_url", gemini_api_base_url.as_str()),
+            ("gemini_model", gemini_model.as_str()),
         ];
         let values = fields
             .into_iter()

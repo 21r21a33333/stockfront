@@ -1,0 +1,37 @@
+:root {
+  --bg: #eef0eb;
+  --bg-soft: #f4f5f1;
+  --bg-softer: #f7f8f4;
+  --surface: #ffffff;
+  --ink: #0f110e;
+  --ink-2: #22261f;
+  --ink-3: #3c4039;
+  --muted: #4a4f46;
+  --muted-2: #5a5f56;
+  --line: #dcdfd7;
+  --line-2: #d6d9d1;
+  --line-soft: #e3e6de;
+  --chip: #e3e6de;
+  --lime: #d5f56b;
+  --sky: #afd6f7;
+  --peach: #f7cb98;
+  --lilac: #d6cbf7;
+  --mint: #aee8df;
+  --butter: #f4e79a;
+  --good: #3fae6a;
+  --good-ink: #1d7a43;
+  --good-soft: #e6f5df;
+  --bad: #b5392f;
+  --bad-soft: #fbe1dc;
+  --warn-soft: #fcefd9;
+  --warn: #fce3b8;
+  --zone-risk: #ee8b78;
+  --zone-caution: #f4cf63;
+  --zone-safe: #9ed892;
+  --bnb: #e9b931;
+  --sans: "Geist Variable", "Geist", system-ui, -apple-system, sans-serif;
+  --mono: "Geist Mono", ui-monospace, SFMono-Regular, monospace;
+  --display: "Space Grotesk", "Geist Variable", system-ui, sans-serif;
+  --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+  color-scheme: light;
+}

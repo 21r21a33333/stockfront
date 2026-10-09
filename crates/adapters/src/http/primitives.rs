@@ -4,21 +4,24 @@ use axum::{
     response::{IntoResponse, Response as AxumResponse},
 };
 use serde::Serialize;
+use stockfront_core::recipes::RecipeDiagnostic;
 
 use super::error::ApiError;
 
-#[derive(Debug, Serialize)]
+#[derive(utoipa::ToSchema, Debug, Serialize)]
 pub(super) enum Status {
     Ok,
     Error,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(utoipa::ToSchema, Debug, Serialize)]
 pub(super) struct Response<T> {
     status: Status,
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(nullable = false)]
     result: Option<T>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(nullable = false)]
     error: Option<Error>,
     #[serde(skip)]
     status_code: StatusCode,
@@ -36,11 +39,20 @@ impl<T> Response<T> {
 }
 
 impl Response<()> {
-    pub(super) fn error(code: &'static str, message: String, status_code: StatusCode) -> Self {
+    pub(super) fn error(
+        code: &'static str,
+        message: String,
+        diagnostics: Option<Vec<RecipeDiagnostic>>,
+        status_code: StatusCode,
+    ) -> Self {
         Self {
             status: Status::Error,
             result: None,
-            error: Some(Error { code, message }),
+            error: Some(Error {
+                code,
+                message,
+                diagnostics,
+            }),
             status_code,
         }
     }
@@ -56,6 +68,7 @@ impl<T: Serialize> IntoResponse for Response<T> {
 }
 
 pub(super) type ApiResult<T> = Result<Response<T>, ApiError>;
+pub(super) type ErrorResponse = Response<()>;
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -69,8 +82,11 @@ impl<T> List<T> {
     }
 }
 
-#[derive(Debug, Serialize)]
+#[derive(utoipa::ToSchema, Debug, Serialize)]
 struct Error {
     code: &'static str,
     message: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(nullable = false)]
+    diagnostics: Option<Vec<RecipeDiagnostic>>,
 }

@@ -645,6 +645,27 @@ mod tests {
 
     #[async_trait]
     impl BorrowingReader for FixedBorrowingReader {
+        async fn read_borrow_capability(
+            &self,
+            _request: &crate::bstock_borrowing::BorrowCapabilityRequest,
+        ) -> Result<crate::bstock_borrowing::BorrowCapability, BorrowingProviderError> {
+            Err(BorrowingProviderError::Unavailable)
+        }
+
+        async fn read_repayment_capability(
+            &self,
+            _request: &crate::bstock_borrowing::RepaymentCapabilityRequest,
+        ) -> Result<crate::bstock_borrowing::RepaymentCapability, BorrowingProviderError> {
+            Err(BorrowingProviderError::Unavailable)
+        }
+
+        async fn read_supply_market(
+            &self,
+            _token: Address,
+        ) -> Result<Option<crate::bstock_borrowing::SupplyMarket>, BorrowingProviderError> {
+            Ok(None)
+        }
+
         async fn read_markets(
             &self,
             collateral_assets: &[BstockId],
@@ -700,6 +721,13 @@ mod tests {
         }
 
         async fn prepare_repayment(
+            &self,
+            _request: &PrepareRepaymentRequest,
+        ) -> Result<PreparedBorrowingAction, BorrowingProviderError> {
+            Err(BorrowingProviderError::Unavailable)
+        }
+
+        async fn prepare_full_repayment(
             &self,
             _request: &PrepareRepaymentRequest,
         ) -> Result<PreparedBorrowingAction, BorrowingProviderError> {

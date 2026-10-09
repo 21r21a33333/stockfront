@@ -4,9 +4,10 @@ use thiserror::Error;
 
 use crate::{
     bstock_borrowing::{
-        BorrowingAccount, BorrowingMarket, BorrowingTransactionStatus, PrepareBorrowRequest,
-        PrepareCollateralRequest, PrepareRepaymentRequest, PrepareSupplyRequest,
-        PrepareWithdrawalRequest, PreparedBorrowingAction,
+        BorrowCapability, BorrowCapabilityRequest, BorrowingAccount, BorrowingMarket,
+        BorrowingTransactionStatus, PrepareBorrowRequest, PrepareCollateralRequest,
+        PrepareRepaymentRequest, PrepareSupplyRequest, PrepareWithdrawalRequest,
+        PreparedBorrowingAction, RepaymentCapability, RepaymentCapabilityRequest, SupplyMarket,
     },
     bstock_market::BstockId,
     wallet_portfolio::WalletAddress,
@@ -26,6 +27,10 @@ pub enum BorrowingProviderError {
     RepaymentApprovalRequired,
     #[error("the wallet has insufficient supplied balance")]
     InsufficientSuppliedBalance,
+    #[error("the wallet has insufficient debt-token balance")]
+    InsufficientWalletBalance,
+    #[error("the wallet has no matching debt")]
+    NoDebt,
     #[error("the borrowing transaction was not found")]
     TransactionNotFound,
 }
@@ -57,6 +62,11 @@ pub trait BorrowingActionGateway: Send + Sync {
         request: &PrepareRepaymentRequest,
     ) -> Result<PreparedBorrowingAction, BorrowingProviderError>;
 
+    async fn prepare_full_repayment(
+        &self,
+        request: &PrepareRepaymentRequest,
+    ) -> Result<PreparedBorrowingAction, BorrowingProviderError>;
+
     async fn prepare_withdrawal(
         &self,
         request: &PrepareWithdrawalRequest,
@@ -70,6 +80,21 @@ pub trait BorrowingActionGateway: Send + Sync {
 
 #[async_trait]
 pub trait BorrowingReader: Send + Sync {
+    async fn read_borrow_capability(
+        &self,
+        request: &BorrowCapabilityRequest,
+    ) -> Result<BorrowCapability, BorrowingProviderError>;
+
+    async fn read_repayment_capability(
+        &self,
+        request: &RepaymentCapabilityRequest,
+    ) -> Result<RepaymentCapability, BorrowingProviderError>;
+
+    async fn read_supply_market(
+        &self,
+        token: Address,
+    ) -> Result<Option<SupplyMarket>, BorrowingProviderError>;
+
     async fn read_markets(
         &self,
         collateral_assets: &[BstockId],

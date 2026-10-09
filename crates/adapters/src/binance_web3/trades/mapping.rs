@@ -354,6 +354,55 @@ mod tests {
     }
 
     #[test]
+    fn live_buy_and_sell_history_preserve_provider_decimal_units_and_seconds() {
+        let usdt = "0x55d398326f99059ff775485246999027b3197955";
+        let googlb = "0x3f53de71c126bdabae20f9cd64848d317f6c3238";
+        // Aggregator history rounds quantities; these are not exact transfer amounts.
+        for (sold, bought, from, to, time, block) in [
+            (
+                "6.000000000000000000000000000000000000000000000000000000000000",
+                "0.017473199179409540000000000000000000000000000000000000000000",
+                usdt,
+                googlb,
+                "1791187267",
+                "125832507",
+            ),
+            (
+                "0.017473199179409540000000000000000000000000000000000000000000",
+                "5.997990289877698000000000000000000000000000000000000000000000",
+                googlb,
+                usdt,
+                "1791187308",
+                "125832599",
+            ),
+        ] {
+            let provider: models::TransactionStatus = serde_json::from_value(serde_json::json!({
+                "status": "success", "height": block, "txTime": time,
+                "fromTokenDetails": [{ "tokenAddress": from, "amount": sold }],
+                "toTokenDetails": [{ "tokenAddress": to, "amount": bought }]
+            }))
+            .unwrap_or_else(|error| panic!("invalid live fixture: {error}"));
+            let status = TradeTransactionStatus::try_from(ProviderTransactionStatus(provider))
+                .unwrap_or_else(|error| panic!("live history rejected: {error}"));
+            let json = serde_json::to_value(status)
+                .unwrap_or_else(|error| panic!("serialization: {error}"));
+            let (expected_sold, expected_bought, expected_time) = if from == usdt {
+                ("6", "0.01747319917940954", 1_791_187_267_000_i64)
+            } else {
+                (
+                    "0.01747319917940954",
+                    "5.997990289877698",
+                    1_791_187_308_000_i64,
+                )
+            };
+            assert_eq!(json["state"], "succeeded");
+            assert_eq!(json["sold"][0]["amount"], expected_sold);
+            assert_eq!(json["bought"][0]["amount"], expected_bought);
+            assert_eq!(json["executedAtMs"], expected_time);
+        }
+    }
+
+    #[test]
     fn transaction_status_keeps_binance_swap_evidence() {
         let sold_token = Address::with_last_byte(6);
         let bought_token = Address::with_last_byte(7);

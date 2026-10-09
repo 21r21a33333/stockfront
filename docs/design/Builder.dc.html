@@ -1,0 +1,373 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Stockfront — Builder</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&amp;family=Geist+Mono:wght@400;500&amp;family=Space+Grotesk:wght@500;600;700&amp;display=swap">
+<style>
+body{margin:0;background:#EEF0EB;color:#0F110E;font-family:'Geist',system-ui,-apple-system,sans-serif;-webkit-font-smoothing:antialiased}
+a{color:#0F110E;text-decoration:none}a:hover{color:#3C4039}
+*{box-sizing:border-box}
+.mono{font-family:'Geist Mono',ui-monospace,SFMono-Regular,monospace}
+.disp{font-family:'Space Grotesk','Geist',system-ui,sans-serif;letter-spacing:-0.03em}
+.btn{transition:transform .2s ease,background-color .2s ease,box-shadow .2s ease;cursor:pointer}
+.btn:hover{transform:translateY(-1px)}
+button:focus-visible,a:focus-visible,input:focus-visible{outline:2px solid #0F110E;outline-offset:2px}
+.pal{transition:background-color .15s ease;cursor:grab}
+.pal:hover{background:#FFFFFF !important}
+.node{transition:box-shadow .25s ease,transform .25s cubic-bezier(.2,.7,.2,1);cursor:pointer}
+.node:hover{transform:translateY(-2px)}
+.flow{stroke-dasharray:5 6;animation:dash 1s linear infinite}
+@keyframes dash{to{stroke-dashoffset:-22}}
+.ghost{transition:background-color .2s ease,border-color .2s ease;cursor:pointer}
+.ghost:hover{background:rgba(255,255,255,.8) !important;border-color:#0F110E !important}
+.fadeIn{animation:fadeIn .25s ease both}
+@keyframes fadeIn{from{opacity:0;transform:translateX(8px)}to{opacity:1;transform:none}}
+.opt{transition:border-color .2s ease,background-color .2s ease;cursor:pointer}
+.marker{transition:left .45s cubic-bezier(.2,.7,.2,1)}
+input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:6px;border-radius:999px;background:#E3E6DE;outline:none}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:22px;height:22px;border-radius:50%;background:#0F110E;border:4px solid #D5F56B;cursor:pointer}
+input[type=range]::-moz-range-thumb{width:16px;height:16px;border-radius:50%;background:#0F110E;border:4px solid #D5F56B;cursor:pointer}
+</style>
+</helmet>
+<div style="height: 100vh; min-height: 860px; display: flex; flex-direction: column; overflow: hidden">
+
+<header style="flex: none; height: 64px; display: flex; align-items: center; gap: 16px; padding: 0 20px; background: #EEF0EB; border-bottom: 1px solid #DCDFD7">
+  <a href="Main.dc.html" style="display: flex; align-items: center; gap: 10px" aria-label="Stockfront home">
+    <svg width="26" height="26" viewBox="0 0 30 30" fill="none" aria-hidden="true"><rect x="2" y="2" width="12" height="12" rx="3.5" fill="#0F110E"></rect><rect x="16" y="16" width="12" height="12" rx="3.5" fill="#D5F56B" stroke="#0F110E" stroke-width="1.6"></rect><path d="M14 8h4.5a3.5 3.5 0 0 1 3.5 3.5V16" stroke="#0F110E" stroke-width="1.6" stroke-linecap="round"></path></svg>
+    <span class="disp" style="font-weight: 600; font-size: 17px">Stockfront</span>
+  </a>
+  <nav aria-label="App" style="display: flex; gap: 2px; margin-left: 12px; padding: 4px; border-radius: 12px; background: #E3E6DE">
+    <a href="Compose.dc.html" style="padding: 7px 14px; border-radius: 9px; font-size: 14px; color: #3C4039">Compose</a>
+    <a href="Builder.dc.html" aria-current="page" style="padding: 7px 14px; border-radius: 9px; background: #FFFFFF; font-size: 14px; font-weight: 500; box-shadow: 0 1px 2px rgba(15,17,14,.08)">Builder</a>
+  </nav>
+
+  <div style="margin-left: 20px; display: flex; align-items: center; gap: 10px; padding-left: 20px; border-left: 1px solid #DCDFD7">
+    <label for="sName" style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0)">Strategy name</label>
+    <input id="sName" type="text" value="Borrow &amp; earn on Nvidia" style="width: 230px; height: 36px; padding: 0 10px; border-radius: 9px; border: 1px solid transparent; background: transparent; font: inherit; font-size: 15px; font-weight: 600; color: #0F110E">
+    <span class="mono" style="font-size: 11px; padding: 4px 10px; border-radius: 999px; background: {{pillBg}}; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap"><span style="width: 6px; height: 6px; border-radius: 50%; background: #0F110E"></span>{{pillText}}</span>
+  </div>
+
+  <div style="margin-left: auto; display: flex; align-items: center; gap: 8px">
+    <a href="Compose.dc.html" class="btn" style="height: 38px; padding: 0 14px; border-radius: 10px; background: #D5F56B; font-size: 14px; font-weight: 500; display: flex; align-items: center; gap: 8px"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#0F110E" stroke-width="1.9" stroke-linejoin="round"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"></path></svg>Ask AI</a>
+    <button type="button" class="btn" style="height: 38px; padding: 0 14px; border-radius: 10px; border: 1px solid #D6D9D1; background: #FFFFFF; font: inherit; font-size: 14px; color: #0F110E">Preview</button>
+    <sc-if value="{{canRun}}" hint-placeholder-val="{{ true }}">
+      <a href="Run.dc.html" class="btn" style="height: 38px; padding: 0 16px; border-radius: 10px; background: #0F110E; color: #FFFFFF; font-size: 14px; font-weight: 500; display: flex; align-items: center; gap: 8px">Run<svg width="12" height="12" viewBox="0 0 24 24" fill="#D5F56B"><path d="M6 4l14 8-14 8z"></path></svg></a>
+    </sc-if>
+    <sc-if value="{{blocked}}" hint-placeholder-val="{{ false }}">
+      <button type="button" disabled style="height: 38px; padding: 0 16px; border-radius: 10px; border: 0; background: #C9CCC4; color: #4A4F46; font: inherit; font-size: 14px; font-weight: 500">Run</button>
+    </sc-if>
+    <span style="width: 1px; height: 24px; background: #DCDFD7; margin: 0 4px"></span>
+    <button type="button" class="btn" aria-label="Positions" style="height: 38px; width: 38px; border-radius: 10px; border: 1px solid #D6D9D1; background: #FFFFFF; display: grid; place-items: center"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#0F110E" stroke-width="1.8" stroke-linejoin="round"><path d="M12 3l9 5-9 5-9-5 9-5z"></path><path d="M3 13l9 5 9-5"></path></svg></button>
+    <span class="mono" style="height: 38px; padding: 0 12px; border-radius: 10px; background: #E3E6DE; font-size: 12px; display: flex; align-items: center; gap: 8px"><span style="width: 8px; height: 8px; border-radius: 50%; background: #E9B931"></span>BNB Chain</span>
+    <button type="button" class="btn mono" style="height: 38px; padding: 0 12px 0 6px; border-radius: 10px; border: 0; background: #0F110E; color: #FFFFFF; font-size: 12px; display: flex; align-items: center; gap: 8px"><span style="width: 26px; height: 26px; border-radius: 7px; background: linear-gradient(135deg, #D5F56B, #AFD6F7)"></span>0x8894…d4e3</button>
+  </div>
+</header>
+
+<div style="flex: 1; min-height: 0; display: flex">
+
+  <aside aria-label="Block palette" style="flex: none; width: {{palW}}; border-right: 1px solid #DCDFD7; background: #F4F5F1; display: flex; flex-direction: column; transition: width .25s ease; overflow: hidden">
+    <div style="height: 48px; display: flex; align-items: center; justify-content: space-between; padding: 0 10px 0 16px; border-bottom: 1px solid #E3E6DE">
+      <sc-if value="{{palOpen}}" hint-placeholder-val="{{ true }}"><span class="mono" style="font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: #4A4F46">Blocks</span></sc-if>
+      <button type="button" onClick="{{togglePal}}" aria-label="Collapse palette" style="width: 30px; height: 30px; border-radius: 8px; border: 0; background: transparent; display: grid; place-items: center; cursor: pointer"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#0F110E" stroke-width="1.8" stroke-linecap="round"><rect x="3.5" y="4.5" width="17" height="15" rx="3"></rect><path d="M9.5 4.5v15"></path></svg></button>
+    </div>
+    <div style="flex: 1; overflow-y: auto; padding: 12px 10px; display: flex; flex-direction: column; gap: 16px">
+      <sc-for list="{{palette}}" as="g" hint-placeholder-count="2">
+        <div style="display: flex; flex-direction: column; gap: 4px">
+          <sc-if value="{{palOpen}}" hint-placeholder-val="{{ true }}"><span class="mono" style="font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: #5A5F56; padding: 0 6px 6px">{{g.title}}</span></sc-if>
+          <sc-for list="{{g.items}}" as="it" hint-placeholder-count="3">
+            <button type="button" class="pal" title="{{it.name}}" style="display: flex; align-items: center; gap: 10px; padding: 6px; border-radius: 10px; border: 0; background: transparent; font: inherit; color: #0F110E; opacity: {{it.op}}; text-align: left">
+              <span style="flex: none; width: 30px; height: 30px; border-radius: 9px; background: {{it.tint}}; border: 1px solid rgba(15,17,14,.08); display: grid; place-items: center"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#0F110E" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="{{it.icon}}"></path></svg></span>
+              <sc-if value="{{palOpen}}" hint-placeholder-val="{{ true }}">
+                <span style="font-size: 14px; font-weight: 500; white-space: nowrap">{{it.name}}</span>
+                <span class="mono" style="margin-left: auto; font-size: 10px; color: #5A5F56">{{it.tag}}</span>
+              </sc-if>
+            </button>
+          </sc-for>
+        </div>
+      </sc-for>
+    </div>
+    <sc-if value="{{palOpen}}" hint-placeholder-val="{{ true }}">
+      <p class="mono" style="margin: 0; padding: 14px 16px; border-top: 1px solid #E3E6DE; font-size: 11px; line-height: 1.5; color: #5A5F56">Drag onto the canvas or click to add.</p>
+    </sc-if>
+  </aside>
+
+  <section aria-label="Strategy canvas" style="flex: 1; min-width: 0; position: relative; overflow: hidden; background-color: #EEF0EB; background-image: radial-gradient(#C9CDC2 1.1px, transparent 1.1px); background-size: 20px 20px">
+    <div style="position: absolute; left: 50%; top: 24px; width: 760px; height: 728px; margin-left: -380px; transform: scale({{zoom}}); transform-origin: top center; transition: transform .3s cubic-bezier(.2,.7,.2,1)">
+      <sc-for list="{{links}}" as="l" hint-placeholder-count="4">
+        <svg width="176" height="52" viewBox="0 0 176 52" fill="none" aria-hidden="true" style="position: absolute; left: 292px; top: {{l.top}}; overflow: visible">
+          <path d="{{l.d}}" stroke="#C3C7BD" stroke-width="6" stroke-linecap="round" opacity=".35"></path>
+          <path class="flow" d="{{l.d}}" stroke="{{l.color}}" stroke-width="2" stroke-linecap="round"></path>
+        </svg>
+        <span class="mono" style="position: absolute; left: 380px; top: {{l.labelTop}}; translate: -50% -50%; font-size: 10px; padding: 3px 8px; border-radius: 6px; background: {{l.labelBg}}; color: {{l.labelFg}}; white-space: nowrap; border: 1px solid #D6D9D1">{{l.label}}</span>
+      </sc-for>
+
+      <sc-for list="{{nodes}}" as="n" hint-placeholder-count="5">
+        <button type="button" class="node" onClick="{{n.pick}}" aria-pressed="{{n.selectedStr}}" style="position: absolute; left: {{n.left}}; top: {{n.top}}; width: 264px; height: 76px; padding: 12px 14px; border-radius: 18px; background: #FFFFFF; border: {{n.border}}; box-shadow: {{n.shadow}}; display: flex; align-items: center; gap: 12px; text-align: left; font: inherit; color: #0F110E">
+          <span style="flex: none; width: 42px; height: 42px; border-radius: 12px; background: {{n.tint}}; border: 1px solid rgba(15,17,14,.08); display: grid; place-items: center"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#0F110E" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="{{n.icon}}"></path></svg></span>
+          <span style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px">
+            <span style="font-size: 15px; font-weight: 600">{{n.name}}</span>
+            <span class="mono" style="font-size: 11px; color: #4A4F46; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{n.detail}}</span>
+          </span>
+          <span style="flex: none; width: 10px; height: 10px; border-radius: 50%; background: {{n.dot}}"></span>
+        </button>
+      </sc-for>
+
+      <svg width="176" height="52" viewBox="0 0 176 52" fill="none" aria-hidden="true" style="position: absolute; left: 292px; top: 612px; overflow: visible"><path d="M8 0C8 30 168 22 168 52" stroke="#B5BAAE" stroke-width="2" stroke-dasharray="3 6" stroke-linecap="round"></path></svg>
+      <button type="button" class="ghost" style="position: absolute; left: 352px; top: 664px; width: 216px; height: 48px; border-radius: 14px; border: 1.5px dashed #A9AEA2; background: rgba(255,255,255,.35); display: flex; align-items: center; justify-content: center; gap: 8px; font: inherit; font-size: 14px; color: #3C4039">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#0F110E" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg>Add block · <span class="mono" style="font-size: 12px">Repay later</span>
+      </button>
+    </div>
+
+    <div style="position: absolute; left: 16px; bottom: 16px; display: flex; align-items: center; gap: 2px; padding: 4px; border-radius: 12px; background: #FFFFFF; border: 1px solid #DCDFD7; box-shadow: 0 10px 24px -16px rgba(15,17,14,.35)">
+      <button type="button" onClick="{{zoomOut}}" aria-label="Zoom out" style="width: 32px; height: 32px; border-radius: 8px; border: 0; background: transparent; cursor: pointer; display: grid; place-items: center"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#0F110E" stroke-width="2.2" stroke-linecap="round"><path d="M5 12h14"></path></svg></button>
+      <span class="mono" style="width: 48px; text-align: center; font-size: 12px">{{zoomPct}}</span>
+      <button type="button" onClick="{{zoomIn}}" aria-label="Zoom in" style="width: 32px; height: 32px; border-radius: 8px; border: 0; background: transparent; cursor: pointer; display: grid; place-items: center"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#0F110E" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg></button>
+      <span style="width: 1px; height: 18px; background: #DCDFD7; margin: 0 2px"></span>
+      <button type="button" onClick="{{zoomFit}}" class="mono" style="height: 32px; padding: 0 10px; border-radius: 8px; border: 0; background: transparent; cursor: pointer; font-size: 12px; color: #0F110E">Fit</button>
+    </div>
+    <div class="mono" style="position: absolute; right: 16px; bottom: 16px; padding: 8px 12px; border-radius: 10px; background: rgba(255,255,255,.75); font-size: 11px; color: #3C4039">5 blocks · 6 signatures</div>
+  </section>
+
+  <aside aria-label="Inspector" style="flex: none; width: 384px; border-left: 1px solid #DCDFD7; background: #FFFFFF; display: flex; flex-direction: column; min-height: 0">
+    <div style="flex: none; padding: 18px 20px; border-bottom: 1px solid #EEF0EB; display: flex; align-items: center; gap: 12px">
+      <span style="width: 40px; height: 40px; border-radius: 12px; background: {{sel.tint}}; border: 1px solid rgba(15,17,14,.08); display: grid; place-items: center"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#0F110E" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="{{sel.icon}}"></path></svg></span>
+      <div style="display: flex; flex-direction: column; gap: 2px">
+        <span class="mono" style="font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: #5A5F56">{{sel.kind}} · Step {{sel.num}}</span>
+        <span class="disp" style="font-size: 20px; font-weight: 600">{{sel.name}}</span>
+      </div>
+    </div>
+
+    <div class="fadeIn" style="flex: 1; overflow-y: auto; padding: 18px 20px; display: flex; flex-direction: column; gap: 18px">
+
+      <sc-if value="{{is.wallet}}" hint-placeholder-val="{{ false }}">
+        <div style="display: flex; flex-direction: column; gap: 8px">
+          <span class="mono" style="font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: #5A5F56">Token</span>
+          <div style="display: flex; flex-direction: column; border: 1px solid #E3E6DE; border-radius: 14px; overflow: hidden">
+            <div style="display: flex; align-items: center; gap: 10px; padding: 12px 14px; background: #F4F5F1"><span style="width: 26px; height: 26px; border-radius: 50%; background: #2F9E7A; color: #FFFFFF; display: grid; place-items: center; font-size: 12px; font-weight: 600">₮</span><span style="font-weight: 600">USDT</span><span class="mono" style="margin-left: auto; font-size: 12px; color: #3C4039">24.18 available</span></div>
+            <div style="display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-top: 1px solid #E3E6DE; color: #4A4F46"><span style="width: 26px; height: 26px; border-radius: 50%; background: #3A75C4; color: #FFFFFF; display: grid; place-items: center; font-size: 11px; font-weight: 600">$</span><span>USDC</span><span class="mono" style="margin-left: auto; font-size: 12px">0.00</span></div>
+          </div>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 8px">
+          <label for="wAmt" class="mono" style="font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: #5A5F56">Amount</label>
+          <div style="display: flex; align-items: center; padding: 0 14px; height: 56px; border-radius: 14px; border: 1.5px solid #0F110E"><input id="wAmt" type="text" value="6.00" class="mono" style="flex: 1; min-width: 0; border: 0; outline: none; font-size: 22px; background: transparent"><span class="mono" style="font-size: 13px; color: #4A4F46">USDT</span></div>
+          <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px">
+            <button type="button" class="btn mono" style="height: 34px; border-radius: 9px; border: 1px solid #E3E6DE; background: #FFFFFF; font-size: 12px">25%</button>
+            <button type="button" class="btn mono" style="height: 34px; border-radius: 9px; border: 1px solid #E3E6DE; background: #FFFFFF; font-size: 12px">50%</button>
+            <button type="button" class="btn mono" style="height: 34px; border-radius: 9px; border: 1px solid #E3E6DE; background: #FFFFFF; font-size: 12px">75%</button>
+            <button type="button" class="btn mono" style="height: 34px; border-radius: 9px; border: 1px solid #E3E6DE; background: #FFFFFF; font-size: 12px">Max</button>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{is.trade}}" hint-placeholder-val="{{ false }}">
+        <div style="display: flex; flex-direction: column; gap: 4px; position: relative">
+          <div style="padding: 14px; border-radius: 14px 14px 4px 4px; background: #F4F5F1; display: flex; justify-content: space-between; align-items: center"><span style="font-size: 13px; color: #4A4F46">You sell</span><span class="mono" style="font-size: 18px">6.00 USDT</span></div>
+          <div style="padding: 14px; border-radius: 4px 4px 14px 14px; background: #F4F5F1; display: flex; justify-content: space-between; align-items: center"><span style="font-size: 13px; color: #4A4F46">You buy</span><span class="mono" style="font-size: 18px">0.0255 NVDAB</span></div>
+          <span style="position: absolute; left: 50%; top: 50%; translate: -50% -50%; width: 30px; height: 30px; border-radius: 9px; background: #D5F56B; border: 3px solid #FFFFFF; display: grid; place-items: center"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#0F110E" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M6 13l6 6 6-6"></path></svg></span>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 8px">
+          <span class="mono" style="font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: #5A5F56">Stock</span>
+          <div style="border: 1.5px solid #0F110E; border-radius: 14px; padding: 14px; display: flex; flex-direction: column; gap: 12px">
+            <div style="display: flex; align-items: center; gap: 10px"><span style="width: 32px; height: 32px; border-radius: 10px; background: #0F110E; color: #D5F56B; display: grid; place-items: center; font-size: 11px; font-weight: 600" class="mono">NV</span><div style="display: flex; flex-direction: column"><span style="font-weight: 600">NVDAB</span><span style="font-size: 12px; color: #4A4F46">Nvidia</span></div><span class="mono" style="margin-left: auto; font-size: 16px">$234.90</span></div>
+            <div style="display: flex; justify-content: space-between; font-size: 12px" class="mono"><span style="color: #4A4F46">vs NVDA $235.40</span><span style="color: #B5392F">−0.21% gap</span></div>
+            <span class="mono" style="align-self: flex-start; font-size: 11px; padding: 5px 9px; border-radius: 8px; background: #EEF0EB; display: inline-flex; align-items: center; gap: 6px"><span style="width: 6px; height: 6px; border-radius: 50%; background: #8A8F86"></span>US market closed · opens Mon 9:30 ET</span>
+          </div>
+          <div style="display: flex; gap: 6px">
+            <span class="mono" style="flex: 1; padding: 9px 10px; border-radius: 10px; border: 1px solid #E3E6DE; font-size: 12px; color: #3C4039">TSLAB</span>
+            <span class="mono" style="flex: 1; padding: 9px 10px; border-radius: 10px; border: 1px solid #E3E6DE; font-size: 12px; color: #3C4039">AAPLB</span>
+            <span class="mono" style="flex: 1; padding: 9px 10px; border-radius: 10px; border: 1px solid #E3E6DE; font-size: 12px; color: #3C4039">AAOIB</span>
+          </div>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 8px">
+          <span class="mono" style="font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: #5A5F56">Route</span>
+          <div style="padding: 14px; border-radius: 14px; border: 1.5px solid #0F110E; background: #FBFDF4; display: flex; flex-direction: column; gap: 10px">
+            <div style="display: flex; align-items: center; gap: 8px"><span style="width: 16px; height: 16px; border-radius: 50%; border: 5px solid #0F110E"></span><span style="font-weight: 600">Instant swap</span><span class="mono" style="margin-left: auto; font-size: 11px; color: #4A4F46">LiquidMesh</span></div>
+            <div class="mono" style="display: grid; grid-template-columns: 1fr auto; gap: 6px; font-size: 12px; color: #3C4039"><span>You receive</span><span style="color: #0F110E">0.0255 NVDAB</span><span>Price impact</span><span style="color: #0F110E">0.0008%</span><span>Minimum received</span><span style="color: #0F110E">0.0254 NVDAB</span></div>
+          </div>
+          <div style="padding: 14px; border-radius: 14px; border: 1px solid #E3E6DE; display: flex; align-items: center; gap: 8px; color: #3C4039"><span style="width: 16px; height: 16px; border-radius: 50%; border: 1.5px solid #A9AEA2"></span><span>Signed order</span><span class="mono" style="margin-left: auto; font-size: 11px">Fills at market open</span></div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{is.supply}}" hint-placeholder-val="{{ false }}">
+        <div style="display: flex; align-items: center; gap: 10px; padding: 14px; border-radius: 14px; background: #F4F5F1"><span style="width: 32px; height: 32px; border-radius: 10px; background: #AFD6F7; display: grid; place-items: center; font-weight: 600; font-size: 13px">V</span><div style="display: flex; flex-direction: column"><span style="font-weight: 600">Venus</span><span style="font-size: 12px; color: #4A4F46">Lending market</span></div><span class="mono" style="margin-left: auto; font-size: 11px; padding: 4px 8px; border-radius: 6px; background: #FFFFFF">Venue</span></div>
+        <div style="display: flex; flex-direction: column; gap: 8px">
+          <span class="mono" style="font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: #5A5F56">Amount</span>
+          <div style="display: flex; align-items: center; justify-content: space-between; padding: 14px; border-radius: 14px; border: 1px solid #E3E6DE"><span class="mono" style="font-size: 20px">0.0255 NVDAB</span><span class="mono" style="font-size: 11px; padding: 4px 8px; border-radius: 6px; background: #D5F56B">from Buy NVDAB</span></div>
+        </div>
+        <div style="display: flex; align-items: center; gap: 12px; padding: 14px; border-radius: 14px; border: 1px solid #E3E6DE">
+          <div style="display: flex; flex-direction: column; gap: 3px"><span style="font-weight: 600">Use as collateral</span><span style="font-size: 13px; color: #4A4F46">Becomes collateral you can borrow against.</span></div>
+          <span role="img" aria-label="On" style="margin-left: auto; flex: none; width: 44px; height: 26px; border-radius: 999px; background: #0F110E; position: relative"><span style="position: absolute; right: 3px; top: 3px; width: 20px; height: 20px; border-radius: 50%; background: #D5F56B"></span></span>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{is.borrow}}" hint-placeholder-val="{{ true }}">
+        <div style="display: flex; flex-direction: column; gap: 10px">
+          <div style="display: flex; justify-content: space-between; align-items: baseline">
+            <label for="bAmt" class="mono" style="font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: #5A5F56">Borrow USDT</label>
+            <button type="button" class="btn mono" onClick="{{safeMax}}" style="height: 28px; padding: 0 10px; border-radius: 8px; border: 1px solid #0F110E; background: #FFFFFF; font-size: 11px">Safe max · 1.90</button>
+          </div>
+          <div style="display: flex; align-items: baseline; gap: 8px"><span class="mono" style="font-size: 40px; letter-spacing: -0.02em">{{borStr}}</span><span class="mono" style="font-size: 14px; color: #4A4F46">USDT</span></div>
+          <input id="bAmt" type="range" min="0.1" max="2.4" step="0.05" value="{{bor}}" onChange="{{onBor}}" onInput="{{onBor}}">
+          <div class="mono" style="display: flex; justify-content: space-between; font-size: 11px; color: #5A5F56"><span>0.10</span><span>Rate 5.12% APR</span><span>2.40</span></div>
+        </div>
+
+        <div style="padding: 16px; border-radius: 16px; background: #F4F5F1; display: flex; flex-direction: column; gap: 14px">
+          <div style="display: flex; justify-content: space-between; align-items: center">
+            <span style="font-weight: 600">Loan health</span>
+            <span class="mono" style="font-size: 13px; display: flex; align-items: center; gap: 8px"><span style="color: #5A5F56">No debt</span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#0F110E" stroke-width="2" stroke-linecap="round"><path d="M5 12h14M13 6l6 6-6 6"></path></svg><span style="font-size: 18px">{{hfStr}}</span><span style="padding: 3px 8px; border-radius: 6px; background: {{zoneBg}}; font-size: 11px">{{zone}}</span></span>
+          </div>
+          <div style="position: relative; padding-top: 6px">
+            <div style="display: flex; height: 10px; border-radius: 999px; overflow: hidden; gap: 2px">
+              <span style="flex: 1; background: #EE8B78"></span>
+              <span style="flex: 1; background: #F4CF63"></span>
+              <span style="flex: 4; background: #9ED892"></span>
+            </div>
+            <span class="marker" style="position: absolute; left: {{hfPos}}; top: 0; translate: -50% 0; width: 6px; height: 22px; border-radius: 3px; background: #0F110E; box-shadow: 0 0 0 3px #FFFFFF"></span>
+            <div class="mono" style="display: flex; margin-top: 10px; font-size: 10px; color: #4A4F46"><span style="flex: 1">At risk</span><span style="flex: 1">Caution</span><span style="flex: 4">Safe</span></div>
+          </div>
+        </div>
+
+        <sc-if value="{{blocked}}" hint-placeholder-val="{{ false }}">
+          <div style="padding: 14px; border-radius: 14px; background: #FBE1DC; display: flex; gap: 10px; font-size: 14px; line-height: 1.45"><span class="mono" style="flex: none; width: 20px; height: 20px; border-radius: 6px; background: #B5392F; color: #FFFFFF; display: grid; place-items: center; font-size: 11px">!</span><span>This would drop loan health below 1.5. Borrow 1.90 USDT or less to continue.</span></div>
+        </sc-if>
+
+        <div class="mono" style="display: grid; grid-template-columns: 1fr auto; gap: 8px; font-size: 12px; color: #3C4039; padding: 0 2px"><span>Collateral</span><span style="color: #0F110E">0.0255 NVDAB · $5.99</span><span>Borrow rate</span><span style="color: #0F110E">5.12% APR</span><span>Available to borrow</span><span style="color: #0F110E">Enough for this loan</span></div>
+        <div style="display: flex; gap: 10px; padding: 12px 14px; border-radius: 14px; border: 1px dashed #A9AEA2; font-size: 13px; color: #3C4039; align-items: center"><span class="mono" style="font-size: 11px; padding: 3px 7px; border-radius: 6px; background: #EEF0EB">1 → 2</span>First enable collateral, then borrow. Two signatures.</div>
+      </sc-if>
+
+      <sc-if value="{{is.earn}}" hint-placeholder-val="{{ false }}">
+        <div style="display: flex; justify-content: space-between; align-items: center; padding: 14px; border-radius: 14px; background: #F4F5F1"><span style="font-size: 13px; color: #4A4F46">Amount from Borrow</span><span class="mono" style="font-size: 18px">{{borStr}} USDT</span></div>
+        <div style="display: flex; flex-direction: column; gap: 8px">
+          <span class="mono" style="font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: #5A5F56">Where to earn</span>
+          <div style="padding: 14px; border-radius: 14px; border: 1.5px solid #0F110E; background: #FBFDF4; display: flex; flex-direction: column; gap: 12px">
+            <div style="display: flex; align-items: center; gap: 8px"><span style="width: 16px; height: 16px; border-radius: 50%; border: 5px solid #0F110E"></span><span style="font-weight: 600">Lista USDT</span><span class="mono" style="margin-left: auto; font-size: 11px; color: #4A4F46">Lista</span></div>
+            <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px">
+              <div style="display: flex; flex-direction: column; gap: 2px"><span class="mono" style="font-size: 10px; color: #5A5F56; text-transform: uppercase">Earn</span><span class="mono" style="font-size: 15px">10.91%</span></div>
+              <div style="display: flex; flex-direction: column; gap: 2px"><span class="mono" style="font-size: 10px; color: #5A5F56; text-transform: uppercase">Borrow</span><span class="mono" style="font-size: 15px">5.12%</span></div>
+              <div style="display: flex; flex-direction: column; gap: 2px; padding: 4px 8px; margin: -4px -4px; border-radius: 8px; background: #D5F56B"><span class="mono" style="font-size: 10px; text-transform: uppercase">Net spread</span><span class="mono" style="font-size: 15px; font-weight: 500; color: #145C31">+5.79%</span></div>
+            </div>
+          </div>
+          <div style="padding: 14px; border-radius: 14px; border: 1px solid #E3E6DE; display: flex; align-items: center; gap: 8px; opacity: .55"><span style="width: 16px; height: 16px; border-radius: 50%; border: 1.5px solid #A9AEA2"></span><span>Venus USDT supply</span><span class="mono" style="margin-left: auto; font-size: 11px">Spread too low</span></div>
+          <div style="padding: 14px; border-radius: 14px; border: 1px solid #E3E6DE; display: flex; align-items: center; gap: 8px; opacity: .55"><span style="width: 16px; height: 16px; border-radius: 50%; border: 1.5px solid #A9AEA2"></span><span>New USDT vault</span><span class="mono" style="margin-left: auto; font-size: 11px">Not reviewed yet</span></div>
+        </div>
+        <p style="margin: 0; font-size: 12px; line-height: 1.5; color: #4A4F46">Rates move. The spread can shrink or turn negative; returns aren't guaranteed.</p>
+      </sc-if>
+
+      <div style="margin-top: auto; padding: 14px; border-radius: 14px; background: {{checksBg}}; display: flex; flex-direction: column; gap: 8px">
+        <span class="mono" style="font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: #22261F">Checks</span>
+        <sc-for list="{{checks}}" as="c" hint-placeholder-count="2">
+          <div style="display: flex; align-items: center; gap: 8px; font-size: 13px">
+            <span style="flex: none; width: 16px; height: 16px; border-radius: 50%; background: {{c.bg}}; display: grid; place-items: center"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"><path d="{{c.icon}}"></path></svg></span>{{c.text}}
+          </div>
+        </sc-for>
+      </div>
+    </div>
+  </aside>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  constructor(p) {
+    super(p);
+    this.state = { sel: 3, bor: 1, hfShown: 2.85, zoom: 1, palOpen: true };
+  }
+  componentWillUnmount() { cancelAnimationFrame(this.raf); }
+  setBor(v) {
+    const bor = Math.max(0.1, Math.min(2.4, Math.round(v * 100) / 100));
+    const from = this.state.hfShown, to = 2.85 / bor, t0 = performance.now();
+    cancelAnimationFrame(this.raf);
+    const tick = (t) => {
+      const k = Math.min(1, (t - t0) / 300), e = 1 - Math.pow(1 - k, 3);
+      this.setState({ hfShown: from + (to - from) * e });
+      if (k < 1) this.raf = requestAnimationFrame(tick);
+    };
+    this.setState({ bor });
+    this.raf = requestAnimationFrame(tick);
+  }
+  renderVals() {
+    const I = {
+      wallet: 'M3 7h15a3 3 0 0 1 3 3v7a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3zM3 7l3-3h10l2 3',
+      trade: 'M4 8h14l-3-3M20 16H6l3 3',
+      supply: 'M12 3v11M8 10l4 4 4-4M4 15v4h16v-4',
+      borrow: 'M12 3.5a8.5 8.5 0 1 1 0 17a8.5 8.5 0 1 1 0-17M12 7.5v9M8.8 13.3 12 16.5l3.2-3.2',
+      repay: 'M4 12a8 8 0 1 0 2.6-5.9M4 4v4.5h4.5M9 12.5l2 2 4-4.5',
+      withdraw: 'M12 20V9M8 13l4-4 4 4M4 4h16',
+      earn: 'M4 17l5-5 4 4 7-7M14 9h6v6',
+      supplied: 'M12 3l9 5-9 5-9-5 9-5zM3 13l9 5 9-5',
+      debt: 'M6 3h12v18l-3-2-3 2-3-2-3 2zM9 8h6M9 12h6',
+      liquidity: 'M12 3s6 6.5 6 11a6 6 0 0 1-12 0c0-4.5 6-11 6-11z'
+    };
+    const T = { wallet: '#EEF0EB', trade: '#D5F56B', supply: '#AFD6F7', borrow: '#F7CB98', repay: '#D6CBF7', withdraw: '#AEE8DF', earn: '#F4E79A', supplied: '#FFFFFF', debt: '#FFFFFF', liquidity: '#E3E6DE' };
+    const s = this.state;
+    const hfT = 2.85 / s.bor;
+    const blocked = hfT < 1.5;
+    const zone = hfT < 1.5 ? 'At risk' : hfT < 2 ? 'Caution' : 'Safe';
+    const zoneBg = hfT < 1.5 ? '#EE8B78' : hfT < 2 ? '#F4CF63' : '#9ED892';
+    const pos = Math.max(0, Math.min(1, (s.hfShown - 1) / 3)) * 100;
+    const borStr = s.bor.toFixed(2);
+    const hfStr = s.hfShown.toFixed(2);
+    const OK = 'M5 12.5l4.5 4.5L19 7', X = 'M12 7v6M12 17v.5';
+    const raw = [
+      { k: 'wallet', kind: 'Start from', name: 'Wallet USDT', detail: '6.00 USDT of 24.18', checks: ['Enough USDT in your wallet'] },
+      { k: 'trade', kind: 'Trade', name: 'Buy NVDAB', detail: '~0.0255 NVDAB for 6 USDT', checks: ['Route found · impact 0.0008%', 'Minimum received set to 0.0254'] },
+      { k: 'supply', kind: 'Supply', name: 'Supply to Venus', detail: '0.0255 NVDAB → collateral', checks: ['Venus accepts NVDAB as collateral'] },
+      { k: 'borrow', kind: 'Borrow', name: 'Borrow USDT', detail: borStr + ' USDT · health ' + hfT.toFixed(2), checks: blocked ? null : ['Health stays above 1.5', 'Enough USDT available to borrow'] },
+      { k: 'earn', kind: 'Earn', name: 'Earn on Lista', detail: borStr + ' USDT · +5.79% spread', checks: ['Net spread is positive', 'Protocol reviewed'] }
+    ];
+    const nodes = raw.map((n, i) => {
+      const cx = i % 2 === 0 ? 300 : 460;
+      const selected = s.sel === i;
+      const bad = n.k === 'borrow' && blocked;
+      return {
+        ...n, tint: T[n.k], icon: I[n.k],
+        left: (cx - 132) + 'px', top: (24 + i * 128) + 'px',
+        border: selected ? '1.5px solid #0F110E' : bad ? '1.5px solid #D9705D' : '1px solid #DCDFD7',
+        shadow: selected ? '0 0 0 5px #D5F56B, 0 20px 36px -22px rgba(15,17,14,.5)' : '0 10px 24px -18px rgba(15,17,14,.35)',
+        dot: bad ? '#D9705D' : '#3FAE6A',
+        selectedStr: selected ? 'true' : 'false',
+        pick: () => this.setState({ sel: i })
+      };
+    });
+    const labels = ['USDT', 'NVDAB', 'Supplied NVDAB', 'USDT'];
+    const links = labels.map((label, i) => {
+      const top = 24 + i * 128 + 76;
+      const d = i % 2 === 0 ? 'M8 0C8 30 168 22 168 52' : 'M168 0C168 30 8 22 8 52';
+      const hot = s.sel === i || s.sel === i + 1;
+      return { label, d, top: top + 'px', labelTop: (top + 26) + 'px', color: hot ? '#0F110E' : '#7D8278', labelBg: hot ? '#0F110E' : '#FFFFFF', labelFg: hot ? '#FFFFFF' : '#22261F' };
+    });
+    const cur = raw[s.sel];
+    const checks = cur.checks ? cur.checks.map((text) => ({ text, bg: '#3FAE6A', icon: OK })) : [{ text: 'Health would fall to ' + hfT.toFixed(2) + ' — below the 1.5 minimum', bg: '#B5392F', icon: X }];
+    const pal = (items) => items.map((it) => ({ ...it, tint: T[it.k], icon: I[it.k], op: it.soon ? 0.45 : 1, tag: it.soon ? 'Soon' : '' }));
+    return {
+      nodes, links,
+      sel: { name: cur.name, kind: cur.kind, num: s.sel + 1, tint: T[cur.k], icon: I[cur.k] },
+      is: { wallet: cur.k === 'wallet', trade: cur.k === 'trade', supply: cur.k === 'supply', borrow: cur.k === 'borrow', earn: cur.k === 'earn' },
+      checks, checksBg: cur.checks ? '#E6F5DF' : '#FBE1DC',
+      bor: s.bor, borStr, hfStr, hfPos: pos + '%', zone, zoneBg, blocked, canRun: !blocked,
+      pillText: blocked ? 'Needs attention' : 'Ready', pillBg: blocked ? '#FBE1DC' : '#D5F56B',
+      onBor: (e) => this.setBor(parseFloat(e.target.value)),
+      safeMax: () => this.setBor(1.9),
+      zoom: s.zoom, zoomPct: Math.round(s.zoom * 100) + '%',
+      zoomIn: () => this.setState({ zoom: Math.min(1.3, s.zoom + 0.1) }),
+      zoomOut: () => this.setState({ zoom: Math.max(0.6, s.zoom - 0.1) }),
+      zoomFit: () => this.setState({ zoom: 1 }),
+      palOpen: s.palOpen, palW: s.palOpen ? '232px' : '60px',
+      togglePal: () => this.setState({ palOpen: !s.palOpen }),
+      palette: [
+        { title: 'Start from', items: pal([{ k: 'wallet', name: 'Wallet asset' }, { k: 'supplied', name: 'Supplied stock' }, { k: 'debt', name: 'Debt' }]) },
+        { title: 'Actions', items: pal([{ k: 'trade', name: 'Trade' }, { k: 'supply', name: 'Supply' }, { k: 'borrow', name: 'Borrow' }, { k: 'repay', name: 'Repay' }, { k: 'withdraw', name: 'Withdraw' }, { k: 'earn', name: 'Earn' }, { k: 'liquidity', name: 'Liquidity', soon: true }]) }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>

@@ -1,2 +1,6 @@
 /target
 /docs/
+/fe/node_modules/
+/fe/dist/
+/fe/playwright-report/
+/fe/test-results/

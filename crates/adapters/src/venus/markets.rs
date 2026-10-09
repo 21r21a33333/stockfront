@@ -5,8 +5,10 @@ use async_trait::async_trait;
 use rust_decimal::Decimal;
 use stockfront_core::{
     bstock_borrowing::{
-        BorrowingAccount, BorrowingMarket, BorrowingMarketUnavailableReason,
-        BorrowingProviderError, BorrowingReader, BorrowingToken, BorrowingVenue,
+        BorrowCapability, BorrowCapabilityRequest, BorrowingAccount, BorrowingMarket,
+        BorrowingMarketUnavailableReason, BorrowingProviderError, BorrowingReader, BorrowingToken,
+        BorrowingVenue, RepaymentCapability, RepaymentCapabilityRequest, SupplyMarket,
+        SupplyMarketUnavailableReason,
     },
     bstock_market::{BNB_CHAIN_ID, BstockId},
     wallet_portfolio::WalletAddress,
@@ -33,10 +35,11 @@ const ORACLE_VALID: u8 = 1 << 3;
 pub(super) struct MarketState {
     pub(super) market: Address,
     comptroller: Address,
-    token: BorrowingToken,
+    pub(super) token: BorrowingToken,
     pub(super) token_decimals: u32,
     pub(super) underlying_price_usd: Decimal,
-    borrow_apy_percent: Decimal,
+    pub(super) borrow_apy_percent: Decimal,
+    supply_apy_percent: Decimal,
     collateral_factor: Decimal,
     pub(super) liquidation_threshold: Decimal,
     supply_cap: U256,
@@ -86,6 +89,7 @@ impl TryFrom<Market> for MarketState {
             token_decimals,
             underlying_price_usd: decode_units(underlying_price, 18)?,
             borrow_apy_percent: parse(&required(value.borrow_apy)?)?,
+            supply_apy_percent: parse(&required(value.supply_apy)?)?,
             collateral_factor: decode_units(
                 parse(&required_nested(value.collateral_factor_mantissa)?)?,
                 18,
@@ -127,10 +131,58 @@ impl MarketState {
         self.cash
             .min(self.borrow_cap.saturating_sub(self.total_borrows))
     }
+
+    pub(super) fn is_listed(&self) -> bool {
+        self.has(LISTED)
+    }
+
+    pub(super) fn is_borrowable(&self) -> bool {
+        self.has(BORROWABLE)
+    }
+
+    pub(super) fn oracle_valid(&self) -> bool {
+        self.has(ORACLE_VALID)
+    }
+
+    pub(super) fn borrow_paused(&self) -> bool {
+        action_paused(self.paused_actions, BORROW_ACTION)
+    }
+
+    pub(super) fn borrow_cap_reached(&self) -> bool {
+        self.borrow_cap.saturating_sub(self.total_borrows) == U256::ZERO
+    }
 }
 
 #[async_trait]
 impl BorrowingReader for VenusBorrowingAdapter {
+    async fn read_borrow_capability(
+        &self,
+        request: &BorrowCapabilityRequest,
+    ) -> Result<BorrowCapability, BorrowingProviderError> {
+        self.borrow_capability(request).await
+    }
+
+    async fn read_repayment_capability(
+        &self,
+        request: &RepaymentCapabilityRequest,
+    ) -> Result<RepaymentCapability, BorrowingProviderError> {
+        self.repayment_capability(request).await
+    }
+
+    async fn read_supply_market(
+        &self,
+        token: Address,
+    ) -> Result<Option<SupplyMarket>, BorrowingProviderError> {
+        let state = self
+            .market_states(&HashSet::from([token]))
+            .await?
+            .remove(&token);
+        state
+            .as_ref()
+            .map(|state| build_supply_market(state, chrono::Utc::now().timestamp_millis()))
+            .transpose()
+    }
+
     async fn read_markets(
         &self,
         collateral_assets: &[BstockId],
@@ -311,6 +363,106 @@ fn build_market(
     })
 }
 
+fn build_supply_market(
+    state: &MarketState,
+    observed_at_ms: i64,
+) -> Result<SupplyMarket, BorrowingProviderError> {
+    let remaining = if state.supply_cap == U256::MAX {
+        None
+    } else {
+        let supplied = state
+            .total_supply
+            .checked_mul(state.exchange_rate)
+            .and_then(|value| value.checked_div(U256::from(WAD)))
+            .ok_or(BorrowingProviderError::InvalidData)?;
+        Some(state.supply_cap.saturating_sub(supplied))
+    };
+    let supply_paused = action_paused(state.paused_actions, MINT_ACTION);
+    let supply_cap_reached = remaining == Some(U256::ZERO);
+    let mut unavailable_reasons = Vec::new();
+
+    if !state.has(LISTED) {
+        unavailable_reasons.push(SupplyMarketUnavailableReason::MarketUnlisted);
+    }
+    if supply_paused {
+        unavailable_reasons.push(SupplyMarketUnavailableReason::SupplyPaused);
+    }
+    if supply_cap_reached {
+        unavailable_reasons.push(SupplyMarketUnavailableReason::SupplyCapReached);
+    }
+
+    Ok(SupplyMarket {
+        venue: BorrowingVenue::Venus,
+        chain_id: BNB_CHAIN_ID,
+        token: state.token.clone(),
+        market: state.market,
+        token_decimals: state.token_decimals,
+        supply_apy_percent: state.supply_apy_percent,
+        remaining_supply_capacity: remaining
+            .map(|value| decode_units(value, state.token_decimals))
+            .transpose()?,
+        supply_available: state.has(LISTED) && !supply_paused && !supply_cap_reached,
+        unavailable_reasons,
+        observed_at_ms,
+    })
+}
+
 fn action_paused(bitmap: u32, action: u32) -> bool {
     bitmap & (1 << action) != 0
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn supply_capability_does_not_require_collateral_or_oracle_flags() {
+        let market = build_supply_market(&state(LISTED, U256::MAX, 0), 7)
+            .unwrap_or_else(|error| panic!("supply market failed: {error}"));
+
+        assert!(market.supply_available);
+        assert_eq!(market.remaining_supply_capacity, None);
+        assert!(market.unavailable_reasons.is_empty());
+    }
+
+    #[test]
+    fn zero_cap_and_paused_mint_are_reported_independently() {
+        let market = build_supply_market(&state(LISTED, U256::ZERO, 1 << MINT_ACTION), 7)
+            .unwrap_or_else(|error| panic!("supply market failed: {error}"));
+
+        assert!(!market.supply_available);
+        assert_eq!(market.remaining_supply_capacity, Some(Decimal::ZERO));
+        assert_eq!(
+            market.unavailable_reasons,
+            vec![
+                SupplyMarketUnavailableReason::SupplyPaused,
+                SupplyMarketUnavailableReason::SupplyCapReached,
+            ]
+        );
+    }
+
+    fn state(conditions: u8, supply_cap: U256, paused_actions: u32) -> MarketState {
+        MarketState {
+            market: Address::with_last_byte(1),
+            comptroller: Address::with_last_byte(2),
+            token: BorrowingToken {
+                contract: Address::with_last_byte(3),
+                symbol: "TSLAB".to_owned(),
+            },
+            token_decimals: 18,
+            underlying_price_usd: Decimal::ONE,
+            borrow_apy_percent: Decimal::ZERO,
+            supply_apy_percent: Decimal::new(375, 2),
+            collateral_factor: Decimal::ZERO,
+            liquidation_threshold: Decimal::ZERO,
+            supply_cap,
+            borrow_cap: U256::ZERO,
+            total_supply: U256::ZERO,
+            exchange_rate: U256::from(WAD),
+            total_borrows: U256::ZERO,
+            cash: U256::ZERO,
+            conditions,
+            paused_actions,
+        }
+    }
 }

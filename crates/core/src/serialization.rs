@@ -26,6 +26,18 @@ where
         .serialize(serializer)
 }
 
+pub(crate) fn serialize_all_as_strings<T, S>(values: &[T], serializer: S) -> Result<S::Ok, S::Error>
+where
+    T: Display,
+    S: Serializer,
+{
+    values
+        .iter()
+        .map(ToString::to_string)
+        .collect::<Vec<_>>()
+        .serialize(serializer)
+}
+
 pub(crate) fn serialize_bytes<S>(value: &Bytes, serializer: S) -> Result<S::Ok, S::Error>
 where
     S: Serializer,
@@ -42,4 +54,17 @@ where
     String::deserialize(deserializer)?
         .parse()
         .map_err(de::Error::custom)
+}
+
+pub(crate) fn deserialize_optional_from_string<'de, T, D>(
+    deserializer: D,
+) -> Result<Option<T>, D::Error>
+where
+    T: FromStr,
+    T::Err: Display,
+    D: Deserializer<'de>,
+{
+    Option::<String>::deserialize(deserializer)?
+        .map(|value| value.parse().map_err(de::Error::custom))
+        .transpose()
 }

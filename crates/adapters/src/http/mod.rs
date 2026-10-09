@@ -2,6 +2,7 @@
 
 mod error;
 mod handlers;
+pub mod openapi;
 mod primitives;
 mod request;
 
@@ -14,8 +15,28 @@ use axum::{
 use stockfront_core::{
     baskets::BasketService, bstock_borrowing::BorrowingService, bstock_market::BstockMarketService,
     bstock_trade::BstockTradeService, carry::CarryService, liquidity::LiquidityService,
-    managed_portfolios::ManagedPortfolioService, wallet_portfolio::WalletPortfolioService,
+    managed_portfolios::ManagedPortfolioService, recipes::RecipeService,
+    strategy_composer::StrategyComposerService, wallet_portfolio::WalletPortfolioService,
 };
+
+pub fn recipe_router(service: Arc<RecipeService>) -> Router {
+    Router::new()
+        .route("/v1/openapi.json", get(openapi::document))
+        .route("/v1/recipe-primitives", get(handlers::recipes::primitives))
+        .route("/v1/recipes/validate", post(handlers::recipes::validate))
+        .route("/v1/recipes/preview", post(handlers::recipes::preview))
+        .route("/v1/recipes/prepare", post(handlers::recipes::prepare))
+        .with_state(service)
+}
+
+pub fn strategy_router(service: Arc<StrategyComposerService>) -> Router {
+    Router::new()
+        .route(
+            "/v1/strategies/compose",
+            post(handlers::strategies::compose),
+        )
+        .with_state(service)
+}
 
 pub fn managed_portfolio_router(service: Arc<ManagedPortfolioService>) -> Router {
     Router::new()

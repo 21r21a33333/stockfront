@@ -6,10 +6,11 @@ use thiserror::Error;
 
 use crate::{
     bstock_borrowing::{
-        BorrowingAccount, BorrowingActionGateway, BorrowingMarket, BorrowingMarketQuery,
-        BorrowingProviderError, BorrowingReader, BorrowingTransactionStatus, PositionAmount,
-        PrepareBorrowRequest, PrepareCollateralRequest, PrepareRepaymentRequest,
-        PrepareSupplyRequest, PrepareWithdrawalRequest, PreparedBorrowingAction,
+        BorrowCapability, BorrowCapabilityRequest, BorrowingAccount, BorrowingActionGateway,
+        BorrowingMarket, BorrowingMarketQuery, BorrowingProviderError, BorrowingReader,
+        BorrowingTransactionStatus, PositionAmount, PrepareBorrowRequest, PrepareCollateralRequest,
+        PrepareRepaymentRequest, PrepareSupplyRequest, PrepareWithdrawalRequest,
+        PreparedBorrowingAction, RepaymentCapability, RepaymentCapabilityRequest, SupplyMarket,
     },
     bstock_market::{BNB_CHAIN_ID, BstockCatalog, BstockId, CatalogError},
     wallet_portfolio::WalletAddress,
@@ -18,6 +19,11 @@ use crate::{
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct BorrowingPolicy {
     debt_tokens: Vec<Address>,
+}
+
+#[must_use]
+pub fn minimum_borrow_health_factor() -> Decimal {
+    Decimal::new(15, 1)
 }
 
 impl BorrowingPolicy {
@@ -34,6 +40,11 @@ impl BorrowingPolicy {
             return Err(BorrowingPolicyError::NoDebtTokens);
         }
         Ok(Self { debt_tokens })
+    }
+
+    #[must_use]
+    pub fn debt_tokens(&self) -> &[Address] {
+        &self.debt_tokens
     }
 }
 
@@ -61,6 +72,10 @@ pub enum BorrowingServiceError {
     UnsupportedCollateral,
     #[error("the debt token is not supported")]
     UnsupportedDebtToken,
+    #[error("the borrow health factor is unavailable")]
+    HealthFactorUnavailable,
+    #[error("the borrow would reduce the health factor below the safety minimum")]
+    UnsafeHealthFactor,
 }
 
 pub struct BorrowingService {
@@ -83,6 +98,75 @@ impl BorrowingService {
             action_gateway,
             policy,
         }
+    }
+
+    #[must_use]
+    pub fn supported_debt_tokens(&self) -> &[Address] {
+        self.policy.debt_tokens()
+    }
+
+    #[must_use]
+    pub fn minimum_health_factor(&self) -> Decimal {
+        minimum_borrow_health_factor()
+    }
+
+    /// Returns current account-wide safety for one exact borrow request.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`BorrowingServiceError`] when an asset is unsupported or live
+    /// Venus account and market state cannot be read safely.
+    pub async fn borrow_capability(
+        &self,
+        wallet: WalletAddress,
+        pool: Address,
+        collateral_token: Address,
+        debt_token: Address,
+        raw_amount: alloy_primitives::U256,
+    ) -> Result<BorrowCapability, BorrowingServiceError> {
+        if raw_amount.is_zero() {
+            return Err(BorrowingServiceError::InvalidBorrowAmount);
+        }
+        self.ensure_supported_collateral(collateral_token).await?;
+        if !self.policy.debt_tokens.contains(&debt_token) {
+            return Err(BorrowingServiceError::UnsupportedDebtToken);
+        }
+        self.reader
+            .read_borrow_capability(&BorrowCapabilityRequest {
+                wallet,
+                pool,
+                collateral_token,
+                debt_token,
+                raw_amount,
+                minimum_health_factor: minimum_borrow_health_factor(),
+            })
+            .await
+            .map_err(Into::into)
+    }
+
+    /// Returns current wallet funding and approval readiness for a full debt repayment.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`BorrowingServiceError`] when the debt token is unsupported or
+    /// live Venus state cannot be read safely.
+    pub async fn repayment_capability(
+        &self,
+        wallet: WalletAddress,
+        pool: Address,
+        debt_token: Address,
+    ) -> Result<RepaymentCapability, BorrowingServiceError> {
+        if !self.policy.debt_tokens.contains(&debt_token) {
+            return Err(BorrowingServiceError::UnsupportedDebtToken);
+        }
+        self.reader
+            .read_repayment_capability(&RepaymentCapabilityRequest {
+                wallet,
+                pool,
+                debt_token,
+            })
+            .await
+            .map_err(Into::into)
     }
 
     /// Returns Venus markets at the intersection of supported bStocks and debt assets.
@@ -135,6 +219,26 @@ impl BorrowingService {
         wallet: WalletAddress,
     ) -> Result<BorrowingAccount, BorrowingServiceError> {
         self.reader.read_account(wallet).await.map_err(Into::into)
+    }
+
+    /// Returns the current Venus supply capability for a supported bStock.
+    ///
+    /// `None` means the token is in Stockfront's bStock catalog but Venus does
+    /// not currently expose a market for it.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`BorrowingServiceError`] when the token is not a supported
+    /// bStock or current Venus market data cannot be read.
+    pub async fn supply_market(
+        &self,
+        token: Address,
+    ) -> Result<Option<SupplyMarket>, BorrowingServiceError> {
+        self.ensure_supported_collateral(token).await?;
+        self.reader
+            .read_supply_market(token)
+            .await
+            .map_err(Into::into)
     }
 
     /// Returns Binance's ordered wallet transactions for supplying a supported bStock to Venus.
@@ -192,10 +296,15 @@ impl BorrowingService {
         if !self.policy.debt_tokens.contains(&request.debt_token) {
             return Err(BorrowingServiceError::UnsupportedDebtToken);
         }
-        self.action_gateway
-            .prepare_borrow(request)
-            .await
-            .map_err(Into::into)
+        let action = self.action_gateway.prepare_borrow(request).await?;
+        let health_factor = action
+            .preview
+            .health_factor_after
+            .ok_or(BorrowingServiceError::HealthFactorUnavailable)?;
+        if health_factor < minimum_borrow_health_factor() {
+            return Err(BorrowingServiceError::UnsafeHealthFactor);
+        }
+        Ok(action)
     }
 
     /// Returns an exact, finite token approval required by a Venus repayment.
@@ -228,6 +337,28 @@ impl BorrowingService {
         self.validate_repayment(request)?;
         self.action_gateway
             .prepare_repayment(request)
+            .await
+            .map_err(Into::into)
+    }
+
+    /// Returns one ordered atomic plan for approving and fully repaying Venus debt.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`BorrowingServiceError`] when the request is not full repayment,
+    /// the debt token is unsupported, or refreshed wallet state cannot fund it.
+    pub async fn prepare_full_repayment(
+        &self,
+        request: &PrepareRepaymentRequest,
+    ) -> Result<PreparedBorrowingAction, BorrowingServiceError> {
+        if request.amount != PositionAmount::Full {
+            return Err(BorrowingServiceError::InvalidRepaymentAmount);
+        }
+        if !self.policy.debt_tokens.contains(&request.debt_token) {
+            return Err(BorrowingServiceError::UnsupportedDebtToken);
+        }
+        self.action_gateway
+            .prepare_full_repayment(request)
             .await
             .map_err(Into::into)
     }
@@ -338,6 +469,27 @@ mod tests {
 
     #[async_trait]
     impl BorrowingReader for RecordingReader {
+        async fn read_borrow_capability(
+            &self,
+            _request: &BorrowCapabilityRequest,
+        ) -> Result<BorrowCapability, BorrowingProviderError> {
+            Err(BorrowingProviderError::Unavailable)
+        }
+
+        async fn read_repayment_capability(
+            &self,
+            _request: &RepaymentCapabilityRequest,
+        ) -> Result<RepaymentCapability, BorrowingProviderError> {
+            Err(BorrowingProviderError::Unavailable)
+        }
+
+        async fn read_supply_market(
+            &self,
+            _token: Address,
+        ) -> Result<Option<SupplyMarket>, BorrowingProviderError> {
+            Ok(None)
+        }
+
         async fn read_markets(
             &self,
             collateral_assets: &[BstockId],
@@ -397,7 +549,14 @@ mod tests {
             assert_eq!(request.debt_token, Address::with_last_byte(2));
             Ok(PreparedBorrowingAction {
                 transactions: Vec::new(),
-                preview: BorrowingPreview::default(),
+                preview: BorrowingPreview {
+                    health_factor_after: Some(if request.amount == Decimal::new(99, 0) {
+                        Decimal::new(14, 1)
+                    } else {
+                        Decimal::new(2, 0)
+                    }),
+                    ..BorrowingPreview::default()
+                },
             })
         }
 
@@ -413,6 +572,17 @@ mod tests {
         }
 
         async fn prepare_repayment(
+            &self,
+            request: &PrepareRepaymentRequest,
+        ) -> Result<PreparedBorrowingAction, BorrowingProviderError> {
+            assert_eq!(request.debt_token, Address::with_last_byte(2));
+            Ok(PreparedBorrowingAction {
+                transactions: Vec::new(),
+                preview: BorrowingPreview::default(),
+            })
+        }
+
+        async fn prepare_full_repayment(
             &self,
             request: &PrepareRepaymentRequest,
         ) -> Result<PreparedBorrowingAction, BorrowingProviderError> {
@@ -591,6 +761,20 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn borrow_rejects_a_provider_action_below_the_safety_floor() {
+        let error = service()
+            .prepare_borrow(&PrepareBorrowRequest {
+                wallet: WalletAddress::try_from(Address::with_last_byte(3))
+                    .unwrap_or_else(|error| panic!("valid wallet rejected: {error}")),
+                debt_token: Address::with_last_byte(2),
+                amount: Decimal::new(99, 0),
+            })
+            .await;
+
+        assert_eq!(error, Err(BorrowingServiceError::UnsafeHealthFactor));
+    }
+
+    #[tokio::test]
     async fn repayment_and_withdrawal_validate_exact_amounts_and_supported_tokens() {
         let service = service();
         let wallet = WalletAddress::try_from(Address::with_last_byte(3))
@@ -603,6 +787,18 @@ mod tests {
                     debt_token: Address::with_last_byte(2),
                     amount: PositionAmount::Exact {
                         value: Decimal::ZERO,
+                    },
+                })
+                .await,
+            Err(BorrowingServiceError::InvalidRepaymentAmount)
+        );
+        assert_eq!(
+            service
+                .prepare_full_repayment(&PrepareRepaymentRequest {
+                    wallet,
+                    debt_token: Address::with_last_byte(2),
+                    amount: PositionAmount::Exact {
+                        value: Decimal::ONE,
                     },
                 })
                 .await,
@@ -642,6 +838,14 @@ mod tests {
             })
             .await
             .unwrap_or_else(|error| panic!("supported repayment rejected: {error}"));
+        let full_repayment = service
+            .prepare_full_repayment(&PrepareRepaymentRequest {
+                wallet,
+                debt_token: Address::with_last_byte(2),
+                amount: PositionAmount::Full,
+            })
+            .await
+            .unwrap_or_else(|error| panic!("supported full repayment rejected: {error}"));
         let withdrawal = service
             .prepare_withdrawal(&PrepareWithdrawalRequest {
                 wallet,
@@ -653,6 +857,7 @@ mod tests {
 
         assert!(approval.transactions.is_empty());
         assert!(repayment.transactions.is_empty());
+        assert!(full_repayment.transactions.is_empty());
         assert!(withdrawal.transactions.is_empty());
     }
 

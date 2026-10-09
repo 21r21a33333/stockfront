@@ -8,6 +8,8 @@ pub mod carry;
 pub mod liquidity;
 pub mod managed_portfolios;
 pub mod prepared_action;
+pub mod recipes;
+pub mod strategy_composer;
 pub mod wallet_portfolio;
 
 mod serialization;

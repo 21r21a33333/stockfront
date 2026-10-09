@@ -15,6 +15,8 @@ use stockfront_core::managed_portfolios::{
     ListManagedPortfolioTemplatesQueryError, ListManagedPortfoliosQueryError,
     ManagedPortfolioProviderError, ManagedPortfolioServiceError,
 };
+use stockfront_core::recipes::{RecipeDiagnostic, RecipeError};
+use stockfront_core::strategy_composer::{StrategyComposerError, StrategyModelError};
 use stockfront_core::wallet_portfolio::{
     BalanceReaderError, WalletAddressError, WalletPortfolioError,
 };
@@ -26,6 +28,7 @@ pub(super) struct ApiError {
     status: StatusCode,
     code: &'static str,
     message: Cow<'static, str>,
+    diagnostics: Option<Vec<RecipeDiagnostic>>,
 }
 
 impl ApiError {
@@ -154,6 +157,16 @@ impl ApiError {
         "invalid_borrow_amount",
         "borrow amount must be greater than zero",
     );
+    const BORROW_HEALTH_FACTOR_UNAVAILABLE: Self = Self::fixed(
+        StatusCode::UNPROCESSABLE_ENTITY,
+        "borrow_health_factor_unavailable",
+        "the borrow health factor could not be verified",
+    );
+    const UNSAFE_BORROW_HEALTH_FACTOR: Self = Self::fixed(
+        StatusCode::UNPROCESSABLE_ENTITY,
+        "unsafe_borrow_health_factor",
+        "the borrow would reduce the health factor below the safety minimum",
+    );
     const INVALID_REPAYMENT_AMOUNT: Self = Self::fixed(
         StatusCode::BAD_REQUEST,
         "invalid_repayment_amount",
@@ -188,6 +201,16 @@ impl ApiError {
         StatusCode::UNPROCESSABLE_ENTITY,
         "insufficient_supplied_balance",
         "the wallet has insufficient supplied balance",
+    );
+    const INSUFFICIENT_REPAYMENT_BALANCE: Self = Self::fixed(
+        StatusCode::UNPROCESSABLE_ENTITY,
+        "insufficient_repayment_balance",
+        "the wallet has insufficient balance to repay the current debt",
+    );
+    const REPAYMENT_DEBT_NOT_FOUND: Self = Self::fixed(
+        StatusCode::NOT_FOUND,
+        "repayment_debt_not_found",
+        "the wallet has no matching debt to repay",
     );
     const CARRY_OPPORTUNITIES_UNAVAILABLE: Self = Self::fixed(
         StatusCode::SERVICE_UNAVAILABLE,
@@ -299,11 +322,52 @@ impl ApiError {
         "invalid_managed_portfolio_withdrawal_assets",
         "in-kind withdrawal assets and amounts must be greater than zero",
     );
+    const INVALID_RECIPE: Self = Self::fixed(
+        StatusCode::UNPROCESSABLE_ENTITY,
+        "invalid_recipe",
+        "the recipe structure is invalid",
+    );
+    const INVALID_RECIPE_SELECTION: Self = Self::fixed(
+        StatusCode::BAD_REQUEST,
+        "invalid_recipe_selection",
+        "recipe selections must match the prepared nodes",
+    );
+    const INVALID_RECIPE_CONTEXT: Self = Self::fixed(
+        StatusCode::BAD_REQUEST,
+        "invalid_recipe_context",
+        "completed recipe nodes do not match the compiled plan",
+    );
+    const RECIPE_STEP_NOT_READY: Self = Self::fixed(
+        StatusCode::CONFLICT,
+        "recipe_step_not_ready",
+        "the recipe step depends on an earlier transaction result",
+    );
+    const INVALID_STRATEGY_PROMPT: Self = Self::fixed(
+        StatusCode::BAD_REQUEST,
+        "invalid_strategy_prompt",
+        "the strategy prompt must contain between 1 and 1000 characters",
+    );
+    const AI_RATE_LIMITED: Self = Self::fixed(
+        StatusCode::SERVICE_UNAVAILABLE,
+        "ai_rate_limited",
+        "the AI strategy model is rate limited; try again shortly",
+    );
+    const AI_UNAVAILABLE: Self = Self::fixed(
+        StatusCode::SERVICE_UNAVAILABLE,
+        "ai_unavailable",
+        "the AI strategy model is temporarily unavailable",
+    );
+    const INVALID_AI_RESPONSE: Self = Self::fixed(
+        StatusCode::BAD_GATEWAY,
+        "invalid_ai_response",
+        "the AI strategy model did not return a usable strategy",
+    );
     const fn fixed(status: StatusCode, code: &'static str, message: &'static str) -> Self {
         Self {
             status,
             code,
             message: Cow::Borrowed(message),
+            diagnostics: None,
         }
     }
 
@@ -316,6 +380,39 @@ impl ApiError {
             status,
             code,
             message,
+            diagnostics: None,
+        }
+    }
+}
+
+impl From<RecipeError> for ApiError {
+    fn from(error: RecipeError) -> Self {
+        match error {
+            RecipeError::InvalidRecipe(report) => Self {
+                diagnostics: Some(report.diagnostics),
+                ..Self::INVALID_RECIPE
+            },
+            RecipeError::InvalidContext => Self::INVALID_RECIPE_CONTEXT,
+            RecipeError::InvalidSelection => Self::INVALID_RECIPE_SELECTION,
+            RecipeError::StepNotReady => Self::RECIPE_STEP_NOT_READY,
+            RecipeError::Market(error) => error.into(),
+            RecipeError::Trade(error) => error.into(),
+            RecipeError::Borrowing(error) => error.into(),
+        }
+    }
+}
+
+impl From<StrategyComposerError> for ApiError {
+    fn from(error: StrategyComposerError) -> Self {
+        match error {
+            StrategyComposerError::InvalidPrompt => Self::INVALID_STRATEGY_PROMPT,
+            StrategyComposerError::Recipe(error) => error.into(),
+            StrategyComposerError::Borrowing(error) => error.into(),
+            StrategyComposerError::Model(StrategyModelError::RateLimited) => Self::AI_RATE_LIMITED,
+            StrategyComposerError::Model(StrategyModelError::Unavailable) => Self::AI_UNAVAILABLE,
+            StrategyComposerError::Model(StrategyModelError::InvalidResponse) => {
+                Self::INVALID_AI_RESPONSE
+            }
         }
     }
 }
@@ -541,6 +638,10 @@ impl From<BorrowingServiceError> for ApiError {
             BorrowingServiceError::InvalidWithdrawalAmount => Self::INVALID_WITHDRAWAL_AMOUNT,
             BorrowingServiceError::UnsupportedCollateral => Self::UNSUPPORTED_COLLATERAL,
             BorrowingServiceError::UnsupportedDebtToken => Self::UNSUPPORTED_DEBT_TOKEN,
+            BorrowingServiceError::HealthFactorUnavailable => {
+                Self::BORROW_HEALTH_FACTOR_UNAVAILABLE
+            }
+            BorrowingServiceError::UnsafeHealthFactor => Self::UNSAFE_BORROW_HEALTH_FACTOR,
         }
     }
 }
@@ -559,12 +660,39 @@ impl From<BorrowingProviderError> for ApiError {
             BorrowingProviderError::InsufficientSuppliedBalance => {
                 Self::INSUFFICIENT_SUPPLIED_BALANCE
             }
+            BorrowingProviderError::InsufficientWalletBalance => {
+                Self::INSUFFICIENT_REPAYMENT_BALANCE
+            }
+            BorrowingProviderError::NoDebt => Self::REPAYMENT_DEBT_NOT_FOUND,
         }
     }
 }
 
 impl IntoResponse for ApiError {
     fn into_response(self) -> AxumResponse {
-        Response::error(self.code, self.message.into_owned(), self.status).into_response()
+        Response::error(
+            self.code,
+            self.message.into_owned(),
+            self.diagnostics,
+            self.status,
+        )
+        .into_response()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn maps_invalid_recipe_context_to_a_stable_client_error() {
+        let error = ApiError::from(RecipeError::InvalidContext);
+
+        assert_eq!(error.status, StatusCode::BAD_REQUEST);
+        assert_eq!(error.code, "invalid_recipe_context");
+        assert_eq!(
+            error.message,
+            "completed recipe nodes do not match the compiled plan"
+        );
     }
 }

@@ -17,7 +17,7 @@ use stockfront_core::{
 
 use super::super::{
     error::ApiError,
-    primitives::{ApiResult, List, Response},
+    primitives::{ApiResult, ErrorResponse, List, Response},
     request::BorrowingMarketsRequest,
 };
 use super::parse_wallet;
@@ -34,6 +34,14 @@ pub(in crate::http) async fn markets(
     Ok(Response::ok(List::all(markets)))
 }
 
+#[utoipa::path(
+    get, path = "/v1/wallets/{address}/loans",
+    params(("address" = String, Path)),
+    responses(
+        (status = 200, body = Response<BorrowingAccount>),
+        (status = "default", body = ErrorResponse)
+    )
+)]
 pub(in crate::http) async fn account(
     State(service): State<Arc<BorrowingService>>,
     Path(address): Path<String>,

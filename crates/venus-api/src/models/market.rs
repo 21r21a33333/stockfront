@@ -27,6 +27,8 @@ pub struct Market {
     pub underlying_decimal: Option<i32>,
     #[serde(rename = "borrowApy", deserialize_with = "Option::deserialize")]
     pub borrow_apy: Option<String>,
+    #[serde(rename = "supplyApy", deserialize_with = "Option::deserialize")]
+    pub supply_apy: Option<String>,
     #[serde(
         rename = "exchangeRateMantissa",
         default,
@@ -136,6 +138,7 @@ impl Market {
         underlying_symbol: Option<String>,
         underlying_decimal: Option<i32>,
         borrow_apy: Option<String>,
+        supply_apy: Option<String>,
     ) -> Market {
         Market {
             address,
@@ -145,6 +148,7 @@ impl Market {
             underlying_symbol,
             underlying_decimal,
             borrow_apy,
+            supply_apy,
             exchange_rate_mantissa: None,
             underlying_price_mantissa: None,
             total_borrows_mantissa: None,
