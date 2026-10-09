@@ -60,7 +60,8 @@
 
 .header {
   position: relative;
-  z-index: 2;
+  /* Above .heroBody so the wallet menu opens over the headline. */
+  z-index: 3;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -188,6 +189,14 @@
   box-shadow:
     0 30px 60px -30px rgba(18, 52, 94, 0.45),
     0 0 0 1px rgba(15, 17, 14, 0.06);
+  transition: box-shadow 0.2s ease;
+}
+
+.heroPrompt:focus-within {
+  box-shadow:
+    0 30px 60px -30px rgba(18, 52, 94, 0.45),
+    0 0 0 1px var(--ink),
+    0 0 0 5px rgba(213, 245, 107, 0.7);
 }
 
 .promptIcon {

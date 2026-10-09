@@ -5,7 +5,19 @@
   background: rgba(15, 17, 14, 0.28);
   display: flex;
   justify-content: flex-end;
-  animation: fadeUp 0.2s ease both;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition:
+    opacity 0.3s ease,
+    visibility 0s linear 0.4s;
+}
+
+.backdrop[data-open="true"] {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  transition: opacity 0.3s ease;
 }
 
 .sheet {
@@ -16,7 +28,19 @@
   box-shadow: -30px 0 60px -40px rgba(15, 17, 14, 0.5);
   display: flex;
   flex-direction: column;
-  animation: fadeIn 0.25s var(--ease) both;
+  transform: translateX(100%);
+  transition: transform 0.4s var(--ease);
+}
+
+[data-open="true"] > .sheet {
+  transform: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .backdrop,
+  .sheet {
+    transition: none;
+  }
 }
 
 .head {
@@ -152,26 +176,4 @@
   background: var(--ink);
   color: #ffffff;
   font-weight: 500;
-}
-
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-    transform: translateX(8px);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
-}
-
-@keyframes fadeUp {
-  from {
-    opacity: 0;
-    transform: translateY(10px);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
 }
