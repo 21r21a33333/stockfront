@@ -24,7 +24,6 @@ export function PositionsSheet() {
     return () => window.removeEventListener("keydown", onKey);
   }, [open, setOpen]);
 
-  if (!open) return null;
   const catalog = session.catalog;
   const stocks = session.assets.filter(
     (asset) => asset.kind === "bstock" && (asset.balanceRaw ?? 0n) > 0n,
@@ -45,7 +44,12 @@ export function PositionsSheet() {
   }
 
   return (
-    <div className={styles.backdrop} onClick={() => setOpen(false)}>
+    <div
+      className={styles.backdrop}
+      data-open={open}
+      aria-hidden={!open}
+      onClick={() => setOpen(false)}
+    >
       <aside
         className={styles.sheet}
         role="dialog"

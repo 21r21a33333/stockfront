@@ -2,6 +2,22 @@
   box-sizing: border-box;
 }
 
+/* The layout is drawn at a desktop density that reads best slightly smaller;
+   phones keep the native size. */
+:root {
+  --ui-scale: 1;
+}
+
+@media (min-width: 1024px) {
+  :root {
+    --ui-scale: 0.9;
+  }
+}
+
+html {
+  zoom: var(--ui-scale);
+}
+
 html,
 body,
 #root {
@@ -41,11 +57,8 @@ button:disabled {
   cursor: not-allowed;
 }
 
-button:focus-visible,
-input:focus-visible,
-select:focus-visible,
-a:focus-visible,
-summary:focus-visible {
+/* :where keeps this at zero specificity so components can replace the ring. */
+:where(button, input, select, a, summary):focus-visible {
   outline: 2px solid var(--ink);
   outline-offset: 2px;
 }

@@ -16,7 +16,7 @@ export class ErrorBoundary extends Component<
     return (
       <main
         style={{
-          minHeight: "100vh",
+          minHeight: "calc(100vh / var(--ui-scale))",
           display: "grid",
           placeItems: "center",
           padding: 24,

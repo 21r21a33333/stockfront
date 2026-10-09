@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { shortAddress } from "@/recipe/assets";
 import { useWalletSession } from "@/wallet/execution";
 import styles from "./WalletButton.module.css";
@@ -11,11 +11,37 @@ export function WalletButton({
 }) {
   const wallet = useWalletSession();
   const [open, setOpen] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const anchor = useRef<HTMLSpanElement>(null);
   const missing = !wallet.hasInjectedWallet;
+
+  useEffect(() => {
+    if (!open) return;
+    const onPointer = (event: PointerEvent) => {
+      if (!anchor.current?.contains(event.target as Node)) setOpen(false);
+    };
+    const onKey = (event: KeyboardEvent) =>
+      event.key === "Escape" && setOpen(false);
+    document.addEventListener("pointerdown", onPointer);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("pointerdown", onPointer);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  useEffect(() => {
+    if (!copied) return;
+    const timer = window.setTimeout(() => {
+      setCopied(false);
+      setOpen(false);
+    }, 900);
+    return () => window.clearTimeout(timer);
+  }, [copied]);
 
   if (!wallet.isConnected || !wallet.address) {
     return (
-      <span className={styles.anchor}>
+      <span ref={anchor} className={styles.anchor}>
         <button
           type="button"
           className={`lift ${variant === "glass" ? styles.glass : styles.connect}`}
@@ -47,10 +73,11 @@ export function WalletButton({
     );
   }
   return (
-    <span className={styles.anchor}>
+    <span ref={anchor} className={styles.anchor}>
       <button
         type="button"
         className={`lift mono ${styles.wallet}`}
+        aria-haspopup="menu"
         aria-expanded={open}
         onClick={() => setOpen((value) => !value)}
       >
@@ -58,26 +85,33 @@ export function WalletButton({
         {shortAddress(wallet.address)}
       </button>
       {open ? (
-        <span className={styles.menu}>
+        <span className={styles.menu} role="menu">
+          <span className={`mono ${styles.menuAddress}`}>
+            {shortAddress(wallet.address)}
+          </span>
           <button
             type="button"
+            role="menuitem"
             onClick={() => {
               void navigator.clipboard?.writeText(wallet.address ?? "");
-              setOpen(false);
+              setCopied(true);
             }}
           >
-            Copy address
+            {copied ? "Copied ✓" : "Copy address"}
           </button>
           <a
             href={`https://bscscan.com/address/${wallet.address}`}
             target="_blank"
             rel="noreferrer"
+            role="menuitem"
             onClick={() => setOpen(false)}
           >
             View on BscScan ↗
           </a>
           <button
             type="button"
+            role="menuitem"
+            className={styles.danger}
             onClick={() => {
               wallet.disconnect();
               setOpen(false);
