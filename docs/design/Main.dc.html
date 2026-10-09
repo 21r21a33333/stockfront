@@ -1,0 +1,338 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Stockfront — Landing</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&amp;family=Geist+Mono:wght@400;500&amp;family=Space+Grotesk:wght@500;600;700&amp;display=swap">
+<style>
+body{margin:0;background:#EEF0EB;color:#0F110E;font-family:'Geist',system-ui,-apple-system,sans-serif;-webkit-font-smoothing:antialiased}
+a{color:#0F110E;text-decoration:none}a:hover{color:#3C4039}
+*{box-sizing:border-box}
+.mono{font-family:'Geist Mono',ui-monospace,SFMono-Regular,monospace}
+.disp{font-family:'Space Grotesk','Geist',system-ui,sans-serif;letter-spacing:-0.035em}
+.btn{transition:transform .2s ease,background-color .2s ease,box-shadow .2s ease}
+.btn:hover{transform:translateY(-1px)}
+.btn:focus-visible,.chip:focus-visible,input:focus-visible{outline:2px solid #0F110E;outline-offset:2px}
+.chip{transition:background-color .2s ease,transform .2s ease;cursor:pointer}
+.chip:hover{background:#FFFFFF !important;transform:translateY(-1px)}
+.cloud{position:absolute;border-radius:50%;background:radial-gradient(closest-side,rgba(255,255,255,.95),rgba(255,255,255,.55) 55%,rgba(255,255,255,0));filter:blur(6px);animation:drift 38s ease-in-out infinite alternate}
+@keyframes drift{from{transform:translateX(-30px)}to{transform:translateX(40px)}}
+.typed{animation:typeIn 11s cubic-bezier(.4,0,.2,1) infinite}
+@keyframes typeIn{0%{clip-path:inset(0 100% 0 0);opacity:1;filter:blur(0);transform:none}24%{clip-path:inset(0 0 0 0);opacity:1;filter:blur(0);transform:none}33%{clip-path:inset(0 0 0 0);opacity:1;filter:blur(0);transform:none}40%{clip-path:inset(0 0 0 0);opacity:0;filter:blur(10px);transform:translateY(-14px) scale(.97)}100%{clip-path:inset(0 0 0 0);opacity:0;filter:blur(10px);transform:translateY(-14px) scale(.97)}}
+.caret{display:inline-block;width:2px;height:22px;background:#0F110E;margin-left:3px;vertical-align:-4px;animation:blink 1s steps(1) infinite}
+@keyframes blink{50%{opacity:0}}
+.hb{opacity:0;animation:blockIn 11s cubic-bezier(.2,.7,.2,1) infinite}
+@keyframes blockIn{0%,4%{opacity:0;transform:translateY(18px) scale(.94);filter:blur(8px)}12%{opacity:1;transform:none;filter:blur(0)}88%{opacity:1;transform:none;filter:blur(0)}96%,100%{opacity:0;transform:translateY(-8px);filter:blur(4px)}}
+.hl{transform-origin:left center;transform:scaleX(0);animation:lineIn 11s cubic-bezier(.4,0,.2,1) infinite}
+@keyframes lineIn{0%,7%{transform:scaleX(0);opacity:1}14%{transform:scaleX(1);opacity:1}88%{transform:scaleX(1);opacity:1}96%,100%{transform:scaleX(1);opacity:0}}
+.flow{background-image:repeating-linear-gradient(90deg,#0F110E 0 6px,transparent 6px 12px);background-size:24px 2px;animation:flow 0.9s linear infinite}
+@keyframes flow{to{background-position:24px 0}}
+.marq{animation:marq 40s linear infinite}
+@keyframes marq{to{transform:translateX(-50%)}}
+.blk{transition:transform .3s cubic-bezier(.2,.7,.2,1),box-shadow .3s ease}
+.blk:hover{transform:translateY(-10px);box-shadow:0 24px 40px -18px rgba(15,17,14,.28)}
+.blk .ex{max-height:0;opacity:0;transition:max-height .3s ease,opacity .25s ease,margin .3s ease;margin-top:0}
+.blk:hover .ex{max-height:60px;opacity:1;margin-top:14px}
+.pulse{animation:pulse 1.6s ease-in-out infinite}
+@keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(15,17,14,.35)}50%{box-shadow:0 0 0 6px rgba(15,17,14,0)}}
+.brow{transition:background-color .2s ease}
+.brow:hover{background:#FFFFFF}
+.bpop{animation:bpop .35s cubic-bezier(.2,.7,.2,1) both}
+@keyframes bpop{from{opacity:.4;transform:translateY(8px) scale(.97)}to{opacity:1;transform:none}}
+.twinkle{animation:twinkle 3.2s ease-in-out infinite;transform-origin:center}
+@keyframes twinkle{0%,100%{transform:rotate(0) scale(1)}50%{transform:rotate(45deg) scale(.82)}}
+.typing2{display:inline-block;overflow:hidden;white-space:nowrap;vertical-align:bottom;animation:type2 6s steps(34) infinite}
+@keyframes type2{0%{width:0}55%,100%{width:34ch}}
+</style>
+</helmet>
+<div style="display: flex; flex-direction: column; gap: 0; padding: 14px 14px 0">
+
+<section style="position: relative; border-radius: 32px; overflow: hidden; min-height: 760px; background: linear-gradient(180deg, #6FB4EE 0%, #9ACBF4 42%, #D7EAF9 82%, #EAF3FB 100%); display: flex; flex-direction: column">
+  <div aria-hidden="true" style="position: absolute; inset: 0; background-image: linear-gradient(rgba(255,255,255,.28) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.28) 1px, transparent 1px); background-size: 120px 120px; background-position: center -1px; -webkit-mask-image: linear-gradient(180deg, #000 0%, rgba(0,0,0,.6) 50%, transparent 85%); mask-image: linear-gradient(180deg, #000 0%, rgba(0,0,0,.6) 50%, transparent 85%)"></div>
+  <div aria-hidden="true" class="cloud" style="width: 620px; height: 240px; left: -120px; bottom: 60px"></div>
+  <div aria-hidden="true" class="cloud" style="width: 520px; height: 200px; right: -80px; bottom: 140px; animation-duration: 46s"></div>
+  <div aria-hidden="true" class="cloud" style="width: 900px; height: 260px; left: 28%; bottom: -90px; animation-duration: 52s"></div>
+  <div aria-hidden="true" class="cloud" style="width: 300px; height: 110px; left: 12%; top: 210px; opacity: .7; animation-duration: 30s"></div>
+  <div aria-hidden="true" class="cloud" style="width: 360px; height: 120px; right: 10%; top: 300px; opacity: .6; animation-duration: 34s"></div>
+
+  <header style="position: relative; z-index: 2; display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; padding: 20px 24px">
+    <a href="#top" style="display: flex; align-items: center; gap: 10px; font-weight: 600; font-size: 18px; letter-spacing: -0.02em" aria-label="Stockfront home">
+      <svg width="30" height="30" viewBox="0 0 30 30" fill="none" aria-hidden="true"><rect x="2" y="2" width="12" height="12" rx="3.5" fill="#0F110E"></rect><rect x="16" y="16" width="12" height="12" rx="3.5" fill="#D5F56B" stroke="#0F110E" stroke-width="1.6"></rect><path d="M14 8h4.5a3.5 3.5 0 0 1 3.5 3.5V16" stroke="#0F110E" stroke-width="1.6" stroke-linecap="round"></path></svg>
+      <span class="disp">Stockfront</span>
+    </a>
+    <nav aria-label="Main" style="display: flex; align-items: center; gap: 4px; padding: 5px; border-radius: 999px; background: rgba(255,255,255,.55); backdrop-filter: blur(14px); border: 1px solid rgba(255,255,255,.7)">
+      <a href="#how" class="mono" style="padding: 9px 16px; border-radius: 999px; font-size: 12px; letter-spacing: .08em; text-transform: uppercase; background: #FFFFFF">How it works</a>
+      <a href="#blocks" class="mono" style="padding: 9px 16px; border-radius: 999px; font-size: 12px; letter-spacing: .08em; text-transform: uppercase">Blocks</a>
+      <a href="#trust" class="mono" style="padding: 9px 16px; border-radius: 999px; font-size: 12px; letter-spacing: .08em; text-transform: uppercase">Safety</a>
+    </nav>
+    <div style="display: flex; align-items: center; gap: 8px">
+      <button type="button" class="btn mono" style="height: 44px; padding: 0 18px; border-radius: 999px; border: 1px solid rgba(15,17,14,.14); background: rgba(255,255,255,.55); backdrop-filter: blur(14px); font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: #0F110E; cursor: pointer">Connect wallet</button>
+      <a href="Compose.dc.html" class="btn mono" style="height: 44px; display: inline-flex; align-items: center; padding: 0 18px; border-radius: 999px; background: #D5F56B; font-size: 12px; letter-spacing: .08em; text-transform: uppercase; border: 1px solid rgba(15,17,14,.12)">Start building</a>
+    </div>
+  </header>
+
+  <div id="top" style="position: relative; z-index: 2; display: flex; flex-direction: column; align-items: center; text-align: center; padding: 64px 24px 0; gap: 22px">
+    <h1 class="disp" style="margin: 0; font-size: clamp(56px, 8vw, 116px); line-height: .92; font-weight: 600; color: #0F110E; max-width: 1180px; text-wrap: balance">Tell <span style="position: relative; display: inline-block; padding-right: .34em">AI<span aria-hidden="true" class="twinkle" style="position: absolute; right: -.02em; top: -.02em; width: .36em; height: .36em; display: grid; place-items: center"><svg width="100%" height="100%" viewBox="0 0 24 24" fill="#D5F56B" stroke="#0F110E" stroke-width="1.4" stroke-linejoin="round"><path d="M12 2l2.2 7.8L22 12l-7.8 2.2L12 22l-2.2-7.8L2 12l7.8-2.2z"></path></svg></span></span> what your<br>stocks should do.</h1>
+    <p style="margin: 0; font-size: 20px; line-height: 1.45; color: #22261F; max-width: 580px; text-wrap: pretty">Describe a strategy in plain English. AI turns it into blocks you can shape. You sign every step in your own wallet.</p>
+
+    <form style="margin-top: 14px; width: min(720px, 100%); display: flex; align-items: center; gap: 12px; padding: 10px 10px 10px 14px; border-radius: 22px; background: #FFFFFF; box-shadow: 0 30px 60px -30px rgba(18,52,94,.45), 0 0 0 1px rgba(15,17,14,.06)">
+      <span aria-hidden="true" style="flex: none; width: 40px; height: 40px; border-radius: 12px; background: #D5F56B; display: grid; place-items: center"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#0F110E" stroke-width="1.8" stroke-linejoin="round"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"></path><path d="M19 16l.7 1.8 1.8.7-1.8.7L19 21l-.7-1.8-1.8-.7 1.8-.7z"></path></svg></span>
+      <label for="heroPrompt" style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0)">Describe your strategy</label>
+      <input id="heroPrompt" type="text" value="{{prompt}}" onChange="{{onPrompt}}" placeholder="What do you want your stocks to do?" style="flex: 1; min-width: 0; border: 0; outline: none; font: inherit; font-size: 18px; color: #0F110E; background: transparent; height: 48px">
+      <a href="Compose.dc.html" class="btn" aria-label="Compose this strategy" style="flex: none; width: 52px; height: 52px; border-radius: 16px; background: #0F110E; display: grid; place-items: center"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#D5F56B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"></path></svg></a>
+    </form>
+    <div style="display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; max-width: 760px">
+      <sc-for list="{{chips}}" as="c" hint-placeholder-count="4">
+        <button type="button" class="chip" onClick="{{c.pick}}" style="height: 36px; padding: 0 14px; border-radius: 999px; border: 1px solid rgba(255,255,255,.8); background: rgba(255,255,255,.5); backdrop-filter: blur(10px); font: inherit; font-size: 14px; color: #0F110E">{{c.label}}</button>
+      </sc-for>
+    </div>
+  </div>
+
+  <div style="height: 96px"></div>
+</section>
+
+<div aria-label="Example requests" style="overflow: hidden; border-bottom: 1px solid #D6D9D1; padding: 22px 0">
+  <div class="marq" style="display: flex; width: max-content; gap: 0">
+    <sc-for list="{{marquee}}" as="m" hint-placeholder-count="10">
+      <div style="display: flex; align-items: center; gap: 28px; padding-right: 28px">
+        <span class="disp" style="font-size: 22px; font-weight: 500; white-space: nowrap; color: #0F110E">“{{m}}”</span>
+        <span aria-hidden="true" style="width: 10px; height: 10px; border-radius: 3px; background: #0F110E"></span>
+      </div>
+    </sc-for>
+  </div>
+</div>
+
+<section id="how" style="width: 100%; max-width: 1320px; margin: 0 auto; padding: 120px 24px 40px; display: flex; flex-direction: column; gap: 56px">
+  <div style="display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 24px">
+    <div style="display: flex; flex-direction: column; gap: 18px">
+      <span class="mono" style="font-size: 12px; letter-spacing: .1em; text-transform: uppercase; color: #4A4F46">How it works · 01—03</span>
+      <h2 class="disp" style="margin: 0; font-size: clamp(44px, 5.6vw, 80px); line-height: .95; font-weight: 600; max-width: 820px">Describe it. Shape it. <span style="color: #6B7066">Sign it.</span></h2>
+    </div>
+    <p style="margin: 0; max-width: 360px; font-size: 17px; line-height: 1.5; color: #3C4039">Three moves from an idea to a live position. You stay in control at every one of them.</p>
+  </div>
+
+  <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(360px, 100%), 1fr)); gap: 16px">
+    <article style="border-radius: 28px; background: #A9D3F6; padding: 28px; min-height: 420px; display: flex; flex-direction: column; justify-content: space-between; gap: 28px; overflow: hidden">
+      <div style="display: flex; justify-content: space-between; align-items: flex-start">
+        <span class="mono" style="font-size: 13px">[01]</span>
+        <span class="mono" style="font-size: 11px; letter-spacing: .1em; text-transform: uppercase; padding: 5px 10px; border-radius: 999px; background: rgba(255,255,255,.55)">AI</span>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 10px; padding: 18px; border-radius: 18px; background: #FFFFFF; box-shadow: 0 20px 40px -26px rgba(18,52,94,.6)">
+        <span class="mono" style="font-size: 11px; color: #5A5F56; text-transform: uppercase; letter-spacing: .08em">You</span>
+        <span style="font-size: 17px; font-family: 'Geist Mono', monospace"><span class="typing2">Borrow USDT against my Nvidia</span><span class="caret" style="height: 18px"></span></span>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 8px">
+        <h3 class="disp" style="margin: 0; font-size: 36px; font-weight: 600">Describe</h3>
+        <p style="margin: 0; font-size: 16px; line-height: 1.5; color: #1E2A36; max-width: 320px">Tell the AI what you want in plain English. It drafts a strategy you can read at a glance.</p>
+      </div>
+    </article>
+
+    <article style="border-radius: 28px; background: #FFFFFF; padding: 28px; min-height: 420px; display: flex; flex-direction: column; justify-content: space-between; gap: 28px; border: 1px solid #E1E4DC">
+      <div style="display: flex; justify-content: space-between; align-items: flex-start">
+        <span class="mono" style="font-size: 13px">[02]</span>
+        <span class="mono" style="font-size: 11px; letter-spacing: .1em; text-transform: uppercase; padding: 5px 10px; border-radius: 999px; background: #EEF0EB">Live</span>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 14px; padding: 18px; border-radius: 18px; background: #F5F6F2; border: 1px solid #E5E8E0">
+        <div style="display: flex; align-items: center; gap: 10px">
+          <span style="width: 30px; height: 30px; border-radius: 9px; background: #F7CB98; display: grid; place-items: center"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#0F110E" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"></circle><path d="M12 7.5v9M8.8 13.3 12 16.5l3.2-3.2"></path></svg></span>
+          <span style="font-weight: 600">Borrow USDT</span>
+          <span class="mono" style="margin-left: auto; font-size: 13px">1.00 USDT</span>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 8px">
+          <div style="display: flex; justify-content: space-between; font-size: 12px" class="mono"><span style="color: #5A5F56">Health factor</span><span>2.85 · Safe</span></div>
+          <div style="position: relative; height: 8px; border-radius: 999px; background: linear-gradient(90deg, #E8806B 0 22%, #F2C94C 22% 42%, #8FD18A 42% 100%)">
+            <span style="position: absolute; left: 62%; top: -5px; width: 18px; height: 18px; border-radius: 50%; background: #FFFFFF; border: 2px solid #0F110E"></span>
+          </div>
+        </div>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 8px">
+        <h3 class="disp" style="margin: 0; font-size: 36px; font-weight: 600">Shape</h3>
+        <p style="margin: 0; font-size: 16px; line-height: 1.5; color: #3C4039; max-width: 320px">Adjust any block. Prices, loan health and yield update as you go, right inside the block.</p>
+      </div>
+    </article>
+
+    <article style="border-radius: 28px; background: #D5F56B; padding: 28px; min-height: 420px; display: flex; flex-direction: column; justify-content: space-between; gap: 28px">
+      <div style="display: flex; justify-content: space-between; align-items: flex-start">
+        <span class="mono" style="font-size: 13px">[03]</span>
+        <span class="mono" style="font-size: 11px; letter-spacing: .1em; text-transform: uppercase; padding: 5px 10px; border-radius: 999px; background: rgba(255,255,255,.6)">Your wallet</span>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 8px">
+        <div style="display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 14px; background: rgba(255,255,255,.7)">
+          <span style="width: 22px; height: 22px; border-radius: 50%; background: #0F110E; display: grid; place-items: center"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#D5F56B" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7"></path></svg></span>
+          <span style="font-size: 15px">Approve + Buy NVDAB</span><span class="mono" style="margin-left: auto; font-size: 12px">Done</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 14px; background: rgba(255,255,255,.7)">
+          <span style="width: 22px; height: 22px; border-radius: 50%; background: #0F110E; display: grid; place-items: center"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#D5F56B" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7"></path></svg></span>
+          <span style="font-size: 15px">Supply to Venus</span><span class="mono" style="margin-left: auto; font-size: 12px">Done</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 14px; background: #FFFFFF">
+          <span class="pulse" style="width: 22px; height: 22px; border-radius: 50%; border: 2px solid #0F110E"></span>
+          <span style="font-size: 15px; font-weight: 600">Borrow 1 USDT</span><span class="mono" style="margin-left: auto; font-size: 12px">Sign in wallet</span>
+        </div>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 8px">
+        <h3 class="disp" style="margin: 0; font-size: 36px; font-weight: 600">Sign</h3>
+        <p style="margin: 0; font-size: 16px; line-height: 1.5; color: #22261F; max-width: 320px">Approve each step in your own wallet. Nothing runs on its own, and nothing moves without you.</p>
+      </div>
+    </article>
+  </div>
+</section>
+
+<section id="blocks" style="width: 100%; max-width: 1320px; margin: 0 auto; padding: 100px 24px; display: flex; flex-direction: column; gap: 48px">
+  <div style="display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 24px; padding-bottom: 32px; border-bottom: 1px solid #D6D9D1">
+    <div style="display: flex; flex-direction: column; gap: 18px">
+      <span class="mono" style="font-size: 12px; letter-spacing: .1em; text-transform: uppercase; color: #4A4F46">The blocks · [06]</span>
+      <h2 class="disp" style="margin: 0; font-size: clamp(44px, 5.6vw, 80px); line-height: .95; font-weight: 600">Six blocks.<br>Countless strategies.</h2>
+    </div>
+    <p style="margin: 0; max-width: 360px; font-size: 17px; line-height: 1.5; color: #3C4039">Every strategy is a chain of the same six moves. Pick one to see what goes in, what comes out and what usually follows.</p>
+  </div>
+  <div style="display: flex; flex-wrap: wrap; gap: 24px; align-items: stretch">
+    <ul style="flex: 1 1 420px; list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; border-top: 1px solid #D6D9D1">
+      <sc-for list="{{blocks}}" as="b" hint-placeholder-count="6">
+        <li style="border-bottom: 1px solid #D6D9D1">
+          <button type="button" class="brow" onClick="{{b.pick}}" onMouseEnter="{{b.pick}}" aria-pressed="{{b.pressed}}" style="width: 100%; display: grid; grid-template-columns: 56px 1fr auto; align-items: center; gap: 16px; padding: 18px 14px; border: 0; border-radius: 16px; margin: 4px 0; background: {{b.rowBg}}; font: inherit; color: #0F110E; text-align: left; cursor: pointer">
+            <span class="mono" style="font-size: 13px; color: #4A4F46">[{{b.num}}]</span>
+            <span style="display: flex; flex-direction: column; gap: 4px; min-width: 0">
+              <span class="disp" style="font-size: 34px; font-weight: 600; line-height: 1">{{b.name}}</span>
+              <span style="font-size: 14px; color: #3C4039">{{b.line}}</span>
+            </span>
+            <span style="width: 40px; height: 40px; border-radius: 12px; background: {{b.arrowBg}}; display: grid; place-items: center; transition: background-color .2s ease"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="{{b.arrowFg}}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17L17 7M8 7h9v9"></path></svg></span>
+          </button>
+        </li>
+      </sc-for>
+    </ul>
+
+    <div aria-live="polite" style="flex: 1 1 480px; position: relative; overflow: hidden; border-radius: 32px; background: {{cur.tint}}; padding: 28px; min-height: 560px; display: flex; flex-direction: column; gap: 28px; transition: background-color .35s ease">
+      <div aria-hidden="true" style="position: absolute; inset: 0; background-image: radial-gradient(rgba(15,17,14,.14) 1px, transparent 1px); background-size: 18px 18px"></div>
+      <div style="position: relative; display: flex; justify-content: space-between; align-items: center">
+        <span class="mono" style="font-size: 12px; letter-spacing: .1em; text-transform: uppercase">Block {{cur.num}} / 06</span>
+        <span class="mono" style="font-size: 11px; padding: 5px 10px; border-radius: 999px; background: rgba(255,255,255,.65)">{{cur.detail}}</span>
+      </div>
+
+      <div style="position: relative; flex: 1; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 0">
+        <span class="mono" style="font-size: 11px; padding: 5px 10px; border-radius: 8px; background: #FFFFFF; border: 1px solid rgba(15,17,14,.12)">in · {{cur.takes}}</span>
+        <span style="width: 2px; height: 34px; background-image: repeating-linear-gradient(180deg, #0F110E 0 5px, transparent 5px 10px)"></span>
+        <div class="bpop" style="width: min(380px, 100%); padding: 22px; border-radius: 24px; background: #0F110E; color: #FFFFFF; box-shadow: 0 34px 60px -30px rgba(15,17,14,.7); display: flex; flex-direction: column; gap: 18px">
+          <div style="display: flex; align-items: center; gap: 14px">
+            <span style="width: 56px; height: 56px; border-radius: 17px; background: {{cur.tint}}; display: grid; place-items: center"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#0F110E" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="{{cur.icon}}"></path></svg></span>
+            <div style="display: flex; flex-direction: column; gap: 4px">
+              <span class="disp" style="font-size: 26px; font-weight: 600">{{cur.name}}</span>
+              <span class="mono" style="font-size: 12px; color: #C9CEC2">{{cur.venue}}</span>
+            </div>
+          </div>
+          <div class="mono" style="padding: 12px 14px; border-radius: 12px; background: rgba(255,255,255,.08); font-size: 14px; color: #D5F56B">{{cur.ex}}</div>
+        </div>
+        <span style="width: 2px; height: 34px; background-image: repeating-linear-gradient(180deg, #0F110E 0 5px, transparent 5px 10px)"></span>
+        <span class="mono" style="font-size: 11px; padding: 5px 10px; border-radius: 8px; background: #FFFFFF; border: 1px solid rgba(15,17,14,.12)">out · {{cur.gives}}</span>
+      </div>
+
+      <div style="position: relative; display: flex; flex-wrap: wrap; align-items: center; gap: 8px">
+        <span class="mono" style="font-size: 11px; letter-spacing: .08em; text-transform: uppercase; margin-right: 4px">Often followed by</span>
+        <sc-for list="{{cur.next}}" as="n" hint-placeholder-count="2">
+          <button type="button" onClick="{{n.pick}}" style="height: 34px; padding: 0 12px 0 6px; border-radius: 10px; border: 1px solid rgba(15,17,14,.15); background: #FFFFFF; display: flex; align-items: center; gap: 8px; font: inherit; font-size: 13px; font-weight: 500; color: #0F110E; cursor: pointer">
+            <span style="width: 22px; height: 22px; border-radius: 7px; background: {{n.tint}}; border: 1px solid rgba(15,17,14,.12)"></span>{{n.name}}
+          </button>
+        </sc-for>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="trust" style="width: 100%; max-width: 1320px; margin: 0 auto; padding: 0 24px 100px">
+  <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(260px, 100%), 1fr)); border-top: 1px solid #D6D9D1; border-left: 1px solid #D6D9D1">
+    <sc-for list="{{trust}}" as="t" hint-placeholder-count="4">
+      <div style="padding: 28px 24px 32px; border-right: 1px solid #D6D9D1; border-bottom: 1px solid #D6D9D1; display: flex; flex-direction: column; gap: 40px; min-height: 200px">
+        <span class="mono" style="font-size: 12px; color: #5A5F56">{{t.n}}</span>
+        <div style="display: flex; flex-direction: column; gap: 8px">
+          <span class="disp" style="font-size: 24px; font-weight: 600; line-height: 1.1">{{t.title}}</span>
+          <span style="font-size: 14px; line-height: 1.5; color: #3C4039">{{t.body}}</span>
+        </div>
+      </div>
+    </sc-for>
+  </div>
+</section>
+
+<section style="position: relative; border-radius: 32px; background: #D5F56B; overflow: hidden; padding: 72px clamp(24px, 5vw, 72px); display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 40px; min-height: 460px">
+  <div aria-hidden="true" style="position: absolute; right: -40px; top: -40px; display: flex; flex-direction: column; gap: 14px; opacity: .9">
+    <div style="display: flex; gap: 14px"><span style="width: 120px; height: 120px; border-radius: 34px; background: #0F110E"></span><span style="width: 120px; height: 120px; border-radius: 34px; border: 2px solid #0F110E"></span></div>
+    <div style="display: flex; gap: 14px; padding-left: 134px"><span style="width: 120px; height: 120px; border-radius: 34px; background: #FFFFFF"></span></div>
+  </div>
+  <div style="position: relative; display: flex; flex-direction: column; gap: 22px; max-width: 760px">
+    <span class="mono" style="font-size: 12px; letter-spacing: .1em; text-transform: uppercase">Start in a sentence</span>
+    <h2 class="disp" style="margin: 0; font-size: clamp(44px, 6vw, 92px); line-height: .93; font-weight: 600">Your stocks are sitting still. Put them to work.</h2>
+  </div>
+  <div style="position: relative; display: flex; flex-direction: column; gap: 14px; align-items: flex-start">
+    <div style="display: flex; gap: 8px; flex-wrap: wrap">
+      <a href="Compose.dc.html" class="btn" style="height: 56px; display: inline-flex; align-items: center; gap: 14px; padding: 0 8px 0 24px; border-radius: 999px; background: #0F110E; color: #FFFFFF; font-weight: 500; font-size: 16px">Start building <span style="width: 40px; height: 40px; border-radius: 50%; background: #D5F56B; display: grid; place-items: center"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#0F110E" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17L17 7M8 7h9v9"></path></svg></span></a>
+      <button type="button" class="btn" style="height: 56px; padding: 0 24px; border-radius: 999px; background: #FFFFFF; border: 0; font: inherit; font-weight: 500; font-size: 16px; color: #0F110E; cursor: pointer">Connect wallet</button>
+    </div>
+    <span class="mono" style="font-size: 12px; color: #2A3020">AI proposes. You review and sign.</span>
+  </div>
+</section>
+
+<footer style="width: 100%; max-width: 1320px; margin: 0 auto; padding: 48px 24px 40px; display: flex; flex-wrap: wrap; justify-content: space-between; gap: 32px; align-items: flex-start">
+  <div style="display: flex; flex-direction: column; gap: 14px; max-width: 460px">
+    <div style="display: flex; align-items: center; gap: 10px">
+      <svg width="26" height="26" viewBox="0 0 30 30" fill="none" aria-hidden="true"><rect x="2" y="2" width="12" height="12" rx="3.5" fill="#0F110E"></rect><rect x="16" y="16" width="12" height="12" rx="3.5" fill="#D5F56B" stroke="#0F110E" stroke-width="1.6"></rect><path d="M14 8h4.5a3.5 3.5 0 0 1 3.5 3.5V16" stroke="#0F110E" stroke-width="1.6" stroke-linecap="round"></path></svg>
+      <span class="disp" style="font-weight: 600; font-size: 18px">Stockfront</span>
+    </div>
+    <p style="margin: 0; font-size: 13px; line-height: 1.55; color: #4A4F46">Returns aren't guaranteed. Tokenized stocks and DeFi carry risk, including loss of funds. Stockfront never holds your funds; every action is signed by you.</p>
+  </div>
+  <nav aria-label="Footer" class="mono" style="display: flex; flex-wrap: wrap; gap: 8px 28px; font-size: 12px; letter-spacing: .08em; text-transform: uppercase">
+    <a href="#how">How it works</a>
+    <a href="#blocks">Blocks</a>
+    <a href="#trust">Safety</a>
+    <a href="#top">Docs</a>
+    <a href="#top">Risk disclosure</a>
+    <a href="#top">X</a>
+  </nav>
+</footer>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":3880}}'>
+class Component extends DCLogic {
+  constructor(p) { super(p); this.state = { prompt: '' }; }
+  renderVals() {
+    const ex = ['Buy $20 of Tesla', 'Borrow USDT against my Nvidia stock', 'Borrow and earn on my stock', 'Repay my loan and get my stock back'];
+    const icons = {
+      trade: 'M4 8h14l-3-3M20 16H6l3 3',
+      supply: 'M12 3v11M8 10l4 4 4-4M4 15v4h16v-4',
+      borrow: 'M12 3.5a8.5 8.5 0 1 1 0 17a8.5 8.5 0 1 1 0-17M12 7.5v9M8.8 13.3 12 16.5l3.2-3.2',
+      repay: 'M4 12a8 8 0 1 0 2.6-5.9M4 4v4.5h4.5M9 12.5l2 2 4-4.5',
+      withdraw: 'M12 20V9M8 13l4-4 4 4M4 4h16',
+      earn: 'M4 17l5-5 4 4 7-7M14 9h6v6'
+    };
+    const B = [
+      { num: '01', name: 'Trade', tint: '#D5F56B', icon: icons.trade, line: 'Swap stablecoins for tokenized stocks, or back.', venue: 'LiquidMesh · PancakeSwap', ex: 'Buy 0.0255 NVDAB for 6 USDT', detail: 'Impact 0.0008%', takes: 'USDT', gives: 'NVDAB', next: ['Supply'] },
+      { num: '02', name: 'Supply', tint: '#AFD6F7', icon: icons.supply, line: 'Put a stock on Venus so it works as collateral.', venue: 'Venus', ex: 'Supply 0.0255 NVDAB', detail: 'Becomes collateral', takes: 'NVDAB', gives: 'Collateral on Venus', next: ['Borrow', 'Withdraw'] },
+      { num: '03', name: 'Borrow', tint: '#F7CB98', icon: icons.borrow, line: 'Borrow stablecoins against your stock, inside a safe limit.', venue: 'Venus', ex: 'Borrow 1 USDT at 5.12% APR', detail: 'Health 2.85 · Safe', takes: 'Collateral', gives: 'USDT', next: ['Earn', 'Repay'] },
+      { num: '04', name: 'Repay', tint: '#D6CBF7', icon: icons.repay, line: 'Pay back a loan in full, in one step.', venue: 'Venus', ex: 'Repay 1.00 USDT in full', detail: 'Approval needed once', takes: 'USDT', gives: 'Loan closed', next: ['Withdraw'] },
+      { num: '05', name: 'Withdraw', tint: '#AEE8DF', icon: icons.withdraw, line: 'Bring your supplied stock back to your wallet.', venue: 'Venus', ex: 'Withdraw 0.0255 NVDAB', detail: 'Unlocks once repaid', takes: 'Supplied stock', gives: 'NVDAB in wallet', next: ['Trade'] },
+      { num: '06', name: 'Earn', tint: '#F4E79A', icon: icons.earn, line: 'Put borrowed stablecoins to work on a reviewed protocol.', venue: 'Lista', ex: 'Earn 10.91% on 1 USDT', detail: 'Net spread +5.79%', takes: 'USDT', gives: 'Earn position', next: ['Repay'] }
+    ];
+    const sel = this.state.blk || 0;
+    return {
+      prompt: this.state.prompt,
+      onPrompt: (e) => this.setState({ prompt: e.target.value }),
+      chips: ex.map((label) => ({ label, pick: () => this.setState({ prompt: label }) })),
+      marquee: ['Buy $20 of Tesla', 'Borrow USDT against my Nvidia stock', 'Borrow and earn on my stock', 'Repay my loan and get my stock back', 'Supply my Apple stock to Venus', 'Buy $20 of Tesla', 'Borrow USDT against my Nvidia stock', 'Borrow and earn on my stock', 'Repay my loan and get my stock back', 'Supply my Apple stock to Venus'],
+      blocks: B.map((b, i) => ({ ...b, pick: () => this.setState({ blk: i }), pressed: i === sel ? 'true' : 'false', rowBg: i === sel ? '#FFFFFF' : 'transparent', arrowBg: i === sel ? '#0F110E' : b.tint, arrowFg: i === sel ? b.tint : '#0F110E' })),
+      cur: { ...B[sel], next: B[sel].next.map((n) => { const j = B.findIndex((x) => x.name === n); return { name: n, tint: B[j].tint, pick: () => this.setState({ blk: j }) }; }) },
+      trust: [
+        { n: '[A]', title: 'You sign everything', body: 'Every step opens in your wallet for review. Nothing runs automatically.' },
+        { n: '[B]', title: 'Funds never leave your wallet', body: 'Stockfront never takes custody. Positions live on-chain, under your address.' },
+        { n: '[C]', title: 'Live BNB Chain data', body: 'Prices, loan health and rates come straight from the chain, every time.' },
+        { n: '[D]', title: 'Built on proven rails', body: 'Binance Web3, Venus and PancakeSwap power the trades, loans and swaps.' }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,347 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Stockfront — Compose</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&amp;family=Geist+Mono:wght@400;500&amp;family=Space+Grotesk:wght@500;600;700&amp;display=swap">
+<style>
+body{margin:0;background:#EEF0EB;color:#0F110E;font-family:'Geist',system-ui,-apple-system,sans-serif;-webkit-font-smoothing:antialiased}
+a{color:#0F110E;text-decoration:none}a:hover{color:#3C4039}
+*{box-sizing:border-box}
+.mono{font-family:'Geist Mono',ui-monospace,SFMono-Regular,monospace}
+.disp{font-family:'Space Grotesk','Geist',system-ui,sans-serif;letter-spacing:-0.035em}
+.btn{transition:transform .2s ease,background-color .2s ease,box-shadow .2s ease;cursor:pointer}
+.btn:hover{transform:translateY(-1px)}
+button:focus-visible,a:focus-visible,input:focus-visible{outline:2px solid #0F110E;outline-offset:2px}
+.chip{transition:background-color .2s ease,transform .2s ease;cursor:pointer}
+.chip:hover{background:#FFFFFF !important}
+.card{transition:transform .25s cubic-bezier(.2,.7,.2,1),box-shadow .25s ease,border-color .25s ease;cursor:pointer}
+.card:hover{transform:translateY(-4px);box-shadow:0 22px 40px -24px rgba(15,17,14,.3);border-color:#C9CDC2 !important}
+.fadeUp{animation:fadeUp .35s cubic-bezier(.2,.7,.2,1) both}
+@keyframes fadeUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+.pb{opacity:0;animation:pb .5s cubic-bezier(.2,.7,.2,1) forwards}
+@keyframes pb{from{opacity:0;transform:translateY(14px) scale(.94);filter:blur(6px)}to{opacity:1;transform:none;filter:blur(0)}}
+.pl{transform-origin:left center;transform:scaleX(0);animation:pl .3s cubic-bezier(.4,0,.2,1) forwards}
+@keyframes pl{to{transform:scaleX(1)}}
+.flow{background-image:repeating-linear-gradient(90deg,#0F110E 0 5px,transparent 5px 10px);background-size:20px 2px;animation:flow .9s linear infinite}
+@keyframes flow{to{background-position:20px 0}}
+.think span.tb{animation:tb 1.4s ease-in-out infinite}
+@keyframes tb{0%,100%{transform:scale(.82);background:#E3E6DE}40%{transform:scale(1);background:#D5F56B}}
+.spin{animation:spin 1s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.shimmer{background:linear-gradient(90deg,#E8EAE4 0%,#F4F5F1 50%,#E8EAE4 100%);background-size:200% 100%;animation:sh 1.4s linear infinite}
+@keyframes sh{to{background-position:-200% 0}}
+</style>
+</helmet>
+<div style="min-height: 100vh; display: flex; flex-direction: column">
+
+<header style="position: sticky; top: 0; z-index: 10; height: 64px; display: flex; align-items: center; gap: 16px; padding: 0 20px; background: rgba(238,240,235,.82); backdrop-filter: blur(14px); border-bottom: 1px solid #DCDFD7">
+  <a href="Main.dc.html" style="display: flex; align-items: center; gap: 10px" aria-label="Stockfront home">
+    <svg width="26" height="26" viewBox="0 0 30 30" fill="none" aria-hidden="true"><rect x="2" y="2" width="12" height="12" rx="3.5" fill="#0F110E"></rect><rect x="16" y="16" width="12" height="12" rx="3.5" fill="#D5F56B" stroke="#0F110E" stroke-width="1.6"></rect><path d="M14 8h4.5a3.5 3.5 0 0 1 3.5 3.5V16" stroke="#0F110E" stroke-width="1.6" stroke-linecap="round"></path></svg>
+    <span class="disp" style="font-weight: 600; font-size: 17px">Stockfront</span>
+  </a>
+  <nav aria-label="App" style="display: flex; gap: 2px; margin-left: 12px; padding: 4px; border-radius: 12px; background: #E3E6DE">
+    <a href="Compose.dc.html" aria-current="page" style="padding: 7px 14px; border-radius: 9px; background: #FFFFFF; font-size: 14px; font-weight: 500; box-shadow: 0 1px 2px rgba(15,17,14,.08)">Compose</a>
+    <a href="Builder.dc.html" style="padding: 7px 14px; border-radius: 9px; font-size: 14px; color: #3C4039">Builder</a>
+  </nav>
+  <div style="margin-left: auto; display: flex; align-items: center; gap: 8px">
+    <button type="button" class="btn" style="height: 38px; padding: 0 14px; border-radius: 10px; border: 1px solid #D6D9D1; background: #FFFFFF; font: inherit; font-size: 14px; color: #0F110E; display: flex; align-items: center; gap: 8px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#0F110E" stroke-width="1.8" stroke-linejoin="round"><path d="M12 3l9 5-9 5-9-5 9-5z"></path><path d="M3 13l9 5 9-5"></path></svg>Positions</button>
+    <span class="mono" style="height: 38px; padding: 0 12px; border-radius: 10px; background: #E3E6DE; font-size: 12px; display: flex; align-items: center; gap: 8px"><span style="width: 8px; height: 8px; border-radius: 50%; background: #E9B931"></span>BNB Chain</span>
+    <button type="button" class="btn mono" style="height: 38px; padding: 0 12px 0 6px; border-radius: 10px; border: 0; background: #0F110E; color: #FFFFFF; font-size: 12px; display: flex; align-items: center; gap: 8px"><span style="width: 26px; height: 26px; border-radius: 7px; background: linear-gradient(135deg, #D5F56B, #AFD6F7)"></span>0x8894…d4e3</button>
+  </div>
+</header>
+
+<main style="flex: 1; width: 100%; max-width: 1080px; margin: 0 auto; padding: 72px 24px 120px; display: flex; flex-direction: column; gap: 40px">
+  <div style="display: flex; flex-direction: column; align-items: center; text-align: center; gap: 16px">
+    <span class="mono" style="font-size: 12px; letter-spacing: .1em; text-transform: uppercase; color: #4A4F46">Compose · AI</span>
+    <h1 class="disp" style="margin: 0; font-size: clamp(40px, 5vw, 64px); line-height: .98; font-weight: 600; max-width: 760px; text-wrap: balance">What do you want your stocks to do?</h1>
+  </div>
+
+  <div style="width: 100%; max-width: 820px; margin: 0 auto; display: flex; flex-direction: column; gap: 14px">
+    <form onSubmit="{{onSubmit}}" style="display: flex; align-items: center; gap: 12px; padding: 10px 10px 10px 14px; border-radius: 22px; background: #FFFFFF; border: 1px solid #DCDFD7; box-shadow: 0 24px 50px -32px rgba(15,17,14,.35)">
+      <span aria-hidden="true" style="flex: none; width: 40px; height: 40px; border-radius: 12px; background: #D5F56B; display: grid; place-items: center"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#0F110E" stroke-width="1.8" stroke-linejoin="round"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"></path></svg></span>
+      <label for="cPrompt" style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0)">Describe your strategy</label>
+      <input id="cPrompt" type="text" value="{{prompt}}" onChange="{{onPrompt}}" placeholder="e.g. Buy $6 of Nvidia, borrow USDT against it and earn on it" style="flex: 1; min-width: 0; height: 52px; border: 0; outline: none; background: transparent; font: inherit; font-size: 18px; color: #0F110E">
+      <button type="submit" class="btn" aria-label="Compose strategy" style="flex: none; height: 52px; padding: 0 18px; border: 0; border-radius: 16px; background: #0F110E; color: #FFFFFF; font: inherit; font-size: 15px; font-weight: 500; display: flex; align-items: center; gap: 10px">Compose<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#D5F56B" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"></path></svg></button>
+    </form>
+    <div style="display: flex; flex-wrap: wrap; justify-content: center; gap: 8px">
+      <sc-for list="{{chips}}" as="c" hint-placeholder-count="4">
+        <button type="button" class="chip" onClick="{{c.pick}}" style="height: 34px; padding: 0 14px; border-radius: 999px; border: 1px solid #D6D9D1; background: transparent; font: inherit; font-size: 13px; color: #22261F">{{c.label}}</button>
+      </sc-for>
+    </div>
+  </div>
+
+  <sc-if value="{{isIdle}}" hint-placeholder-val="{{ true }}">
+    <section class="fadeUp" aria-labelledby="tplH" style="display: flex; flex-direction: column; gap: 18px">
+      <div style="display: flex; justify-content: space-between; align-items: baseline">
+        <h2 id="tplH" class="mono" style="margin: 0; font-size: 12px; font-weight: 500; letter-spacing: .1em; text-transform: uppercase; color: #4A4F46">Start from a template</h2>
+        <span class="mono" style="font-size: 12px; color: #5A5F56">[04]</span>
+      </div>
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(230px, 100%), 1fr)); gap: 12px">
+        <sc-for list="{{templates}}" as="t" hint-placeholder-count="4">
+          <button type="button" class="card" onClick="{{t.pick}}" style="text-align: left; font: inherit; color: #0F110E; padding: 18px; border-radius: 22px; border: 1px solid #DCDFD7; background: #FFFFFF; display: flex; flex-direction: column; gap: 22px; min-height: 200px">
+            <div style="display: flex; align-items: center; gap: 0; padding: 14px; border-radius: 14px; background: #F4F5F1">
+              <sc-for list="{{t.chain}}" as="n" hint-placeholder-count="3">
+                <span style="display: flex; align-items: center">
+                  <span style="width: 34px; height: 34px; border-radius: 10px; background: {{n.tint}}; border: 1px solid rgba(15,17,14,.08); display: grid; place-items: center"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#0F110E" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="{{n.icon}}"></path></svg></span>
+                  <sc-if value="{{n.more}}" hint-placeholder-val="{{ true }}"><span style="width: 18px; height: 2px; background: #0F110E; display: block"></span></sc-if>
+                </span>
+              </sc-for>
+            </div>
+            <div style="margin-top: auto; display: flex; flex-direction: column; gap: 6px">
+              <span class="disp" style="font-size: 21px; font-weight: 600">{{t.name}}</span>
+              <span class="mono" style="font-size: 12px; color: #4A4F46; line-height: 1.5">{{t.flow}}</span>
+            </div>
+          </button>
+        </sc-for>
+      </div>
+
+      <div style="display: flex; flex-direction: column; gap: 12px; margin-top: 24px">
+        <h2 class="mono" style="margin: 0; font-size: 12px; font-weight: 500; letter-spacing: .1em; text-transform: uppercase; color: #4A4F46">Recent strategies</h2>
+        <div style="display: flex; flex-wrap: wrap; gap: 8px">
+          <sc-for list="{{recent}}" as="r" hint-placeholder-count="3">
+            <a href="Builder.dc.html" class="chip" style="display: flex; align-items: center; gap: 12px; padding: 10px 14px 10px 10px; border-radius: 14px; background: #F7F8F4; border: 1px solid #DCDFD7">
+              <span style="display: flex; gap: 3px"><sc-for list="{{r.dots}}" as="d" hint-placeholder-count="3"><span style="width: 10px; height: 10px; border-radius: 3px; background: {{d}}; border: 1px solid rgba(15,17,14,.15)"></span></sc-for></span>
+              <span style="font-size: 14px; font-weight: 500">{{r.name}}</span>
+              <span class="mono" style="font-size: 11px; color: #5A5F56">{{r.meta}}</span>
+            </a>
+          </sc-for>
+        </div>
+      </div>
+    </section>
+  </sc-if>
+
+  <sc-if value="{{isThinking}}" hint-placeholder-val="{{ false }}">
+    <section class="fadeUp" aria-live="polite" style="width: 100%; max-width: 820px; margin: 0 auto; padding: 28px; border-radius: 24px; background: #FFFFFF; border: 1px solid #DCDFD7; display: flex; flex-direction: column; gap: 26px">
+      <div class="think" style="display: flex; align-items: center; gap: 0">
+        <span class="tb" style="width: 44px; height: 44px; border-radius: 13px; display: block; animation-delay: 0s"></span>
+        <span class="flow" style="width: 40px; height: 2px; display: block"></span>
+        <span class="tb" style="width: 44px; height: 44px; border-radius: 13px; display: block; animation-delay: .2s"></span>
+        <span class="flow" style="width: 40px; height: 2px; display: block"></span>
+        <span class="tb" style="width: 44px; height: 44px; border-radius: 13px; display: block; animation-delay: .4s"></span>
+        <span class="flow" style="width: 40px; height: 2px; display: block"></span>
+        <span class="tb" style="width: 44px; height: 44px; border-radius: 13px; display: block; animation-delay: .6s"></span>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 12px">
+        <sc-for list="{{status}}" as="s" hint-placeholder-count="3">
+          <div style="display: flex; align-items: center; gap: 12px; opacity: {{s.op}}; transition: opacity .3s ease">
+            <sc-if value="{{s.done}}" hint-placeholder-val="{{ false }}"><span style="width: 20px; height: 20px; border-radius: 50%; background: #0F110E; display: grid; place-items: center"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#D5F56B" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7"></path></svg></span></sc-if>
+            <sc-if value="{{s.active}}" hint-placeholder-val="{{ false }}"><span class="spin" style="width: 20px; height: 20px; border-radius: 50%; border: 2px solid #D6D9D1; border-top-color: #0F110E; display: block"></span></sc-if>
+            <sc-if value="{{s.pending}}" hint-placeholder-val="{{ true }}"><span style="width: 20px; height: 20px; border-radius: 50%; border: 2px dashed #C3C7BD; display: block"></span></sc-if>
+            <span class="mono" style="font-size: 14px">{{s.text}}</span>
+          </div>
+        </sc-for>
+      </div>
+      <div style="display: flex; gap: 10px">
+        <span class="shimmer" style="height: 72px; flex: 1; border-radius: 14px; display: block"></span>
+        <span class="shimmer" style="height: 72px; flex: 1; border-radius: 14px; display: block"></span>
+        <span class="shimmer" style="height: 72px; flex: 1; border-radius: 14px; display: block"></span>
+      </div>
+    </section>
+  </sc-if>
+
+  <sc-if value="{{isPlan}}" hint-placeholder-val="{{ false }}">
+    <section class="fadeUp" aria-label="AI plan" style="border-radius: 28px; background: #FFFFFF; border: 1px solid #DCDFD7; box-shadow: 0 40px 80px -50px rgba(15,17,14,.4); overflow: hidden">
+      <div style="padding: 26px 28px 0; display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 16px">
+        <div style="display: flex; flex-direction: column; gap: 10px; max-width: 680px">
+          <div style="display: flex; align-items: center; gap: 10px">
+            <span class="mono" style="font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: #4A4F46">Strategy draft</span>
+            <span class="mono" style="font-size: 11px; padding: 4px 10px; border-radius: 999px; background: {{pillBg}}; display: inline-flex; align-items: center; gap: 6px"><span style="width: 6px; height: 6px; border-radius: 50%; background: #0F110E"></span>{{pillText}}</span>
+          </div>
+          <h2 class="disp" style="margin: 0; font-size: 36px; font-weight: 600; line-height: 1.05">{{plan.title}}</h2>
+          <p style="margin: 0; font-size: 17px; line-height: 1.5; color: #3C4039">{{plan.summary}}</p>
+        </div>
+      </div>
+
+      <div style="margin: 24px 28px 0; padding: 26px 22px; border-radius: 20px; background-color: #F4F5F1; background-image: radial-gradient(#D3D7CD 1px, transparent 1px); background-size: 16px 16px; overflow-x: auto">
+        <div style="display: flex; align-items: center; min-width: max-content">
+          <sc-for list="{{plan.blocks}}" as="b" hint-placeholder-count="5">
+            <div style="display: flex; align-items: center">
+              <div class="pb" style="animation-delay: {{b.delay}}; width: 156px; padding: 14px; border-radius: 16px; background: {{b.bg}}; color: {{b.fg}}; border: 1px solid rgba(15,17,14,.08); box-shadow: 0 14px 28px -20px rgba(15,17,14,.45); display: flex; flex-direction: column; gap: 10px">
+                <span style="width: 32px; height: 32px; border-radius: 10px; background: {{b.tint}}; display: grid; place-items: center"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#0F110E" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="{{b.icon}}"></path></svg></span>
+                <span style="font-size: 14px; font-weight: 600">{{b.name}}</span>
+                <span class="mono" style="font-size: 11px; opacity: .78">{{b.detail}}</span>
+              </div>
+              <sc-if value="{{b.more}}" hint-placeholder-val="{{ true }}">
+                <div style="width: 54px; position: relative; display: flex; align-items: center">
+                  <div class="pl flow" style="animation-delay: {{b.ldelay}}; width: 100%; height: 2px"></div>
+                  <span class="pb mono" style="animation-delay: {{b.ldelay}}; position: absolute; left: 50%; top: -22px; translate: -50% 0; font-size: 10px; padding: 2px 6px; border-radius: 6px; background: #0F110E; color: #FFFFFF; white-space: nowrap">{{b.link}}</span>
+                </div>
+              </sc-if>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+
+      <sc-if value="{{needsInput}}" hint-placeholder-val="{{ false }}">
+        <div class="fadeUp" style="margin: 16px 28px 0; padding: 16px 18px; border-radius: 16px; background: #FCEFD9; display: flex; flex-wrap: wrap; align-items: center; gap: 12px">
+          <span style="font-size: 15px; font-weight: 500">How much USDT should go in?</span>
+          <div style="display: flex; gap: 6px; margin-left: auto">
+            <sc-for list="{{amounts}}" as="a" hint-placeholder-count="3">
+              <button type="button" class="btn mono" onClick="{{a.pick}}" style="height: 38px; padding: 0 14px; border-radius: 10px; border: 1px solid rgba(15,17,14,.15); background: #FFFFFF; font-size: 13px; color: #0F110E">{{a.label}}</button>
+            </sc-for>
+          </div>
+        </div>
+      </sc-if>
+
+      <div style="margin: 16px 28px 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(200px, 100%), 1fr)); gap: 0; border: 1px solid #E3E6DE; border-radius: 18px; overflow: hidden">
+        <sc-for list="{{plan.stats}}" as="s" hint-placeholder-count="4">
+          <div style="padding: 16px 18px; border-right: 1px solid #E3E6DE; display: flex; flex-direction: column; gap: 6px">
+            <span class="mono" style="font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: #5A5F56">{{s.label}}</span>
+            <span class="mono" style="font-size: 22px; font-weight: 500; color: {{s.color}}">{{s.value}}</span>
+            <span style="font-size: 13px; color: #4A4F46">{{s.sub}}</span>
+          </div>
+        </sc-for>
+      </div>
+
+      <ul style="list-style: none; margin: 16px 28px 0; padding: 0; display: flex; flex-direction: column; gap: 8px">
+        <sc-for list="{{plan.notes}}" as="n" hint-placeholder-count="3">
+          <li style="display: flex; align-items: center; gap: 10px; font-size: 14px; color: #22261F">
+            <span style="flex: none; width: 20px; height: 20px; border-radius: 6px; background: {{n.bg}}; display: grid; place-items: center; font-family: 'Geist Mono', monospace; font-size: 11px; font-weight: 600">{{n.mark}}</span>{{n.text}}
+          </li>
+        </sc-for>
+      </ul>
+
+      <sc-if value="{{refining}}" hint-placeholder-val="{{ false }}">
+        <div class="fadeUp" style="margin: 18px 28px 0; display: flex; gap: 8px; padding: 6px 6px 6px 16px; border-radius: 16px; border: 1px solid #0F110E">
+          <label for="refine" style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0)">Refine the strategy</label>
+          <input id="refine" type="text" placeholder="e.g. Borrow a bit less and use Tesla instead" style="flex: 1; min-width: 0; height: 44px; border: 0; outline: none; background: transparent; font: inherit; font-size: 15px">
+          <button type="button" class="btn" onClick="{{onRethink}}" style="height: 44px; padding: 0 16px; border: 0; border-radius: 12px; background: #D5F56B; font: inherit; font-weight: 500; color: #0F110E">Update plan</button>
+        </div>
+      </sc-if>
+
+      <div style="margin-top: 22px; padding: 18px 28px; border-top: 1px solid #E3E6DE; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; background: #FAFBF8">
+        <a href="Builder.dc.html" class="btn" style="height: 48px; display: inline-flex; align-items: center; gap: 12px; padding: 0 8px 0 20px; border-radius: 14px; background: #0F110E; color: #FFFFFF; font-weight: 500">Open in builder<span style="width: 32px; height: 32px; border-radius: 10px; background: #D5F56B; display: grid; place-items: center"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#0F110E" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17L17 7M8 7h9v9"></path></svg></span></a>
+        <button type="button" class="btn" onClick="{{onRefine}}" style="height: 48px; padding: 0 18px; border-radius: 14px; border: 1px solid #D6D9D1; background: #FFFFFF; font: inherit; font-weight: 500; color: #0F110E">Refine</button>
+        <button type="button" class="btn" onClick="{{onReset}}" style="height: 48px; padding: 0 18px; border-radius: 14px; border: 0; background: transparent; font: inherit; color: #3C4039">Start over</button>
+      </div>
+    </section>
+  </sc-if>
+</main>
+
+<div style="position: sticky; bottom: 16px; display: flex; justify-content: center; pointer-events: none; padding: 0 16px 0">
+  <span class="mono" style="pointer-events: auto; display: inline-flex; align-items: center; gap: 10px; padding: 10px 16px; border-radius: 999px; background: #0F110E; color: #E8EBE3; font-size: 12px"><span style="width: 8px; height: 8px; border-radius: 2px; background: #D5F56B"></span>AI proposes. You review and sign. Nothing runs automatically.</span>
+</div>
+<div style="height: 24px"></div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1280}}'>
+class Component extends DCLogic {
+  constructor(p) {
+    super(p);
+    this.state = { phase: 'idle', prompt: '', step: 0, amt: null, refining: false };
+    this.timers = [];
+  }
+  componentWillUnmount() { this.timers.forEach(clearTimeout); }
+  think(text) {
+    this.timers.forEach(clearTimeout);
+    this.timers = [];
+    const prompt = (text != null ? text : this.state.prompt) || 'Buy $6 of Nvidia, borrow USDT against it and earn on it';
+    const m = prompt.match(/\$?\s?(\d+(?:\.\d+)?)/);
+    this.setState({ phase: 'thinking', prompt, step: 0, amt: m ? parseFloat(m[1]) : null, refining: false });
+    [700, 1400, 2100].forEach((t, i) => this.timers.push(setTimeout(() => this.setState({ step: i + 1 }), t)));
+    this.timers.push(setTimeout(() => this.setState({ phase: 'plan' }), 2500));
+  }
+  renderVals() {
+    const I = {
+      wallet: 'M3 7h15a3 3 0 0 1 3 3v7a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3zM3 7l3-3h10l2 3',
+      trade: 'M4 8h14l-3-3M20 16H6l3 3',
+      supply: 'M12 3v11M8 10l4 4 4-4M4 15v4h16v-4',
+      borrow: 'M12 3.5a8.5 8.5 0 1 1 0 17a8.5 8.5 0 1 1 0-17M12 7.5v9M8.8 13.3 12 16.5l3.2-3.2',
+      repay: 'M4 12a8 8 0 1 0 2.6-5.9M4 4v4.5h4.5M9 12.5l2 2 4-4.5',
+      withdraw: 'M12 20V9M8 13l4-4 4 4M4 4h16',
+      earn: 'M4 17l5-5 4 4 7-7M14 9h6v6',
+      supplied: 'M12 3l9 5-9 5-9-5 9-5zM3 13l9 5 9-5',
+      debt: 'M6 3h12v18l-3-2-3 2-3-2-3 2zM9 8h6M9 12h6'
+    };
+    const T = { wallet: '#EEF0EB', trade: '#D5F56B', supply: '#AFD6F7', borrow: '#F7CB98', repay: '#D6CBF7', withdraw: '#AEE8DF', earn: '#F4E79A', supplied: '#EEF0EB', debt: '#EEF0EB' };
+    const s = this.state;
+    const p = (s.prompt || '').toLowerCase();
+    const kind = p.includes('repay') ? 'repay' : p.includes('earn') ? 'earn' : p.includes('borrow') ? 'borrow' : 'buy';
+    const needsAmount = (kind === 'buy' || kind === 'earn') && s.amt == null;
+    const amt = s.amt == null ? 6 : s.amt;
+    const STK = p.includes('tesla') ? { t: 'TSLAB', n: 'Tesla', px: 435.2 } : p.includes('apple') ? { t: 'AAPLB', n: 'Apple', px: 254.1 } : { t: 'NVDAB', n: 'Nvidia', px: 234.9 };
+    const q = (amt / STK.px).toFixed(4);
+    const qMin = (amt / STK.px * 0.996).toFixed(4);
+    const bor = (amt / 6).toFixed(2);
+    const safe = (amt * 0.3167).toFixed(2);
+    const usd = (n) => '$' + Number(n).toFixed(2);
+    const mk = (list) => list.map((b, i) => ({
+      ...b, tint: T[b.k], icon: I[b.k], more: i < list.length - 1,
+      bg: b.dark ? '#0F110E' : '#FFFFFF', fg: b.dark ? '#FFFFFF' : '#0F110E',
+      delay: (0.15 + i * 0.18) + 's', ldelay: (0.3 + i * 0.18) + 's'
+    }));
+    const plans = {
+      buy: {
+        title: 'Buy ' + STK.n,
+        summary: 'Buy ~' + q + ' ' + STK.t + ' with ' + amt.toFixed(2) + ' USDT through the best instant route.',
+        blocks: mk([{ k: 'wallet', name: 'Wallet USDT', detail: amt.toFixed(2) + ' USDT', link: 'USDT' }, { k: 'trade', name: 'Buy ' + STK.t, detail: '~' + q + ' ' + STK.t, dark: true }]),
+        stats: [{ label: 'You spend', value: amt.toFixed(2) + ' USDT', sub: usd(amt) }, { label: 'You get', value: q + ' ' + STK.t, sub: 'via LiquidMesh' }, { label: 'Price impact', value: '0.0008%', sub: 'Very low' }, { label: 'Minimum received', value: qMin, sub: STK.t + ' after slippage' }],
+        notes: [{ mark: 'i', bg: '#E3E6DE', text: 'US market closed · opens Mon 9:30 ET. The on-chain token still trades now.' }, { mark: 'i', bg: '#E3E6DE', text: STK.t === 'NVDAB' ? 'NVDAB $234.90 vs NVDA $235.40, a −0.21% gap.' : STK.t + ' $' + STK.px.toFixed(2) + ' on-chain. Gap vs the real stock is shown in the builder.' }]
+      },
+      earn: {
+        title: 'Borrow & earn on Nvidia',
+        summary: 'Buy ~' + q + ' NVDAB with ' + amt.toFixed(2) + ' USDT, supply it to Venus, borrow ' + bor + ' USDT against it and earn on Lista.',
+        blocks: mk([{ k: 'wallet', name: 'Wallet USDT', detail: amt.toFixed(2) + ' USDT', link: 'USDT' }, { k: 'trade', name: 'Buy NVDAB', detail: '~' + q + ' NVDAB', link: 'NVDAB' }, { k: 'supply', name: 'Supply to Venus', detail: 'Becomes collateral', link: 'Supplied' }, { k: 'borrow', name: 'Borrow USDT', detail: bor + ' USDT · 5.12%', link: 'USDT' }, { k: 'earn', name: 'Earn on Lista', detail: '10.91% earn rate', dark: true }]),
+        stats: [{ label: 'You spend', value: amt.toFixed(2) + ' USDT', sub: '~' + q + ' NVDAB' }, { label: 'You borrow', value: bor + ' USDT', sub: 'Safe max ' + safe + ' USDT' }, { label: 'Health after', value: '2.85', sub: 'Safe' }, { label: 'Net spread', value: '+5.79%', sub: 'Earn 10.91% − borrow 5.12%', color: '#1D7A43' }],
+        notes: [{ mark: 'i', bg: '#E3E6DE', text: 'US market closed · opens Mon 9:30 ET. The on-chain token still trades now.' }, { mark: '!', bg: '#FCE3B8', text: 'Earn and borrow rates move. The spread can shrink or turn negative.' }, { mark: '!', bg: '#FCE3B8', text: 'If NVDAB drops about 65%, your loan health reaches 1.0 and the collateral can be liquidated.' }]
+      },
+      borrow: {
+        title: 'Borrow against Nvidia',
+        summary: 'Use your 0.0255 NVDAB on Venus as collateral and borrow 1.00 USDT at 5.12% APR.',
+        blocks: mk([{ k: 'supplied', name: 'Supplied NVDAB', detail: '0.0255 on Venus', link: 'Collateral' }, { k: 'borrow', name: 'Borrow USDT', detail: '1.00 USDT · 5.12%', dark: true }]),
+        stats: [{ label: 'Collateral', value: '0.0255 NVDAB', sub: '$5.99' }, { label: 'You borrow', value: '1.00 USDT', sub: 'Safe max 1.90 USDT' }, { label: 'Borrow rate', value: '5.12%', sub: 'APR, variable' }, { label: 'Health', value: '— → 2.85', sub: 'Safe' }],
+        notes: [{ mark: 'i', bg: '#E3E6DE', text: 'Collateral is enabled first, then you borrow. Two signatures.' }, { mark: '!', bg: '#FCE3B8', text: 'Borrowing is blocked if health would fall below 1.5.' }]
+      },
+      repay: {
+        title: 'Repay & reclaim',
+        summary: 'Repay your 1.00 USDT Venus loan in full, then withdraw your 0.0255 NVDAB back to your wallet.',
+        blocks: mk([{ k: 'debt', name: 'Venus debt', detail: '1.00 USDT', link: 'USDT' }, { k: 'repay', name: 'Repay', detail: 'Full debt', link: 'Loan closed' }, { k: 'withdraw', name: 'Withdraw', detail: '0.0255 NVDAB', dark: true }]),
+        stats: [{ label: 'You repay', value: '1.00 USDT', sub: 'Includes accrued interest' }, { label: 'You get back', value: '0.0255 NVDAB', sub: '$5.99' }, { label: 'Approval', value: 'Needed', sub: 'USDT to Venus, once' }, { label: 'Health after', value: 'No loan', sub: 'Nothing at risk' }],
+        notes: [{ mark: 'i', bg: '#E3E6DE', text: 'Withdraw only unlocks after the debt is fully repaid.' }]
+      }
+    };
+    const plan = plans[kind];
+    plan.stats = plan.stats.map((x) => ({ color: '#0F110E', ...x }));
+    const st = s.step;
+    const lines = ['Reading your request…', 'Checking live prices…', 'Validating strategy…'];
+    const go = (txt) => () => this.think(txt);
+    return {
+      prompt: s.prompt,
+      onPrompt: (e) => this.setState({ prompt: e.target.value }),
+      onSubmit: (e) => { e.preventDefault(); this.think(); },
+      isIdle: s.phase === 'idle', isThinking: s.phase === 'thinking', isPlan: s.phase === 'plan',
+      chips: ['Buy $20 of Tesla', 'Borrow USDT against my Nvidia stock', 'Borrow and earn on my stock', 'Repay my loan and get my stock back'].map((label) => ({ label, pick: go(label) })),
+      templates: [
+        { name: 'Buy a stock', flow: 'Wallet USDT → Trade', chain: [{ k: 'wallet' }, { k: 'trade' }], prompt: 'Buy $6 of Nvidia' },
+        { name: 'Borrow against a stock', flow: 'Supplied stock → Borrow', chain: [{ k: 'supplied' }, { k: 'borrow' }], prompt: 'Borrow USDT against my Nvidia stock' },
+        { name: 'Borrow & earn', flow: 'Supplied → Borrow USDT → Earn', chain: [{ k: 'supplied' }, { k: 'borrow' }, { k: 'earn' }], prompt: 'Buy $6 of Nvidia, borrow USDT against it and earn on it' },
+        { name: 'Repay & reclaim', flow: 'Debt → Repay → Withdraw', chain: [{ k: 'debt' }, { k: 'repay' }, { k: 'withdraw' }], prompt: 'Repay my loan and get my stock back' }
+      ].map((t) => ({ ...t, pick: go(t.prompt), chain: t.chain.map((n, i) => ({ tint: T[n.k], icon: I[n.k], more: i < t.chain.length - 1 })) })),
+      recent: [
+        { name: 'Borrow & earn on Tesla', meta: 'Draft · 2d', dots: ['#D5F56B', '#AFD6F7', '#F7CB98', '#F4E79A'] },
+        { name: 'Buy Apple', meta: 'Ran · Oct 6', dots: ['#EEF0EB', '#D5F56B'] },
+        { name: 'Repay & reclaim NVDAB', meta: 'Draft · 5d', dots: ['#D6CBF7', '#AEE8DF'] }
+      ],
+      status: lines.map((text, i) => ({ text, done: st > i, active: st === i, pending: st < i, op: st < i ? 0.4 : 1 })),
+      plan,
+      needsInput: needsAmount,
+      pillText: needsAmount ? 'Needs your input' : 'Ready',
+      pillBg: needsAmount ? '#FCE3B8' : '#D5F56B',
+      amounts: [6, 20, 50].map((n) => ({ label: n + ' USDT', pick: () => this.setState({ amt: n }) })),
+      refining: s.refining,
+      onRefine: () => this.setState({ refining: !s.refining }),
+      onRethink: () => this.think(s.prompt),
+      onReset: () => { this.timers.forEach(clearTimeout); this.setState({ phase: 'idle', prompt: '', step: 0, amt: null, refining: false }); }
+    };
+  }
+}
+</script>
+</body>
+</html>

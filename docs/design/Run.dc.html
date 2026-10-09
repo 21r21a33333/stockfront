@@ -1,0 +1,333 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Stockfront — Run</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&amp;family=Geist+Mono:wght@400;500&amp;family=Space+Grotesk:wght@500;600;700&amp;display=swap">
+<style>
+body{margin:0;background:#EEF0EB;color:#0F110E;font-family:'Geist',system-ui,-apple-system,sans-serif;-webkit-font-smoothing:antialiased}
+a{color:#0F110E;text-decoration:none}a:hover{color:#3C4039}
+*{box-sizing:border-box}
+.mono{font-family:'Geist Mono',ui-monospace,SFMono-Regular,monospace}
+.disp{font-family:'Space Grotesk','Geist',system-ui,sans-serif;letter-spacing:-0.03em}
+.btn{transition:transform .2s ease,background-color .2s ease;cursor:pointer}
+.btn:hover{transform:translateY(-1px)}
+button:focus-visible,a:focus-visible,summary:focus-visible{outline:2px solid #0F110E;outline-offset:2px}
+.fadeUp{animation:fadeUp .3s cubic-bezier(.2,.7,.2,1) both}
+@keyframes fadeUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+.pulse{animation:pulse 1.5s ease-in-out infinite}
+@keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(213,245,107,.9)}50%{box-shadow:0 0 0 8px rgba(213,245,107,0)}}
+.spin{animation:spin .9s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.pop{animation:pop .35s cubic-bezier(.2,.9,.3,1.2) both}
+@keyframes pop{from{transform:scale(.4);opacity:0}to{transform:scale(1);opacity:1}}
+.draw path{stroke-dasharray:24;stroke-dashoffset:24;animation:draw .35s .1s ease forwards}
+@keyframes draw{to{stroke-dashoffset:0}}
+.bar{animation:bar 1.8s cubic-bezier(.4,0,.2,1) forwards}
+@keyframes bar{from{width:4%}to{width:96%}}
+.light{animation:light .5s ease forwards}
+@keyframes light{from{background:#FFFFFF;transform:translateY(6px)}to{background:#D5F56B;transform:none}}
+.lline{transform-origin:left;transform:scaleX(0);animation:lline .3s ease forwards}
+@keyframes lline{to{transform:scaleX(1)}}
+details summary{cursor:pointer;list-style:none}
+details summary::-webkit-details-marker{display:none}
+</style>
+</helmet>
+<div style="min-height: 100vh; display: flex; flex-direction: column">
+
+<header style="height: 64px; display: flex; align-items: center; gap: 16px; padding: 0 20px; border-bottom: 1px solid #DCDFD7">
+  <a href="Main.dc.html" style="display: flex; align-items: center; gap: 10px" aria-label="Stockfront home">
+    <svg width="26" height="26" viewBox="0 0 30 30" fill="none" aria-hidden="true"><rect x="2" y="2" width="12" height="12" rx="3.5" fill="#0F110E"></rect><rect x="16" y="16" width="12" height="12" rx="3.5" fill="#D5F56B" stroke="#0F110E" stroke-width="1.6"></rect><path d="M14 8h4.5a3.5 3.5 0 0 1 3.5 3.5V16" stroke="#0F110E" stroke-width="1.6" stroke-linecap="round"></path></svg>
+    <span class="disp" style="font-weight: 600; font-size: 17px">Stockfront</span>
+  </a>
+  <a href="Builder.dc.html" style="margin-left: 16px; padding-left: 20px; border-left: 1px solid #DCDFD7; display: flex; align-items: center; gap: 8px; font-size: 14px; color: #3C4039"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#0F110E" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M11 6l-6 6 6 6"></path></svg>Back to builder</a>
+  <span style="font-weight: 600; font-size: 15px">Borrow &amp; earn on Nvidia</span>
+  <div style="margin-left: auto; display: flex; align-items: center; gap: 8px">
+    <span class="mono" style="height: 38px; padding: 0 12px; border-radius: 10px; background: #E3E6DE; font-size: 12px; display: flex; align-items: center; gap: 8px"><span style="width: 8px; height: 8px; border-radius: 50%; background: #E9B931"></span>BNB Chain</span>
+    <button type="button" class="btn mono" style="height: 38px; padding: 0 12px 0 6px; border-radius: 10px; border: 0; background: #0F110E; color: #FFFFFF; font-size: 12px; display: flex; align-items: center; gap: 8px"><span style="width: 26px; height: 26px; border-radius: 7px; background: linear-gradient(135deg, #D5F56B, #AFD6F7)"></span>0x8894…d4e3</button>
+  </div>
+</header>
+
+<sc-if value="{{running}}" hint-placeholder-val="{{ true }}">
+<main style="flex: 1; width: 100%; max-width: 1220px; margin: 0 auto; padding: 48px 24px 64px; display: flex; flex-wrap: wrap; gap: 28px; align-items: flex-start">
+
+  <section aria-label="Steps" style="flex: 1 1 360px; max-width: 420px; display: flex; flex-direction: column; gap: 20px">
+    <div style="display: flex; flex-direction: column; gap: 10px">
+      <span class="mono" style="font-size: 12px; letter-spacing: .1em; text-transform: uppercase; color: #4A4F46">Run · {{progressText}}</span>
+      <h1 class="disp" style="margin: 0; font-size: 40px; font-weight: 600; line-height: 1">Sign each step.</h1>
+      <div style="height: 4px; border-radius: 999px; background: #DCDFD7; overflow: hidden; margin-top: 6px"><div style="height: 100%; width: {{progressPct}}; background: #0F110E; transition: width .5s cubic-bezier(.2,.7,.2,1)"></div></div>
+    </div>
+    <ol style="list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; position: relative">
+      <sc-for list="{{steps}}" as="s" hint-placeholder-count="6">
+        <li style="display: flex; gap: 14px; position: relative; padding-bottom: 6px">
+          <div style="display: flex; flex-direction: column; align-items: center; flex: none; width: 32px">
+            <sc-if value="{{s.isDone}}" hint-placeholder-val="{{ false }}"><span class="pop" style="width: 32px; height: 32px; border-radius: 50%; background: #0F110E; display: grid; place-items: center"><svg class="draw" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#D5F56B" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7"></path></svg></span></sc-if>
+            <sc-if value="{{s.isWaiting}}" hint-placeholder-val="{{ false }}"><span class="pulse mono" style="width: 32px; height: 32px; border-radius: 50%; background: #D5F56B; border: 2px solid #0F110E; display: grid; place-items: center; font-size: 12px">{{s.n}}</span></sc-if>
+            <sc-if value="{{s.isConfirming}}" hint-placeholder-val="{{ false }}"><span class="spin" style="width: 32px; height: 32px; border-radius: 50%; border: 3px solid #D6D9D1; border-top-color: #0F110E; display: block"></span></sc-if>
+            <sc-if value="{{s.isProblem}}" hint-placeholder-val="{{ false }}"><span class="mono" style="width: 32px; height: 32px; border-radius: 50%; background: #F7CB98; border: 2px solid #0F110E; display: grid; place-items: center; font-size: 13px; font-weight: 600">!</span></sc-if>
+            <sc-if value="{{s.isNext}}" hint-placeholder-val="{{ true }}"><span class="mono" style="width: 32px; height: 32px; border-radius: 50%; border: 1.5px solid {{s.ring}}; background: {{s.fill}}; display: grid; place-items: center; font-size: 12px; color: #22261F">{{s.n}}</span></sc-if>
+            <sc-if value="{{s.more}}" hint-placeholder-val="{{ true }}"><span style="flex: 1; width: 2px; min-height: 22px; margin-top: 6px; border-radius: 2px; background: {{s.lineColor}}; transition: background .4s ease"></span></sc-if>
+          </div>
+          <div style="flex: 1; padding: 4px 0 18px; display: flex; flex-direction: column; gap: 4px; opacity: {{s.op}}">
+            <div style="display: flex; align-items: center; gap: 8px">
+              <span style="font-size: 16px; font-weight: {{s.weight}}">{{s.title}}</span>
+              <sc-if value="{{s.batched}}" hint-placeholder-val="{{ false }}"><span class="mono" style="font-size: 10px; padding: 2px 6px; border-radius: 5px; background: #E3E6DE">Batched</span></sc-if>
+            </div>
+            <span class="mono" style="font-size: 12px; color: #4A4F46">{{s.statusText}}</span>
+          </div>
+        </li>
+      </sc-for>
+    </ol>
+  </section>
+
+  <section aria-live="polite" style="flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column; gap: 14px">
+    <div class="fadeUp" style="border-radius: 26px; background: #FFFFFF; border: 1px solid #DCDFD7; box-shadow: 0 40px 80px -50px rgba(15,17,14,.4); overflow: hidden">
+      <div style="padding: 24px 26px 20px; display: flex; align-items: center; gap: 14px; border-bottom: 1px solid #EEF0EB">
+        <span style="width: 46px; height: 46px; border-radius: 14px; background: {{cur.tint}}; border: 1px solid rgba(15,17,14,.08); display: grid; place-items: center"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="#0F110E" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="{{cur.icon}}"></path></svg></span>
+        <div style="display: flex; flex-direction: column; gap: 2px">
+          <span class="mono" style="font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: #5A5F56">Step {{cur.n}} · Review</span>
+          <span class="disp" style="font-size: 26px; font-weight: 600">{{cur.title}}</span>
+        </div>
+        <span class="mono" style="margin-left: auto; font-size: 11px; padding: 5px 10px; border-radius: 999px; background: {{phaseBg}}">{{phaseText}}</span>
+      </div>
+
+      <sc-if value="{{showPrice}}" hint-placeholder-val="{{ false }}">
+        <div class="fadeUp" style="margin: 20px 26px 0; padding: 18px; border-radius: 18px; background: #FCEFD9; display: flex; flex-direction: column; gap: 14px">
+          <div style="display: flex; flex-direction: column; gap: 4px"><span style="font-weight: 600; font-size: 17px">The price moved</span><span style="font-size: 15px">You'll now get <span class="mono" style="font-weight: 500">0.0251 NVDAB</span> <span class="mono" style="color: #4A4F46">(was 0.0255)</span>. Nothing was sent.</span></div>
+          <div style="display: flex; gap: 8px; flex-wrap: wrap"><button type="button" class="btn" onClick="{{acceptPrice}}" style="height: 44px; padding: 0 18px; border-radius: 12px; border: 0; background: #0F110E; color: #FFFFFF; font: inherit; font-weight: 500">Accept new price</button><button type="button" class="btn" onClick="{{cancelPrice}}" style="height: 44px; padding: 0 18px; border-radius: 12px; border: 1px solid rgba(15,17,14,.2); background: #FFFFFF; font: inherit; color: #0F110E">Cancel</button></div>
+        </div>
+      </sc-if>
+      <sc-if value="{{showCancelled}}" hint-placeholder-val="{{ false }}">
+        <div class="fadeUp" style="margin: 20px 26px 0; padding: 18px; border-radius: 18px; background: #F4F5F1; display: flex; align-items: center; gap: 14px; flex-wrap: wrap">
+          <div style="display: flex; flex-direction: column; gap: 4px"><span style="font-weight: 600; font-size: 17px">No problem, nothing was sent.</span><span style="font-size: 14px; color: #3C4039">You cancelled in your wallet. Try again whenever you're ready.</span></div>
+          <button type="button" class="btn" onClick="{{sign}}" style="margin-left: auto; height: 44px; padding: 0 18px; border-radius: 12px; border: 0; background: #0F110E; color: #FFFFFF; font: inherit; font-weight: 500">Try again</button>
+        </div>
+      </sc-if>
+      <sc-if value="{{showUnknown}}" hint-placeholder-val="{{ false }}">
+        <div class="fadeUp" style="margin: 20px 26px 0; padding: 18px; border-radius: 18px; background: #FBE1DC; display: flex; flex-direction: column; gap: 14px">
+          <div style="display: flex; flex-direction: column; gap: 4px"><span style="font-weight: 600; font-size: 17px">We couldn't confirm this step</span><span style="font-size: 14px; color: #3C4039">The transaction may still land. Check again before doing anything else.</span></div>
+          <div style="display: flex; gap: 8px; flex-wrap: wrap"><button type="button" class="btn" onClick="{{checkAgain}}" style="height: 44px; padding: 0 18px; border-radius: 12px; border: 0; background: #0F110E; color: #FFFFFF; font: inherit; font-weight: 500">Check again</button><button type="button" class="btn" onClick="{{restart}}" style="height: 44px; padding: 0 18px; border-radius: 12px; border: 1px solid rgba(15,17,14,.2); background: #FFFFFF; font: inherit; color: #0F110E">Abandon run</button></div>
+        </div>
+      </sc-if>
+
+      <div style="padding: 20px 26px; display: flex; flex-direction: column; gap: 4px">
+        <sc-if value="{{cur.hasPay}}" hint-placeholder-val="{{ true }}">
+          <div style="padding: 18px; border-radius: 16px 16px 4px 4px; background: #F4F5F1; display: flex; align-items: center; gap: 12px">
+            <span style="font-size: 14px; color: #4A4F46; width: 72px">You pay</span>
+            <span style="width: 30px; height: 30px; border-radius: 50%; background: {{cur.payDot}}; display: grid; place-items: center; color: #FFFFFF; font-size: 12px; font-weight: 600">{{cur.payGlyph}}</span>
+            <span class="mono" style="font-size: 22px">{{cur.pay}}</span>
+            <span class="mono" style="margin-left: auto; font-size: 13px; color: #4A4F46">{{cur.payUsd}}</span>
+          </div>
+        </sc-if>
+        <sc-if value="{{cur.hasGet}}" hint-placeholder-val="{{ true }}">
+          <div style="padding: 18px; border-radius: {{cur.getRadius}}; background: #F4F5F1; display: flex; align-items: center; gap: 12px">
+            <span style="font-size: 14px; color: #4A4F46; width: 72px">You get</span>
+            <span style="width: 30px; height: 30px; border-radius: 50%; background: {{cur.getDot}}; display: grid; place-items: center; color: #FFFFFF; font-size: 11px; font-weight: 600" class="mono">{{cur.getGlyph}}</span>
+            <span class="mono" style="font-size: 22px">{{cur.get}}</span>
+            <span class="mono" style="margin-left: auto; font-size: 13px; color: #4A4F46">{{cur.getUsd}}</span>
+          </div>
+        </sc-if>
+        <sc-if value="{{cur.hasAllow}}" hint-placeholder-val="{{ false }}">
+          <div style="padding: 18px; border-radius: 16px; background: #F4F5F1; display: flex; align-items: center; gap: 12px">
+            <span style="width: 30px; height: 30px; border-radius: 9px; background: #0F110E; display: grid; place-items: center"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#D5F56B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="9" rx="2"></rect><path d="M8 11V8a4 4 0 0 1 8 0"></path></svg></span>
+            <span style="font-size: 16px">{{cur.allow}}</span>
+          </div>
+        </sc-if>
+      </div>
+
+      <div class="mono" style="margin: 0 26px; display: grid; grid-template-columns: 1fr auto; row-gap: 12px; font-size: 13px; color: #3C4039; padding: 4px 0 18px; border-bottom: 1px solid #EEF0EB">
+        <span>Network fee</span><span style="color: #0F110E">{{cur.fee}}</span>
+        <sc-if value="{{cur.hasHf}}" hint-placeholder-val="{{ false }}"><span>Loan health</span></sc-if>
+        <sc-if value="{{cur.hasHf}}" hint-placeholder-val="{{ false }}"><span style="color: #0F110E">{{cur.hf}} <span style="padding: 2px 7px; border-radius: 5px; background: #9ED892; font-size: 11px">Safe</span></span></sc-if>
+        <span>Interacting with</span><span style="color: #0F110E">{{cur.venue}} · {{cur.addr}}</span>
+      </div>
+
+      <details style="margin: 0 26px; padding: 14px 0; border-bottom: 1px solid #EEF0EB">
+        <summary class="mono" style="font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: #3C4039; display: flex; align-items: center; gap: 8px">Details<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#0F110E" stroke-width="2.2" stroke-linecap="round"><path d="M6 9l6 6 6-6"></path></svg></summary>
+        <div class="mono" style="margin-top: 12px; display: grid; grid-template-columns: 1fr auto; row-gap: 8px; font-size: 12px; color: #3C4039"><span>Method</span><span style="color: #0F110E">{{cur.method}}</span><span>Contract</span><span style="color: #0F110E">{{cur.addr}}</span><span>Slippage limit</span><span style="color: #0F110E">0.40%</span><span>Chain</span><span style="color: #0F110E">BNB Chain (56)</span></div>
+      </details>
+
+      <sc-if value="{{showConfirming}}" hint-placeholder-val="{{ false }}">
+        <div style="margin: 18px 26px 0; display: flex; flex-direction: column; gap: 8px">
+          <div style="display: flex; justify-content: space-between; font-size: 13px"><span>Confirming on-chain…</span><a href="#explorer" class="mono" style="font-size: 12px; text-decoration: underline">View on explorer ↗</a></div>
+          <div style="height: 6px; border-radius: 999px; background: #EEF0EB; overflow: hidden"><div class="bar" style="height: 100%; border-radius: 999px; background: #0F110E"></div></div>
+        </div>
+      </sc-if>
+
+      <div style="padding: 20px 26px 24px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap">
+        <sc-if value="{{showSign}}" hint-placeholder-val="{{ true }}">
+          <button type="button" class="btn" onClick="{{sign}}" style="height: 54px; padding: 0 10px 0 22px; border-radius: 16px; border: 0; background: #0F110E; color: #FFFFFF; font: inherit; font-size: 16px; font-weight: 500; display: flex; align-items: center; gap: 14px">Sign in wallet<span style="width: 36px; height: 36px; border-radius: 11px; background: #D5F56B; display: grid; place-items: center"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#0F110E" stroke-width="2" stroke-linejoin="round"><path d="M3 7h15a3 3 0 0 1 3 3v7a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3zM3 7l3-3h10l2 3"></path></svg></span></button>
+        </sc-if>
+        <sc-if value="{{showWaiting}}" hint-placeholder-val="{{ false }}">
+          <span class="pulse" style="height: 54px; padding: 0 22px; border-radius: 16px; background: #D5F56B; display: flex; align-items: center; gap: 10px; font-weight: 500"><span class="spin" style="width: 16px; height: 16px; border-radius: 50%; border: 2px solid rgba(15,17,14,.25); border-top-color: #0F110E"></span>Waiting for your wallet…</span>
+          <div class="mono" style="margin-left: auto; display: flex; gap: 6px; font-size: 11px; color: #4A4F46; align-items: center">Demo:<button type="button" onClick="{{reject}}" style="height: 30px; padding: 0 10px; border-radius: 8px; border: 1px solid #D6D9D1; background: #FFFFFF; font: inherit; cursor: pointer">Reject in wallet</button><button type="button" onClick="{{lose}}" style="height: 30px; padding: 0 10px; border-radius: 8px; border: 1px solid #D6D9D1; background: #FFFFFF; font: inherit; cursor: pointer">Lose connection</button></div>
+        </sc-if>
+        <sc-if value="{{showSign}}" hint-placeholder-val="{{ true }}">
+          <span class="mono" style="font-size: 12px; color: #4A4F46">Opens your wallet. Nothing is sent until you approve there.</span>
+        </sc-if>
+      </div>
+    </div>
+  </section>
+</main>
+</sc-if>
+
+<sc-if value="{{finished}}" hint-placeholder-val="{{ false }}">
+<main class="fadeUp" style="flex: 1; width: 100%; max-width: 1040px; margin: 0 auto; padding: 72px 24px; display: flex; flex-direction: column; align-items: center; gap: 36px; text-align: center">
+  <div style="display: flex; align-items: center; justify-content: center; flex-wrap: wrap">
+    <sc-for list="{{finChain}}" as="f" hint-placeholder-count="5">
+      <div style="display: flex; align-items: center">
+        <div class="light" style="animation-delay: {{f.delay}}; width: 64px; height: 64px; border-radius: 20px; border: 1.5px solid #0F110E; background: #FFFFFF; display: grid; place-items: center"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#0F110E" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="{{f.icon}}"></path></svg></div>
+        <sc-if value="{{f.more}}" hint-placeholder-val="{{ true }}"><span class="lline" style="animation-delay: {{f.ldelay}}; width: 36px; height: 2px; background: #0F110E; display: block"></span></sc-if>
+      </div>
+    </sc-for>
+  </div>
+  <div style="display: flex; flex-direction: column; gap: 12px; align-items: center">
+    <span class="mono" style="font-size: 12px; letter-spacing: .1em; text-transform: uppercase; color: #4A4F46">6 of 6 signed · Complete</span>
+    <h1 class="disp" style="margin: 0; font-size: clamp(44px, 6vw, 76px); font-weight: 600; line-height: .95">Your stock is at work.</h1>
+  </div>
+  <section aria-label="What you own now" style="width: 100%; max-width: 760px; text-align: left; border-radius: 26px; background: #FFFFFF; border: 1px solid #DCDFD7; overflow: hidden">
+    <div style="padding: 18px 24px; border-bottom: 1px solid #EEF0EB; display: flex; justify-content: space-between; align-items: center"><span class="disp" style="font-size: 22px; font-weight: 600">What you own now</span><span class="mono" style="font-size: 11px; color: #4A4F46">Live · BNB Chain</span></div>
+    <sc-for list="{{owned}}" as="o" hint-placeholder-count="4">
+      <div style="display: flex; align-items: center; gap: 14px; padding: 16px 24px; border-bottom: 1px solid #EEF0EB">
+        <span style="width: 38px; height: 38px; border-radius: 11px; background: {{o.tint}}; border: 1px solid rgba(15,17,14,.08); display: grid; place-items: center"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#0F110E" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="{{o.icon}}"></path></svg></span>
+        <div style="display: flex; flex-direction: column; gap: 2px"><span style="font-weight: 600">{{o.label}}</span><span style="font-size: 13px; color: #4A4F46">{{o.sub}}</span></div>
+        <div style="margin-left: auto; display: flex; flex-direction: column; align-items: flex-end; gap: 2px"><span class="mono" style="font-size: 17px">{{o.value}}</span><span class="mono" style="font-size: 12px; color: {{o.noteColor}}">{{o.note}}</span></div>
+      </div>
+    </sc-for>
+  </section>
+  <div style="display: flex; gap: 8px; flex-wrap: wrap; justify-content: center">
+    <a href="Compose.dc.html" class="btn" style="height: 54px; display: inline-flex; align-items: center; gap: 14px; padding: 0 10px 0 22px; border-radius: 16px; background: #0F110E; color: #FFFFFF; font-weight: 500">Build another strategy<span style="width: 36px; height: 36px; border-radius: 11px; background: #D5F56B; display: grid; place-items: center"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#0F110E" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17L17 7M8 7h9v9"></path></svg></span></a>
+    <button type="button" class="btn" onClick="{{restart}}" style="height: 54px; padding: 0 20px; border-radius: 16px; border: 1px solid #D6D9D1; background: #FFFFFF; font: inherit; font-weight: 500; color: #0F110E">Replay run</button>
+  </div>
+</main>
+</sc-if>
+
+<sc-if value="{{toast}}" hint-placeholder-val="{{ false }}">
+  <div class="fadeUp" role="status" style="position: fixed; right: 24px; bottom: 24px; display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-radius: 14px; background: #0F110E; color: #FFFFFF; box-shadow: 0 20px 40px -20px rgba(15,17,14,.6); font-size: 14px">
+    <span style="width: 20px; height: 20px; border-radius: 50%; background: #D5F56B; display: grid; place-items: center"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#0F110E" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7"></path></svg></span>{{toast}}<a href="#explorer" class="mono" style="color: #D5F56B; font-size: 12px">Explorer ↗</a>
+  </div>
+</sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":980}}'>
+class Component extends DCLogic {
+  constructor(p) {
+    super(p);
+    this.state = { cur: 0, phase: 'ready', priceSeen: false, priceAccepted: false, toast: '' };
+    this.timers = [];
+  }
+  componentWillUnmount() { this.clear(); }
+  clear() { this.timers.forEach(clearTimeout); this.timers = []; }
+  later(ms, fn) { this.timers.push(setTimeout(fn, ms)); }
+  sign() {
+    this.clear();
+    this.setState({ phase: 'waiting' });
+    this.later(1500, () => {
+      if (this.state.cur === 0 && !this.state.priceSeen) { this.setState({ phase: 'price', priceSeen: true }); return; }
+      this.confirm();
+    });
+  }
+  confirm() {
+    this.clear();
+    this.setState({ phase: 'confirming' });
+    this.later(1900, () => {
+      const n = this.state.cur + 1;
+      this.setState({ phase: n >= 6 ? 'finished' : 'ready', cur: n, toast: 'Step ' + n + ' confirmed' });
+      this.later(2600, () => this.setState({ toast: '' }));
+    });
+  }
+  renderVals() {
+    const I = {
+      trade: 'M4 8h14l-3-3M20 16H6l3 3',
+      supply: 'M12 3v11M8 10l4 4 4-4M4 15v4h16v-4',
+      borrow: 'M12 3.5a8.5 8.5 0 1 1 0 17a8.5 8.5 0 1 1 0-17M12 7.5v9M8.8 13.3 12 16.5l3.2-3.2',
+      earn: 'M4 17l5-5 4 4 7-7M14 9h6v6',
+      wallet: 'M3 7h15a3 3 0 0 1 3 3v7a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3zM3 7l3-3h10l2 3',
+      shield: 'M12 3l8 3v6c0 4.5-3.4 8-8 9-4.6-1-8-4.5-8-9V6z',
+      layers: 'M12 3l9 5-9 5-9-5 9-5zM3 13l9 5 9-5'
+    };
+    const T = { trade: '#D5F56B', supply: '#AFD6F7', borrow: '#F7CB98', earn: '#F4E79A', wallet: '#EEF0EB', shield: '#AFD6F7' };
+    const s = this.state;
+    const got = s.priceAccepted ? '0.0251' : '0.0255';
+    const V = '0x0A0b…1e7C', LM = '0x8894…d4e3', LI = '0x2F1c…9aB0';
+    const usdt = { dot: '#2F9E7A', glyph: '₮' }, nv = { dot: '#0F110E', glyph: 'NV' };
+    const raw = [
+      { title: 'Approve + Buy NVDAB', k: 'trade', batched: true, pay: '6.00 USDT', payUsd: '$6.00', payT: usdt, get: got + ' NVDAB', getUsd: s.priceAccepted ? '$5.90' : '$5.99', getT: nv, fee: '≈ $0.03', venue: 'LiquidMesh', addr: LM, method: 'approve + swapExactIn' },
+      { title: 'Approve NVDAB', k: 'supply', allow: 'Allow Venus to use your ' + got + ' NVDAB', fee: '≈ $0.01', venue: 'Venus', addr: V, method: 'approve' },
+      { title: 'Supply to Venus', k: 'supply', pay: got + ' NVDAB', payUsd: s.priceAccepted ? '$5.90' : '$5.99', payT: nv, fee: '≈ $0.02', venue: 'Venus', addr: V, method: 'mint' },
+      { title: 'Enable collateral', k: 'supply', allow: 'Use NVDAB as collateral you can borrow against', fee: '≈ $0.01', venue: 'Venus', addr: V, method: 'enterMarkets' },
+      { title: 'Borrow 1 USDT', k: 'borrow', get: '1.00 USDT', getUsd: '$1.00', getT: usdt, hf: 'No debt → ' + (s.priceAccepted ? '2.80' : '2.85'), fee: '≈ $0.02', venue: 'Venus', addr: V, method: 'borrow' },
+      { title: 'Approve + Earn on Lista', k: 'earn', batched: true, pay: '1.00 USDT', payUsd: '$1.00', payT: usdt, get: 'Lista USDT position', getUsd: '10.91% earn rate', getT: { dot: '#C9A92E', glyph: 'L' }, fee: '≈ $0.03', venue: 'Lista', addr: LI, method: 'approve + deposit' }
+    ];
+    const ph = s.phase;
+    const problem = ph === 'price' || ph === 'cancelled' || ph === 'unknown';
+    const steps = raw.map((r, i) => {
+      const done = i < s.cur;
+      const active = i === s.cur;
+      const isWaiting = active && ph === 'waiting';
+      const isConfirming = active && ph === 'confirming';
+      const isProblem = active && problem;
+      const isNext = !done && !isWaiting && !isConfirming && !isProblem;
+      let statusText = 'Up next';
+      if (done) statusText = 'Done';
+      else if (isWaiting) statusText = 'Waiting for your wallet';
+      else if (isConfirming) statusText = 'Confirming on-chain';
+      else if (ph === 'price' && active) statusText = 'Price changed · needs you';
+      else if (ph === 'cancelled' && active) statusText = 'Cancelled in wallet';
+      else if (ph === 'unknown' && active) statusText = 'Result unknown';
+      else if (active) statusText = 'Ready to sign';
+      return {
+        n: i + 1, title: r.title, batched: !!r.batched, statusText,
+        isDone: done, isWaiting, isConfirming, isProblem, isNext,
+        ring: active ? '#0F110E' : '#C3C7BD', fill: active ? '#FFFFFF' : 'transparent',
+        more: i < raw.length - 1, lineColor: done ? '#0F110E' : '#D6D9D1',
+        op: done || active ? 1 : 0.55, weight: active ? 600 : 500
+      };
+    });
+    const c = raw[Math.min(s.cur, 5)];
+    const cur = {
+      n: Math.min(s.cur, 5) + 1, title: c.title, tint: T[c.k], icon: I[c.k],
+      hasPay: !!c.pay, pay: c.pay, payUsd: c.payUsd, payDot: c.payT ? c.payT.dot : '', payGlyph: c.payT ? c.payT.glyph : '',
+      hasGet: !!c.get, get: c.get, getUsd: c.getUsd, getDot: c.getT ? c.getT.dot : '', getGlyph: c.getT ? c.getT.glyph : '',
+      getRadius: c.pay ? '4px 4px 16px 16px' : '16px',
+      hasAllow: !!c.allow, allow: c.allow, hasHf: !!c.hf, hf: c.hf,
+      fee: c.fee, venue: c.venue, addr: c.addr, method: c.method
+    };
+    const phaseMap = { ready: ['Ready to sign', '#EEF0EB'], waiting: ['Waiting for wallet', '#D5F56B'], confirming: ['Confirming', '#AFD6F7'], price: ['Needs you', '#FCE3B8'], cancelled: ['Cancelled', '#EEF0EB'], unknown: ['Unknown', '#FBE1DC'] };
+    const pm = phaseMap[ph] || phaseMap.ready;
+    const fin = ['wallet', 'trade', 'supply', 'borrow', 'earn'];
+    return {
+      running: ph !== 'finished', finished: ph === 'finished',
+      steps, cur,
+      progressText: Math.min(s.cur, 6) + ' of 6 signed',
+      progressPct: (Math.min(s.cur, 6) / 6 * 100) + '%',
+      phaseText: pm[0], phaseBg: pm[1],
+      showSign: ph === 'ready', showWaiting: ph === 'waiting', showConfirming: ph === 'confirming',
+      showPrice: ph === 'price', showCancelled: ph === 'cancelled', showUnknown: ph === 'unknown',
+      sign: () => this.sign(),
+      acceptPrice: () => { this.setState({ priceAccepted: true }); this.sign(); },
+      cancelPrice: () => { this.clear(); this.setState({ phase: 'cancelled' }); },
+      reject: () => { this.clear(); this.setState({ phase: 'cancelled' }); },
+      lose: () => { this.clear(); this.setState({ phase: 'unknown' }); },
+      checkAgain: () => this.confirm(),
+      restart: () => { this.clear(); this.setState({ cur: 0, phase: 'ready', priceSeen: false, priceAccepted: false, toast: '' }); },
+      toast: s.toast,
+      finChain: fin.map((k, i) => ({ icon: I[k], more: i < fin.length - 1, delay: (0.2 + i * 0.28) + 's', ldelay: (0.35 + i * 0.28) + 's' })),
+      owned: [
+        { label: 'Stock in wallet', sub: 'Real shares represented: 0', value: '0 NVDAB', note: 'All supplied', noteColor: '#4A4F46', tint: '#EEF0EB', icon: I.wallet },
+        { label: 'Collateral on Venus', sub: 'Supplied NVDAB', value: got + ' NVDAB', note: s.priceAccepted ? '$5.90' : '$5.99', noteColor: '#4A4F46', tint: '#AFD6F7', icon: I.layers },
+        { label: 'Debt', sub: 'Borrowed on Venus · 5.12% APR', value: '1.00 USDT', note: 'Health ' + (s.priceAccepted ? '2.80' : '2.85') + ' · Safe', noteColor: '#1D7A43', tint: '#F7CB98', icon: I.borrow },
+        { label: 'Earning', sub: 'Lista USDT', value: '1.00 USDT', note: '10.91% · +5.79% net', noteColor: '#1D7A43', tint: '#F4E79A', icon: I.earn }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>
