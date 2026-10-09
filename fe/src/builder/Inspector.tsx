@@ -14,6 +14,8 @@ import { BlockIcon } from "@/ui/BlockIcon";
 import { blockKind } from "@/ui/blocks";
 import { HealthGauge } from "@/ui/HealthGauge";
 import { priceGapPercent, sessionWord, usd } from "@/ui/market";
+import { TokenDot } from "@/ui/TokenDot";
+import { TokenSelect } from "@/ui/TokenSelect";
 import {
   assetFor,
   inputToken,
@@ -202,27 +204,19 @@ function WalletFields({
         <label className="srOnly" htmlFor={`stock-${node.id}`}>
           Or a stock
         </label>
-        <select
+        <TokenSelect
           id={`stock-${node.id}`}
-          className={styles.select}
-          value={asset?.kind === "bstock" ? asset.address : ""}
-          onChange={(event) =>
-            event.target.value &&
-            editor.updateNode(node.id, {
-              token: event.target.value as `0x${string}`,
-            })
+          options={stocks.map((item) => ({
+            ...item,
+            detail: heldAmount(item),
+          }))}
+          value={asset?.kind === "bstock" ? asset.address : undefined}
+          placeholder={
+            stocks.length ? "Or use a stock you hold…" : "No stocks available"
           }
-        >
-          <option value="">
-            {stocks.length ? "Or use a stock you hold…" : "No stocks available"}
-          </option>
-          {stocks.map((item) => (
-            <option key={item.address} value={item.address}>
-              {item.symbol} · {item.name}{" "}
-              {item.balanceRaw ? `· ${balanceOf(item)}` : ""}
-            </option>
-          ))}
-        </select>
+          searchPlaceholder="Search stocks"
+          onChange={(token) => editor.updateNode(node.id, { token })}
+        />
       </Section>
       <Section label="Amount" htmlFor={`amount-${node.id}`}>
         <div className={styles.amount}>
@@ -327,22 +321,15 @@ function TradeFields({
         label={buy?.kind === "settlement" ? "Receive" : "Stock"}
         htmlFor={`buy-${node.id}`}
       >
-        <select
+        <TokenSelect
           id={`buy-${node.id}`}
-          className={styles.select}
-          value={data.buyToken ?? ""}
-          onChange={(event) =>
-            editor.updateNode(node.id, {
-              buyToken: event.target.value as `0x${string}`,
-            })
+          options={choices}
+          value={data.buyToken}
+          searchPlaceholder={
+            buy?.kind === "settlement" ? "Search tokens" : "Search stocks"
           }
-        >
-          {choices.map((item) => (
-            <option key={item.address} value={item.address}>
-              {item.symbol} · {item.name}
-            </option>
-          ))}
-        </select>
+          onChange={(buyToken) => editor.updateNode(node.id, { buyToken })}
+        />
         {stock ? (
           <div className={styles.stockCard}>
             <div className={styles.stockHead}>
@@ -560,21 +547,13 @@ function BorrowFields({
           <span className="mono">{debt?.symbol ?? ""}</span>
         </div>
         {debtAssets.length > 1 ? (
-          <select
-            className={styles.select}
-            value={data.debtToken ?? ""}
-            onChange={(event) =>
-              editor.updateNode(node.id, {
-                debtToken: event.target.value as `0x${string}`,
-              })
-            }
-          >
-            {debtAssets.map((item) => (
-              <option key={item.address} value={item.address}>
-                {item.symbol}
-              </option>
-            ))}
-          </select>
+          <TokenSelect
+            id={`debt-${node.id}`}
+            options={debtAssets}
+            value={data.debtToken}
+            searchPlaceholder="Search tokens"
+            onChange={(debtToken) => editor.updateNode(node.id, { debtToken })}
+          />
         ) : null}
       </Section>
       <HealthGauge
@@ -773,26 +752,19 @@ function Section({
   );
 }
 
-function TokenDot({ symbol }: { symbol: string }) {
-  const color =
-    symbol === "USDT" ? "#2F9E7A" : symbol === "USDC" ? "#3A75C4" : "#0F110E";
-  return (
-    <span
-      className={`mono ${styles.tokenDot}`}
-      style={{
-        background: color,
-        color: color === "#0F110E" ? "#D5F56B" : "#FFFFFF",
-      }}
-    >
-      {symbol === "USDT" ? "₮" : symbol === "USDC" ? "$" : symbol.slice(0, 2)}
-    </span>
-  );
-}
-
 function balanceOf(asset: { balanceRaw?: bigint; decimals: number }): string {
   return asset.balanceRaw !== undefined
     ? `${formatDisplayAmount(formatUnits(asset.balanceRaw, asset.decimals))} available`
     : "—";
+}
+
+function heldAmount(asset: {
+  balanceRaw?: bigint;
+  decimals: number;
+}): string | undefined {
+  return asset.balanceRaw
+    ? formatDisplayAmount(formatUnits(asset.balanceRaw, asset.decimals))
+    : undefined;
 }
 
 function kindLabel(kind: RecipeFlowNode["data"]["kind"]): string {

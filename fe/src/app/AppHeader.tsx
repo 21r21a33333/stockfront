@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { Logo } from "@/ui/BlockIcon";
+import { bnbChainIcon } from "@/ui/tokenImages";
 import { WalletButton } from "@/wallet/WalletButton";
 import { usePositionsSheet } from "./positionsSheet";
 import { navigate, type Route } from "./route";
@@ -60,7 +61,7 @@ export function AppHeader({
           </button>
         ) : null}
         <span className={`mono ${styles.chain}`}>
-          <span className={styles.chainDot} />
+          <img className={styles.chainIcon} src={bnbChainIcon} alt="" />
           BNB Chain
         </span>
         <WalletButton />

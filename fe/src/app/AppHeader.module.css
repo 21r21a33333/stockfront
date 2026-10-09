@@ -94,11 +94,9 @@
   gap: 8px;
 }
 
-.chainDot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--bnb);
+.chainIcon {
+  width: 16px;
+  height: 16px;
 }
 
 @media (max-width: 900px) {

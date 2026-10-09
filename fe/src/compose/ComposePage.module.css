@@ -379,133 +379,205 @@
 }
 
 .planHead {
-  padding: 26px 28px 0;
+  padding: 28px 30px 0;
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  max-width: 740px;
+  gap: 8px;
 }
 
 .planMeta {
   display: flex;
   align-items: center;
   gap: 10px;
+  margin-bottom: 4px;
 }
 
-.pill {
-  font-size: 11px;
-  padding: 4px 10px;
+.planStatus {
+  height: 24px;
+  padding: 0 10px;
   border-radius: 999px;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 7px;
+  font-size: 11px;
+  letter-spacing: 0.04em;
 }
 
-.pill span {
+.planStatus span {
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: var(--ink);
+}
+
+.statusReady {
+  background: var(--good-soft);
+  color: var(--good-ink);
+}
+
+.statusReady span {
+  background: var(--good);
+  box-shadow: 0 0 0 3px rgba(63, 174, 106, 0.18);
+}
+
+.statusWarn {
+  background: var(--warn-soft);
+  color: #8a5a12;
+}
+
+.statusWarn span {
+  background: #d99a2b;
+}
+
+.stepCount {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted-2);
 }
 
 .planTitle {
   margin: 0;
-  font-size: 36px;
+  font-size: 40px;
   font-weight: 600;
-  line-height: 1.05;
+  line-height: 1.02;
 }
 
 .summary {
   margin: 0;
-  font-size: 17px;
+  max-width: 620px;
+  font-size: 16px;
   line-height: 1.5;
   color: var(--ink-3);
 }
 
-.flow {
-  margin: 24px 28px 0;
-  padding: 26px 22px;
-  border-radius: 20px;
-  background-color: var(--bg-soft);
-  background-image: radial-gradient(#d3d7cd 1px, transparent 1px);
-  background-size: 16px 16px;
-  overflow-x: auto;
+.planBody {
+  margin: 24px 30px 0;
+  display: grid;
+  gap: 16px;
 }
 
-.flowRow {
-  display: flex;
-  align-items: center;
-  min-width: max-content;
-  padding-top: 14px;
+.planBodySplit {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
 }
 
-.flowItem {
-  display: flex;
-  align-items: center;
+.panel {
+  padding: 14px 18px 6px;
+  border-radius: 18px;
+  border: 1px solid var(--line-soft);
+  align-self: stretch;
 }
 
-.planBlock {
-  width: 156px;
-  padding: 14px;
-  border-radius: 16px;
-  background: var(--surface);
-  color: var(--ink);
-  border: 1px solid rgba(15, 17, 14, 0.08);
-  box-shadow: 0 14px 28px -20px rgba(15, 17, 14, 0.45);
+.panelLabel {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted-2);
+}
+
+.steps {
+  margin: 0;
+  padding: 0;
+  list-style: none;
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  opacity: 0;
-  animation: blockPop 0.5s var(--ease) forwards;
 }
 
-.planBlockDark {
-  background: var(--ink);
-  color: #ffffff;
-}
-
-.blockName {
-  font-size: 14px;
-  font-weight: 600;
-}
-
-.blockDetail {
-  font-size: 11px;
-  opacity: 0.78;
-}
-
-.planLink {
-  width: 54px;
+.step {
   position: relative;
   display: flex;
   align-items: center;
+  gap: 14px;
+  padding: 10px 0;
+  opacity: 0;
+  animation: fadeUp 0.4s var(--ease) forwards;
 }
 
-.planLinkLine {
-  width: 100%;
-  height: 2px;
-  transform-origin: left center;
-  transform: scaleX(0);
-  animation:
-    lineGrow 0.3s cubic-bezier(0.4, 0, 0.2, 1) forwards,
-    flow 0.9s linear infinite;
-}
-
-.planLinkLabel {
+/* The rail joins each step's icon to the next one. */
+.step:not(:last-child)::after {
+  content: "";
   position: absolute;
-  left: 50%;
-  top: -22px;
-  translate: -50% 0;
-  font-size: 10px;
-  padding: 2px 6px;
-  border-radius: 6px;
-  background: var(--ink);
-  color: #ffffff;
-  white-space: nowrap;
+  left: 18px;
+  top: calc(50% + 21px);
+  height: calc(100% - 42px);
+  width: 2px;
+  border-radius: 2px;
+  background: var(--line);
+}
+
+.stepText {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.stepText strong {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.stepText small {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.stepIndex {
+  font-size: 11px;
+  color: var(--muted-2);
+}
+
+.quote {
+  background: var(--bg-soft);
+}
+
+.quoteList {
+  margin: 0;
+}
+
+.quoteRow {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 0;
+}
+
+.quoteRow + .quoteRow {
+  border-top: 1px solid var(--line-soft);
+}
+
+.quoteRow dt {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.quoteRow dd {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  text-align: right;
+}
+
+.quoteRow strong {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 15px;
+  font-weight: 500;
+}
+
+.quoteRow small {
+  font-size: 12px;
+  color: var(--muted-2);
 }
 
 .needsInput {
-  margin: 16px 28px 0;
+  margin: 16px 30px 0;
   padding: 16px 18px;
   border-radius: 16px;
   background: var(--warn-soft);
@@ -543,80 +615,50 @@
   border-color: var(--ink);
 }
 
-.stats {
-  margin: 16px 28px 0;
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(200px, 100%), 1fr));
-  border: 1px solid var(--line-soft);
-  border-radius: 18px;
-  overflow: hidden;
-}
-
-.stat {
-  padding: 16px 18px;
-  border-right: 1px solid var(--line-soft);
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.stat > span {
-  font-size: 11px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--muted-2);
-}
-
-.stat strong {
-  font-size: 22px;
-  font-weight: 500;
-}
-
-.stat small {
-  font-size: 13px;
-  color: var(--muted);
-}
-
 .notes {
   list-style: none;
-  margin: 16px 28px 0;
-  padding: 0;
+  margin: 20px 30px 0;
+  padding: 16px 0 0;
+  border-top: 1px dashed var(--line);
   display: flex;
   flex-direction: column;
   gap: 8px;
 }
 
 .notes li {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  font-size: 14px;
-  line-height: 1.45;
-  color: var(--ink-2);
+  position: relative;
+  padding-left: 16px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--muted);
 }
 
-.noteInfo,
-.noteWarn {
-  flex: none;
-  width: 20px;
-  height: 20px;
-  border-radius: 6px;
-  display: grid;
-  place-items: center;
-  font-size: 11px;
-  font-weight: 600;
+.notes li::before {
+  content: "";
+  position: absolute;
+  left: 2px;
+  top: 0.62em;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--line-2);
 }
 
-.noteInfo {
-  background: var(--chip);
+.notes .noteWarn {
+  padding: 10px 12px 10px 30px;
+  border-radius: 12px;
+  background: var(--warn-soft);
+  color: #6f4a10;
 }
 
-.noteWarn {
-  background: var(--warn);
+.notes .noteWarn::before {
+  left: 13px;
+  top: calc(10px + 0.62em);
+  background: #d99a2b;
 }
 
 .refine {
-  margin: 18px 28px 0;
+  margin: 18px 30px 0;
   display: flex;
   gap: 8px;
   padding: 6px 6px 6px 6px;
@@ -630,20 +672,23 @@
 }
 
 .openError {
-  margin: 16px 28px 0;
+  margin: 16px 30px 0;
   color: var(--bad);
   font-size: 14px;
 }
 
 .planActions {
-  margin-top: 22px;
-  padding: 18px 28px;
+  margin-top: 24px;
+  padding: 16px 30px 20px;
   border-top: 1px solid var(--line-soft);
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 8px;
-  background: #fafbf8;
+}
+
+.startOver {
+  margin-left: auto;
 }
 
 .primary {
@@ -742,6 +787,12 @@
   background: var(--lime);
 }
 
+@media (max-width: 760px) {
+  .planBodySplit {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 @media (max-width: 640px) {
   .main {
     padding: 40px 16px 96px;
@@ -756,12 +807,11 @@
     justify-content: center;
   }
 
-  .planHead,
-  .flow,
-  .stats,
+  .planBody,
   .notes,
   .needsInput,
-  .refine {
+  .refine,
+  .openError {
     margin-left: 16px;
     margin-right: 16px;
   }
@@ -770,21 +820,12 @@
     padding: 22px 16px 0;
   }
 
+  .planTitle {
+    font-size: 32px;
+  }
+
   .planActions {
     padding: 16px;
-  }
-}
-
-@keyframes blockPop {
-  from {
-    opacity: 0;
-    transform: translateY(14px) scale(0.94);
-    filter: blur(6px);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-    filter: blur(0);
   }
 }
 
@@ -796,21 +837,6 @@
   to {
     opacity: 1;
     transform: none;
-  }
-}
-
-@keyframes flow {
-  to {
-    background-position: 20px 0;
-  }
-}
-
-@keyframes lineGrow {
-  from {
-    transform: scaleX(0);
-  }
-  to {
-    transform: scaleX(1);
   }
 }
 

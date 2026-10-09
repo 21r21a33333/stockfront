@@ -1,0 +1,176 @@
+.root {
+  position: relative;
+}
+
+.field {
+  height: 48px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 6px 0 12px;
+  border-radius: 14px;
+  border: 1px solid var(--line-soft);
+  background: var(--surface);
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+.field:hover {
+  border-color: var(--line-2);
+}
+
+.fieldOpen,
+.field:focus-within {
+  border-color: var(--ink);
+  box-shadow: 0 0 0 4px rgba(213, 245, 107, 0.55);
+}
+
+.field input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  border: 0;
+  outline: none;
+  background: transparent;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.field input:focus {
+  cursor: text;
+}
+
+/* Closed with a selection, the placeholder carries the chosen token in full ink. */
+.inputSelected::placeholder {
+  color: var(--ink);
+  font-weight: 500;
+}
+
+.search {
+  flex: none;
+  color: var(--muted);
+}
+
+.toggle {
+  flex: none;
+  width: 32px;
+  height: 32px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--ink-3);
+  display: grid;
+  place-items: center;
+  transition:
+    background-color 0.15s ease,
+    transform 0.2s var(--ease);
+}
+
+.toggle:hover {
+  background: var(--bg-soft);
+}
+
+.fieldOpen .toggle {
+  transform: rotate(180deg);
+}
+
+.menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  z-index: 30;
+  max-height: 320px;
+  overflow-y: auto;
+  margin: 0;
+  padding: 6px;
+  list-style: none;
+  border-radius: 16px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  box-shadow: 0 30px 60px -30px rgba(15, 17, 14, 0.45);
+  animation: menuIn 0.18s var(--ease) both;
+}
+
+.menu[hidden] {
+  display: none;
+}
+
+.menuUp {
+  top: auto;
+  bottom: calc(100% + 6px);
+}
+
+.option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 11px;
+  cursor: pointer;
+}
+
+.optionActive {
+  background: var(--bg-soft);
+}
+
+.optionText {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.optionText strong {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.optionText small {
+  font-size: 12px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.detail {
+  flex: none;
+  font-size: 11px;
+  color: var(--ink-3);
+}
+
+.check {
+  flex: none;
+  color: var(--ink);
+}
+
+.none {
+  padding: 14px 10px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.dot {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 11px;
+  font-weight: 600;
+  flex: none;
+}
+
+@keyframes menuIn {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}

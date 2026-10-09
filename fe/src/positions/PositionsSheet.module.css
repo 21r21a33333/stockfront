@@ -136,15 +136,10 @@
   border-color: var(--ink);
 }
 
-.muted,
-.empty {
+.muted {
   margin: 0;
   font-size: 13px;
   color: var(--muted);
-}
-
-.empty {
-  padding: 24px;
 }
 
 .emptyState {
