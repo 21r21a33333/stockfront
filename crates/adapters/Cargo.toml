@@ -23,7 +23,7 @@ serde_json = "1.0"
 sha2 = "0.10.9"
 stockfront-core.workspace = true
 thiserror.workspace = true
-tokio = { workspace = true, features = ["rt", "sync"] }
+tokio = { workspace = true, features = ["rt", "sync", "time"] }
 uuid = { workspace = true, features = ["v4"] }
 utoipa.workspace = true
 venus-api = { path = "../venus-api" }

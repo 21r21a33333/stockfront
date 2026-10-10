@@ -1,4 +1,4 @@
-use std::str::FromStr;
+use std::{future::Future, str::FromStr, time::Duration};
 
 use alloy_primitives::U256;
 use stockfront_core::{
@@ -138,6 +138,31 @@ pub(super) fn ensure_business_success(
         }
         _ => Err(BinanceRequestError::Unavailable),
     }
+}
+
+/// Retries a Binance read that failed for a reason other than an answer.
+///
+/// The `DeFi` endpoints fail intermittently — around three requests in ten while
+/// testing earn — and a single failure otherwise becomes a 503 for the caller.
+/// Only transport-level failures are retried; a rejection is the provider's
+/// answer and repeating it would just be slower. The pause keeps a retry from
+/// compounding a rate limit, which this mapping cannot distinguish.
+pub(super) async fn retried<T, E, F, Fut>(mut call: F) -> Result<T, BinanceRequestError>
+where
+    F: FnMut() -> Fut,
+    Fut: Future<Output = Result<T, binance_web3_rwa::apis::Error<E>>>,
+{
+    const ATTEMPTS: u32 = 3;
+    const BACKOFF: Duration = Duration::from_millis(200);
+    for attempt in 1..ATTEMPTS {
+        match call().await.map_err(map_request_error) {
+            Err(BinanceRequestError::Unavailable) => {
+                tokio::time::sleep(BACKOFF * attempt).await;
+            }
+            result => return result,
+        }
+    }
+    call().await.map_err(map_request_error)
 }
 
 pub(super) fn map_request_error<T>(error: binance_web3_rwa::apis::Error<T>) -> BinanceRequestError {

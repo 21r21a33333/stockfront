@@ -11,8 +11,7 @@ use binance_web3_rwa::{
 use super::super::{
     client::BinanceWeb3Client,
     provider::{
-        BinanceRequestError, InvalidProviderData, ensure_business_success, map_request_error,
-        required,
+        BinanceRequestError, InvalidProviderData, ensure_business_success, required, retried,
     },
 };
 
@@ -35,14 +34,16 @@ impl BinanceWeb3Client {
         let mut provider_record_count = 0_usize;
 
         loop {
-            let response = list_defi_investments(
-                &self.configuration,
-                ListDefiInvestmentsParams {
-                    list_defi_investments_request: request(page_number),
-                },
-            )
-            .await
-            .map_err(map_request_error)?;
+            let body = request(page_number);
+            let response = retried(|| {
+                list_defi_investments(
+                    &self.configuration,
+                    ListDefiInvestmentsParams {
+                        list_defi_investments_request: body.clone(),
+                    },
+                )
+            })
+            .await?;
             ensure_business_success(response.code, response.success)?;
             let page = required(response.data)?;
             let total = page.total;
@@ -71,14 +72,15 @@ impl BinanceWeb3Client {
         E: From<BinanceRequestError> + From<InvalidProviderData>,
     {
         let body = models::GetDefiInvestmentDetailRequest::new(investment_id.to_owned());
-        let response = get_defi_investment_detail(
-            &self.configuration,
-            GetDefiInvestmentDetailParams {
-                get_defi_investment_detail_request: body,
-            },
-        )
-        .await
-        .map_err(map_request_error)?;
+        let response = retried(|| {
+            get_defi_investment_detail(
+                &self.configuration,
+                GetDefiInvestmentDetailParams {
+                    get_defi_investment_detail_request: body.clone(),
+                },
+            )
+        })
+        .await?;
         match ensure_business_success(response.code, response.success) {
             Ok(()) => {}
             Err(BinanceRequestError::Rejected) => return Ok(None),

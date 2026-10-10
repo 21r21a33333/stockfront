@@ -11,7 +11,7 @@ use super::{
 use crate::{
     bstock_borrowing::{BorrowingService, BorrowingServiceError},
     bstock_trade::SettlementTokenMetadata,
-    carry::{CarryOpportunityQuery, CarryQualification, CarryService},
+    carry::{CarryOpportunityQuery, CarryQualification, CarryService, CarryServiceError},
     recipes::{
         RecipeDefinition, RecipeDiagnostic, RecipeDiagnosticLocation, RecipeDiagnosticSeverity,
         RecipeError, RecipePrimitive, RecipeService,
@@ -30,6 +30,8 @@ pub enum StrategyComposerError {
     Recipe(#[from] RecipeError),
     #[error(transparent)]
     Borrowing(#[from] BorrowingServiceError),
+    #[error(transparent)]
+    Carry(#[from] CarryServiceError),
     #[error(transparent)]
     Model(#[from] StrategyModelError),
 }
@@ -108,23 +110,15 @@ impl StrategyComposerService {
                     .push("Which stablecoin should the earn deposit use?".to_owned());
                 continue;
             };
-            // The draft is worth keeping when the catalog is briefly unreadable:
-            // the recipe could not be signed either way, so ask rather than fail.
-            let Ok(opportunities) = self
+            // A read that cannot be completed is reported rather than turned into
+            // a question, because the answer is to try again, not to type one.
+            let best = self
                 .carry
                 .opportunities(CarryOpportunityQuery {
                     collateral_token: *collateral_token,
                     debt_token,
                 })
-                .await
-            else {
-                selection.missing.push(
-                    "Earn opportunities are temporarily unavailable. Pick one in the builder."
-                        .to_owned(),
-                );
-                continue;
-            };
-            let best = opportunities
+                .await?
                 .into_iter()
                 .filter(|opportunity| opportunity.qualification == CarryQualification::Eligible)
                 .max_by_key(|opportunity| opportunity.base_earn_rate_bps);
@@ -380,7 +374,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn an_unreadable_earn_catalog_asks_rather_than_losing_the_draft() {
+    async fn an_unreadable_earn_catalog_is_reported_not_turned_into_a_question() {
         let model = Arc::new(ScriptedModel::new(vec![Ok(draft(vec![
             wallet_usdt("10"),
             StrategyStep::EarnDeposit {
@@ -388,19 +382,14 @@ mod tests {
             },
         ]))]));
 
-        let composed = composer_with_earn(model, Arc::new(DownEarn))
+        let error = composer_with_earn(model, Arc::new(DownEarn))
             .compose(&request("earn on 10 usdt against my tesla"))
             .await
-            .unwrap_or_else(|error| panic!("a provider blip failed the composition: {error}"));
+            .expect_err("an unreadable catalog produced a strategy");
 
-        assert!(composed.recipe.is_none());
-        assert_eq!(composed.missing_inputs.len(), 1);
-        assert!(
-            composed.missing_inputs[0].contains("temporarily unavailable"),
-            "the user is not told why: {:?}",
-            composed.missing_inputs
-        );
-        assert_eq!(composed.intent.steps.len(), 2, "the draft was discarded");
+        // Asking would offer a text box for something no answer can fix; the
+        // caller needs the retryable failure instead.
+        assert!(matches!(error, StrategyComposerError::Carry(_)), "{error}");
     }
 
     #[tokio::test]
