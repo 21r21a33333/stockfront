@@ -47,6 +47,11 @@ sol! {
     }
 
     #[sol(rpc)]
+    interface TestErc20 {
+        function approve(address spender, uint256 amount) external returns (bool);
+    }
+
+    #[sol(rpc)]
     interface TestVenusDebtMarket {
         function borrow(uint256 amount) external returns (uint256);
         function borrowBalanceCurrent(address account) external returns (uint256);
@@ -287,6 +292,63 @@ async fn fully_repays_live_usdt_debt_on_venus() -> Result<(), Box<dyn Error>> {
     let context = live_evm_context().await?;
     let adapter = live_venus_adapter(true).await?;
     repay_live_usdt_debt(&context, &adapter).await
+}
+
+#[tokio::test]
+#[ignore = "repays live Venus USDT debt through the batched recipe path and spends BNB for gas"]
+async fn fully_repays_live_usdt_debt_through_the_batched_action() -> Result<(), Box<dyn Error>> {
+    let context = live_evm_context().await?;
+    let adapter = live_venus_adapter(true).await?;
+    let wallet = context.wallet.as_address();
+    let debt_market = TestVenusDebtMarket::new(VENUS_USDT, &context.provider);
+    let starting_debt = debt_market.borrowBalanceCurrent(wallet).call().await?;
+    if starting_debt == U256::ZERO {
+        return Err(io::Error::other("wallet has no Venus USDT debt to repay").into());
+    }
+    let starting_usdt = token_balance(&context.provider, USDT, wallet).await?;
+    if starting_usdt < starting_debt {
+        return Err(io::Error::other("wallet cannot cover the debt and accrued interest").into());
+    }
+
+    let action = adapter
+        .prepare_full_repayment(&PrepareRepaymentRequest {
+            wallet: context.wallet,
+            debt_token: USDT,
+            amount: PositionAmount::Full,
+        })
+        .await?;
+    let [approval, repayment] = action.transactions.as_slice() else {
+        return Err(io::Error::other("expected an approval followed by a repayment").into());
+    };
+    assert_eq!(approval.kind, BorrowingTransactionKind::Approve);
+    assert_eq!(approval.to, USDT);
+    assert_eq!(repayment.kind, BorrowingTransactionKind::Repay);
+    assert_eq!(repayment.to, VENUS_USDT);
+    let approved = TestErc20::approveCall::abi_decode(&approval.data)?;
+    assert_eq!(approved.spender, VENUS_USDT);
+    assert!(approved.amount >= starting_debt);
+
+    // Each leg is broadcast on its own so the repayment is estimated against the
+    // state the mined approval leaves behind, exactly as an atomic batch sees it.
+    for transaction in [approval, repayment] {
+        send_transaction(
+            &context.provider,
+            transaction.to,
+            transaction.data.clone(),
+            transaction.value,
+        )
+        .await?;
+    }
+
+    assert_eq!(
+        debt_market.borrowBalanceStored(wallet).call().await?,
+        U256::ZERO
+    );
+    let spent = starting_usdt
+        .checked_sub(token_balance(&context.provider, USDT, wallet).await?)
+        .ok_or_else(|| io::Error::other("USDT balance increased during repayment"))?;
+    assert!(spent >= starting_debt);
+    Ok(())
 }
 
 #[tokio::test]
