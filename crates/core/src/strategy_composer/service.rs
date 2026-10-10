@@ -127,7 +127,7 @@ impl StrategyComposerService {
                         opportunity.investment_name,
                         opportunity.protocol_name,
                         opportunity.base_earn_rate_display,
-                        opportunity.borrow_apy_percent
+                        opportunity.borrow_apy_percent.round_dp(2)
                     ));
                     *investment_id = opportunity.investment_id;
                 }
