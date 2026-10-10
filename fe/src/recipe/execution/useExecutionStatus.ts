@@ -13,7 +13,9 @@ import {
 } from "./model";
 
 const CHECK_WINDOW_MS = 120_000;
-const CHECK_INTERVAL_MS = 15_000;
+// BNB Chain produces a block roughly every 0.75s, so a slower poll reports a
+// settled action long after it landed.
+const CHECK_INTERVAL_MS = 1_500;
 
 export function useExecutionStatus({
   run,

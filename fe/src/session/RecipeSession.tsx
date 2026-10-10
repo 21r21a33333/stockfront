@@ -137,8 +137,12 @@ export function RecipeSessionProvider({
       : []);
 
   const execution = useRecipeExecution({ recipe, prepared: undefined });
+  // A run saved for another draft must not contribute completed nodes here.
   const runtimeContext = account.address
-    ? recipeRuntimeContext(account.address, execution.run?.attempts ?? [])
+    ? recipeRuntimeContext(
+        account.address,
+        execution.sameRecipe ? (execution.run?.attempts ?? []) : [],
+      )
     : undefined;
   const scopeKey = `${account.address?.toLowerCase()}:${account.chainId}:${recipeKey}:${JSON.stringify(runtimeContext?.completedNodes ?? [])}`;
   const scope = useRef(scopeKey);
@@ -184,8 +188,7 @@ export function RecipeSessionProvider({
     Boolean(runtimeContext) &&
     validation.data?.valid === true &&
     !execution.busy &&
-    !execution.completed &&
-    execution.sameRecipe;
+    !execution.completed;
 
   function refreshPreview(): void {
     if (!canPreview || !runtimeContext) return;

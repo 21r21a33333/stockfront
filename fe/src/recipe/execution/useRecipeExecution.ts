@@ -101,10 +101,14 @@ export function useRecipeExecution({
 
   const current =
     run && key === runKey(run.wallet, run.chainId) ? run : undefined;
-  const progress = executionProgress(current?.attempts ?? [], busy);
-  const pending = progress.find(isUnresolved);
-  const completed = current !== undefined && isRunComplete(current);
   const matches = !current || sameRecipe(current.recipe, recipe);
+  const saved = executionProgress(current?.attempts ?? [], busy);
+  const progress = matches ? saved : [];
+  // An unresolved action blocks every draft, not only the one that started it.
+  const pending = saved.find(isUnresolved);
+  const completed = matches && current !== undefined && isRunComplete(current);
+  const unfinishedOtherRun =
+    current !== undefined && !matches && !isRunComplete(current);
 
   const status = useExecutionStatus({
     run: current,
@@ -166,15 +170,13 @@ export function useRecipeExecution({
           let active =
             readRun(account.address!, account.chainId!) ??
             createRun(structuredClone(recipe), account.address!);
-          if (isRunComplete(active)) return;
           if (active.attempts.some(isUnresolved))
             throw new Error(
               "Previous action is unresolved. Check its status first.",
             );
           if (!sameRecipe(active.recipe, recipe))
-            throw new Error(
-              "Finish the saved execution before running this draft.",
-            );
+            active = createRun(structuredClone(recipe), account.address!);
+          if (isRunComplete(active)) return;
           if (usedPreparations.current.has(plan))
             throw new Error(
               "Refresh the route and prepare again before continuing.",
@@ -399,7 +401,7 @@ export function useRecipeExecution({
       );
   }
 
-  const latest = latestAttempts(current?.attempts ?? []);
+  const latest = latestAttempts(matches ? (current?.attempts ?? []) : []);
   const last = latest.at(-1);
   const requiresFreshPreparation = latest.some(
     (item) =>
@@ -410,7 +412,7 @@ export function useRecipeExecution({
     navigator.locks &&
     !pending &&
     !completed &&
-    matches &&
+    !unfinishedOtherRun &&
     !busy &&
     account.chainId === stockfrontChain.id,
   );
@@ -421,6 +423,7 @@ export function useRecipeExecution({
     blocked: pending !== undefined,
     busy,
     sameRecipe: matches,
+    unfinishedOtherRun,
     requiresFreshPreparation,
     canPrepareFresh,
     paused: status.paused,
@@ -431,7 +434,7 @@ export function useRecipeExecution({
       !usedPreparations.current.has(prepared) &&
       !pending &&
       !completed &&
-      matches &&
+      !unfinishedOtherRun &&
       !busy &&
       account.chainId === stockfrontChain.id,
     ),

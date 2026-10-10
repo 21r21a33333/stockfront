@@ -9,7 +9,7 @@ import {
 } from "viem";
 import type { PreparedRecipe, RecipeDefinition } from "@/api/generated";
 import { hash, recipe, token, wallet } from "./fixtures.test-support";
-import { readRun } from "./journal";
+import { createRun, readRun, writeRun } from "./journal";
 import { useRecipeExecution } from "./useRecipeExecution";
 
 const mocks = vi.hoisted(() => ({
@@ -419,6 +419,43 @@ it("settles collateral activation before borrowing and exposes the exact debt ou
       asset: { token: wallet, amount: "11" },
     },
   });
+});
+
+it("lets a finished run for another draft out of the way", async () => {
+  const other: RecipeDefinition = {
+    ...recipe,
+    nodes: [
+      { id: "other-source", kind: "WALLET_ASSET", token, rawAmount: "100" },
+      { id: "other-trade", kind: "TRADE", buyToken: wallet },
+    ],
+    edges: [],
+  };
+  writeRun({
+    ...createRun(other, wallet),
+    attempts: [
+      {
+        id: "old",
+        nodeId: "other-trade",
+        kind: "TRADE",
+        attempt: 1,
+        phase: "complete",
+        steps: ["TRADE"],
+      },
+    ],
+  });
+
+  const { result } = renderHook(
+    () => useRecipeExecution({ recipe, prepared: preparedSwap() }),
+    { wrapper: Wrapper },
+  );
+
+  expect(result.current.completed).toBe(false);
+  expect(result.current.unfinishedOtherRun).toBe(false);
+
+  await act(() => result.current.execute());
+
+  expect(mocks.sendCalls).toHaveBeenCalled();
+  expect(readRun(wallet, 56)?.recipe.nodes).toEqual(recipe.nodes);
 });
 
 function preparedSwap(): PreparedRecipe {

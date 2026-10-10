@@ -69,7 +69,9 @@ export function RunPage() {
   }, [doneCount]);
 
   const canAct =
-    session.walletReady && execution.sameRecipe && !execution.completed;
+    session.walletReady &&
+    !execution.unfinishedOtherRun &&
+    !execution.completed;
   const currentKey = current
     ? `${current.node.id}:${current.collateralEnabled}`
     : "";
@@ -131,8 +133,9 @@ export function RunPage() {
     setPhase("idle");
   }
 
-  const name =
-    execution.run && !execution.sameRecipe ? "Unfinished strategy" : editorName;
+  const name = execution.unfinishedOtherRun
+    ? "Unfinished strategy"
+    : editorName;
   const header = (
     <AppHeader
       showNav={false}
@@ -178,7 +181,7 @@ export function RunPage() {
       </Shell>
     );
   }
-  if (execution.run && !execution.sameRecipe) {
+  if (execution.unfinishedOtherRun) {
     return (
       <Shell header={header}>
         <Notice
@@ -433,7 +436,9 @@ export function RunPage() {
                 </div>
               </div>
             ) : null}
-            {current?.state === "unknown" && !waiting ? (
+            {(current?.state === "unknown" ||
+              (current?.state === "confirming" && execution.paused)) &&
+            !waiting ? (
               <div className={`${styles.alert} ${styles.alertBad}`}>
                 <div>
                   <strong>We couldn&apos;t confirm this step</strong>
@@ -574,7 +579,7 @@ export function RunPage() {
               </div>
             )}
 
-            {current?.state === "confirming" ? (
+            {current?.state === "confirming" && !execution.paused ? (
               <div className={styles.confirmBar}>
                 <div className={styles.confirmHead}>
                   <span>Confirming on-chain…</span>
