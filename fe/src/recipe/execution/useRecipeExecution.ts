@@ -17,6 +17,7 @@ import {
   nextAttemptNumber,
   patchAttempt,
   sameRecipe,
+  ExecutionMessage,
   type ExecutionAttempt,
   type ExecutionRun,
 } from "./model";
@@ -66,7 +67,7 @@ export function useRecipeExecution({
     } catch {
       storageFaults.current.add(target);
       publish(value);
-      throw new Error(
+      throw new ExecutionMessage(
         "Could not save recovery data. Copy the visible reference before leaving this page.",
       );
     }
@@ -147,7 +148,9 @@ export function useRecipeExecution({
         { ifAvailable: true },
         async (lock) => {
           if (!lock)
-            throw new Error("This wallet is executing in another tab.");
+            throw new ExecutionMessage(
+              "This wallet is executing in another tab.",
+            );
           assertWalletContext();
           const execution = await preparedExecution(
             plan,
@@ -163,7 +166,7 @@ export function useRecipeExecution({
               stockfrontChain.id,
             ))
           )
-            throw new Error(
+            throw new ExecutionMessage(
               "Atomic batching is not supported by this wallet on BNB Chain. No transaction was sent.",
             );
 
@@ -171,14 +174,14 @@ export function useRecipeExecution({
             readRun(account.address!, account.chainId!) ??
             createRun(structuredClone(recipe), account.address!);
           if (active.attempts.some(isUnresolved))
-            throw new Error(
+            throw new ExecutionMessage(
               "Previous action is unresolved. Check its status first.",
             );
           if (!sameRecipe(active.recipe, recipe))
             active = createRun(structuredClone(recipe), account.address!);
           if (isRunComplete(active)) return;
           if (usedPreparations.current.has(plan))
-            throw new Error(
+            throw new ExecutionMessage(
               "Refresh the route and prepare again before continuing.",
             );
 
@@ -396,7 +399,7 @@ export function useRecipeExecution({
       walletClient?.account.address.toLowerCase() !==
         account.address?.toLowerCase()
     )
-      throw new Error(
+      throw new ExecutionMessage(
         "Wallet changed. Return to the original wallet to continue.",
       );
   }
@@ -470,10 +473,7 @@ function message(cause: unknown, fallback: string): string {
 }
 
 function publicExecutionError(cause: unknown): string {
-  const value = message(cause, "Execution paused.");
-  return /^(Atomic|Previous|Finish|Refresh|This wallet|Wallet changed|Could not|No prepared|Prepare one|The prepared|A supply|Unsupported)/.test(
-    value,
-  )
-    ? value
+  return cause instanceof ExecutionMessage
+    ? cause.message
     : "Execution paused. Review the action status before continuing.";
 }

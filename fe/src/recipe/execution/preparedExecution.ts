@@ -4,6 +4,7 @@ import type {
   SubmitOrderRequest,
 } from "@/api/generated";
 import type { Address, Hex, WalletClient } from "viem";
+import { ExecutionMessage } from "./model";
 import {
   hasSufficientAllowance,
   simulatePreparedTransaction,
@@ -59,9 +60,11 @@ export async function preparedExecution(
   owner: Address,
 ): Promise<PreparedExecution> {
   const nodes = new Set(prepared.steps.map((step) => step.nodeId));
-  if (nodes.size !== 1) throw new Error("Prepare one recipe action at a time.");
+  if (nodes.size !== 1)
+    throw new ExecutionMessage("Prepare one recipe action at a time.");
   const nodeId = prepared.steps[0]?.nodeId;
-  if (!nodeId) throw new Error("No prepared recipe action is available.");
+  if (!nodeId)
+    throw new ExecutionMessage("No prepared recipe action is available.");
 
   const approval = prepared.steps.find((step) => step.kind === "APPROVAL");
   const trade = prepared.steps.find((step) => step.kind === "TRADE");
@@ -76,7 +79,9 @@ export async function preparedExecution(
 
   if (repayment?.kind === "REPAY") {
     if (prepared.steps.length !== 1)
-      throw new Error("A repayment preparation must contain one recipe step.");
+      throw new ExecutionMessage(
+        "A repayment preparation must contain one recipe step.",
+      );
     const calls = repaymentCalls(repayment.action.transactions);
     const approvalRequired = calls.length === 2;
     return {
@@ -131,13 +136,15 @@ export async function preparedExecution(
 
   if (withdrawal?.kind === "WITHDRAW") {
     if (prepared.steps.length !== 1)
-      throw new Error("A withdrawal preparation must contain one recipe step.");
+      throw new ExecutionMessage(
+        "A withdrawal preparation must contain one recipe step.",
+      );
     const [transaction] = withdrawal.action.transactions;
     if (
       withdrawal.action.transactions.length !== 1 ||
       transaction?.kind !== "WITHDRAW"
     )
-      throw new Error(
+      throw new ExecutionMessage(
         "The prepared withdrawal must contain one withdrawal transaction.",
       );
     return {
@@ -153,7 +160,7 @@ export async function preparedExecution(
 
   if (earn?.kind === "EARN_DEPOSIT") {
     if (prepared.steps.length !== 1)
-      throw new Error(
+      throw new ExecutionMessage(
         "An earn deposit preparation must contain one recipe step.",
       );
     const calls = earnDepositCalls(earn.action.transactions);
@@ -170,7 +177,9 @@ export async function preparedExecution(
 
   if (supply?.kind === "SUPPLY") {
     if (prepared.steps.length !== 1)
-      throw new Error("A supply preparation must contain one recipe step.");
+      throw new ExecutionMessage(
+        "A supply preparation must contain one recipe step.",
+      );
     const calls = supplyCalls(supply.action.transactions);
     return {
       kind: "CALL_BATCH",
@@ -238,7 +247,8 @@ export async function preparedExecution(
   }
 
   if (approval?.kind === "APPROVAL") {
-    if (!needsApproval) throw new Error("The allowance is already sufficient.");
+    if (!needsApproval)
+      throw new ExecutionMessage("The allowance is already sufficient.");
     return {
       kind: "CALL_BATCH",
       nodeId,
@@ -249,7 +259,7 @@ export async function preparedExecution(
       atomicRequired: false,
     };
   }
-  throw new Error("Unsupported prepared action.");
+  throw new ExecutionMessage("Unsupported prepared action.");
 }
 
 function earnDepositCalls(
@@ -263,7 +273,7 @@ function earnDepositCalls(
   const validApprovalAndDeposit =
     kinds.length === 2 && kinds[0] === "APPROVE" && kinds[1] === "DEPOSIT";
   if (!validDeposit && !validApprovalAndDeposit)
-    throw new Error("The prepared earn deposit is incomplete.");
+    throw new ExecutionMessage("The prepared earn deposit is incomplete.");
   return transactions.map(call);
 }
 
@@ -278,7 +288,7 @@ function supplyCalls(
   const validApprovalAndDeposit =
     kinds.length === 2 && kinds[0] === "APPROVE" && kinds[1] === "DEPOSIT";
   if (!validDeposit && !validApprovalAndDeposit)
-    throw new Error("The prepared supply action is incomplete.");
+    throw new ExecutionMessage("The prepared supply action is incomplete.");
   return transactions.map(call);
 }
 
@@ -293,7 +303,7 @@ function repaymentCalls(
   const validApprovalAndRepayment =
     kinds.length === 2 && kinds[0] === "APPROVE" && kinds[1] === "REPAY";
   if (!validRepayment && !validApprovalAndRepayment)
-    throw new Error("The prepared repayment action is incomplete.");
+    throw new ExecutionMessage("The prepared repayment action is incomplete.");
   return transactions.map(call);
 }
 
@@ -312,7 +322,7 @@ function oneBorrowingTransaction(
     transactions.length !== 1 ||
     transaction?.kind !== expectedKind
   )
-    throw new Error(
+    throw new ExecutionMessage(
       `The prepared ${label} must contain one ${label} transaction.`,
     );
   return transaction;
@@ -343,7 +353,7 @@ function call(action: { to: string; data: string; value?: string }): {
     !/^0x[\da-f]{40}$/i.test(action.to) ||
     !/^0x[\da-f]{8,}$/i.test(action.data)
   )
-    throw new Error("The prepared transaction is malformed.");
+    throw new ExecutionMessage("The prepared transaction is malformed.");
   return {
     to: action.to as Address,
     data: action.data as Hex,

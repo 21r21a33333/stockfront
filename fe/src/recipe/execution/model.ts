@@ -6,6 +6,12 @@ import type {
 } from "@/api/generated";
 import type { Address, Hash } from "viem";
 
+/// An execution failure whose wording was written for the user.
+///
+/// Anything else reaching the UI came from the wallet or the browser and is
+/// replaced, so a message is shown only when we chose it deliberately.
+export class ExecutionMessage extends Error {}
+
 export type ExecutionPhase =
   "awaiting" | "submitting" | "pending" | "complete" | "failed" | "attention";
 
