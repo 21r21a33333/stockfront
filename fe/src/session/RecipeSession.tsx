@@ -42,6 +42,9 @@ export function RecipeSessionProvider({
   const catalog = useQuery({
     queryKey: ["recipe-catalog"],
     queryFn: recipesApi.catalog,
+    // The language and the asset list outlive a session; prices inside it are
+    // only labels here, and live balances come from the chain separately.
+    staleTime: 5 * 60_000,
   });
   const { assets, refetchBalances } = useRecipeAssets(catalog.data);
   const walletReady = Boolean(

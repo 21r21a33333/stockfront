@@ -92,14 +92,18 @@ impl CarryService {
         &self,
         query: CarryOpportunityQuery,
     ) -> Result<Vec<CarryOpportunity>, CarryServiceError> {
-        let markets = self
-            .borrowing
-            .markets(BorrowingMarketQuery {
-                collateral_token: Some(query.collateral_token),
-                debt_token: Some(query.debt_token),
-            })
-            .await?;
-        let earn_opportunities = self.earn_reader.opportunities(query.debt_token).await?;
+        // The borrow market and the earn routes are independent reads against
+        // different providers, and each one costs a round trip.
+        let markets = self.borrowing.markets(BorrowingMarketQuery {
+            collateral_token: Some(query.collateral_token),
+            debt_token: Some(query.debt_token),
+        });
+        let earn = self.earn_reader.opportunities(query.debt_token);
+        let (markets, earn_opportunities) = futures_util::future::try_join(
+            async { markets.await.map_err(CarryServiceError::from) },
+            async { earn.await.map_err(CarryServiceError::from) },
+        )
+        .await?;
         let mut opportunities = markets
             .iter()
             .flat_map(|market| {

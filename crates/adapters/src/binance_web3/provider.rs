@@ -120,6 +120,39 @@ impl From<BinanceRequestError> for LiquidityProviderError {
     }
 }
 
+/// A provider failure held in one concrete type.
+///
+/// The read helpers are generic over the port error they report, but a cached
+/// read has to name a single error type, so failures travel as this and are
+/// mapped once the concrete caller is known.
+#[derive(Clone, Copy, Debug)]
+pub(crate) enum ProviderError {
+    Request(BinanceRequestError),
+    InvalidData,
+}
+
+impl From<BinanceRequestError> for ProviderError {
+    fn from(error: BinanceRequestError) -> Self {
+        Self::Request(error)
+    }
+}
+
+impl From<InvalidProviderData> for ProviderError {
+    fn from(_error: InvalidProviderData) -> Self {
+        Self::InvalidData
+    }
+}
+
+pub(super) fn mapped<E>(error: ProviderError) -> E
+where
+    E: From<BinanceRequestError> + From<InvalidProviderData>,
+{
+    match error {
+        ProviderError::Request(error) => error.into(),
+        ProviderError::InvalidData => InvalidProviderData.into(),
+    }
+}
+
 pub(super) fn business_succeeded(code: Option<i32>, success: Option<bool>) -> bool {
     code == Some(0) && success != Some(false)
 }

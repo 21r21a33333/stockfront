@@ -158,11 +158,22 @@ impl StrategyComposerService {
         if prompt.is_empty() || prompt.chars().count() > MAX_PROMPT_CHARS {
             return Err(StrategyComposerError::InvalidPrompt);
         }
-        let catalog = self.recipes.catalog().await?;
-        let account = match request.wallet {
-            Some(wallet) => Some(self.borrowing.account(wallet).await?),
-            None => None,
+        // Neither read depends on the other, and the catalogue alone is a
+        // provider round trip the composer would otherwise wait out twice.
+        let catalog = async {
+            self.recipes
+                .catalog()
+                .await
+                .map_err(StrategyComposerError::from)
         };
+        let account = async {
+            match request.wallet {
+                Some(wallet) => self.borrowing.account(wallet).await.map(Some),
+                None => Ok(None),
+            }
+            .map_err(StrategyComposerError::from)
+        };
+        let (catalog, account) = futures_util::future::try_join(catalog, account).await?;
         let resolver = Resolver::new(
             &catalog.bstocks,
             &self.settlement_tokens,

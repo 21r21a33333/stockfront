@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use async_trait::async_trait;
 use binance_web3_rwa::apis::rwa_data_api::{
     GetRwaTokenListParams, GetRwaTokenPriceParams, GetRwaUnderlyingInfoParams,
@@ -16,7 +18,15 @@ use super::{
 };
 
 impl BinanceWeb3Client {
-    async fn token_list(&self) -> Result<Vec<BstockSummary>, CatalogError> {
+    /// Returns the bStock listing, reading it from the provider at most once per
+    /// cache window however many services ask for it within that window.
+    async fn token_list(&self) -> Result<Arc<Vec<BstockSummary>>, CatalogError> {
+        self.bstocks
+            .get_or_load((), async { self.read_token_list().await.map(Arc::new) })
+            .await
+    }
+
+    async fn read_token_list(&self) -> Result<Vec<BstockSummary>, CatalogError> {
         let response = get_rwa_token_list(
             &self.configuration,
             GetRwaTokenListParams {
@@ -110,15 +120,18 @@ impl BinanceWeb3Client {
 #[async_trait]
 impl BstockCatalog for BinanceWeb3Client {
     async fn list_bstocks(&self) -> Result<Vec<BstockSummary>, CatalogError> {
-        self.token_list().await
+        self.token_list()
+            .await
+            .map(|assets| assets.as_ref().clone())
     }
 
     async fn find_bstock(&self, id: BstockId) -> Result<Option<BstockDetails>, CatalogError> {
         let Some(summary) = self
             .token_list()
             .await?
-            .into_iter()
+            .iter()
             .find(|asset| asset.id == id)
+            .cloned()
         else {
             return Ok(None);
         };

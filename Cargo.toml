@@ -18,6 +18,7 @@ license = "MIT"
 alloy-primitives = "1.7.3"
 async-trait = "0.1.89"
 dotenvy = "0.15.7"
+futures-util = { version = "0.3.31", default-features = false, features = ["std"] }
 axum = "0.8.6"
 rust_decimal = "1.39.0"
 petgraph = "0.8.3"

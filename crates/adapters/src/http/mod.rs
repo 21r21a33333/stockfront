@@ -6,10 +6,11 @@ pub mod openapi;
 mod primitives;
 mod request;
 
-use std::sync::Arc;
+use std::{sync::Arc, time::Duration};
 
 use axum::{
     Router,
+    http::{HeaderValue, header},
     routing::{get, post},
 };
 use stockfront_core::{
@@ -18,11 +19,43 @@ use stockfront_core::{
     managed_portfolios::ManagedPortfolioService, recipes::RecipeService,
     strategy_composer::StrategyComposerService, wallet_portfolio::WalletPortfolioService,
 };
+use tower_http::{
+    compression::CompressionLayer,
+    set_header::SetResponseHeaderLayer,
+    trace::{DefaultOnResponse, TraceLayer},
+};
+use tracing::Level;
+
+/// How long a client may reuse a catalogue response without asking again.
+///
+/// The listing it serves is itself held for a minute, so a browser that reloads
+/// inside this window is only ever shown what the server would have replied.
+const CATALOG_MAX_AGE: Duration = Duration::from_secs(30);
+
+/// Applies the transport concerns every route shares.
+///
+/// Catalogue payloads run to tens of kilobytes of JSON, which compresses to a
+/// fraction of that; the trace layer records each request's latency so a slow
+/// route can be told apart from a slow provider.
+pub fn api(router: Router) -> Router {
+    router
+        .layer(CompressionLayer::new())
+        .layer(TraceLayer::new_for_http().on_response(DefaultOnResponse::new().level(Level::INFO)))
+}
+
+fn cacheable() -> SetResponseHeaderLayer<HeaderValue> {
+    let value = format!("public, max-age={}", CATALOG_MAX_AGE.as_secs());
+    SetResponseHeaderLayer::overriding(
+        header::CACHE_CONTROL,
+        HeaderValue::from_str(&value).unwrap_or(HeaderValue::from_static("public, max-age=30")),
+    )
+}
 
 pub fn recipe_router(service: Arc<RecipeService>) -> Router {
     Router::new()
         .route("/v1/openapi.json", get(openapi::document))
         .route("/v1/recipe-primitives", get(handlers::recipes::primitives))
+        .layer(cacheable())
         .route("/v1/recipes/validate", post(handlers::recipes::validate))
         .route("/v1/recipes/preview", post(handlers::recipes::preview))
         .route("/v1/recipes/prepare", post(handlers::recipes::prepare))
@@ -113,6 +146,7 @@ pub fn bstock_router(service: Arc<BstockMarketService>) -> Router {
             "/v1/bstocks/{chain_id}/{contract}",
             get(handlers::bstocks::get_bstock),
         )
+        .layer(cacheable())
         .with_state(service)
 }
 

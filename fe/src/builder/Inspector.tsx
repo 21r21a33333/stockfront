@@ -517,6 +517,9 @@ function EarnFields({
     enabled: Boolean(collateralToken && depositToken),
     queryFn: () =>
       recipesApi.carryOpportunities(collateralToken!, depositToken!),
+    // Reopening the inspector should not re-run the slowest read in the API;
+    // earn rates move far more slowly than a user clicks between nodes.
+    staleTime: 60_000,
   });
   if (data.kind !== "EARN_DEPOSIT") return null;
   // The best spread is what the user is choosing between, so lead with it.

@@ -165,21 +165,24 @@ impl VenusBorrowingAdapter {
             return Err(BorrowingProviderError::InvalidData);
         }
 
+        // One round trip per supplied token, taken together rather than in turn.
         let comptroller = IVenusComptroller::new(self.comptroller, &self.provider);
-        let mut enabled_collateral = HashSet::new();
-        for token in &supplied_tokens {
+        let memberships = supplied_tokens.iter().map(|token| async {
             let market = markets
                 .get(token)
                 .ok_or(BorrowingProviderError::InvalidData)?;
-            if comptroller
+            let member = comptroller
                 .checkMembership(wallet.as_address(), market.market)
                 .call()
                 .await
-                .map_err(|_| BorrowingProviderError::Unavailable)?
-            {
-                enabled_collateral.insert(*token);
-            }
-        }
+                .map_err(|_| BorrowingProviderError::Unavailable)?;
+            Ok::<_, BorrowingProviderError>(member.then_some(*token))
+        });
+        let enabled_collateral = futures_util::future::try_join_all(memberships)
+            .await?
+            .into_iter()
+            .flatten()
+            .collect::<HashSet<_>>();
 
         let selected_position_found =
             selected_collateral.is_none_or(|token| supplied_tokens.contains(&token));

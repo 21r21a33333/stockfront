@@ -8,7 +8,7 @@ use stockfront_adapters::{
     gemini::GeminiClient,
     glider::GliderAdapter,
     http::{
-        basket_router, borrowing_router, bstock_router, carry_router, liquidity_router,
+        api, basket_router, borrowing_router, bstock_router, carry_router, liquidity_router,
         managed_portfolio_router, recipe_router, strategy_router, trade_router, wallet_router,
     },
     openai_compatible::OpenAiCompatibleClient,
@@ -34,6 +34,12 @@ use stockfront_core::{
     reason = "the composition root wires every vertical slice in one place"
 )]
 async fn main() -> Result<(), Box<dyn Error>> {
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| "stockfront_app=info,tower_http=info".into()),
+        )
+        .init();
     let Settings {
         binance_web3_api_key,
         binance_web3_api_secret,
@@ -136,7 +142,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .merge(basket_router(baskets))
         .merge(managed_portfolio_router(managed_portfolios))
         .merge(recipes);
-    serve(bind_address, app).await?;
+    serve(bind_address, api(app)).await?;
     Ok(())
 }
 

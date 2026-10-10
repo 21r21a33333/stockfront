@@ -1,4 +1,7 @@
-use std::collections::{HashMap, HashSet};
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Arc,
+};
 
 use alloy_primitives::{Address, U256};
 use async_trait::async_trait;
@@ -234,13 +237,49 @@ impl VenusBorrowingAdapter {
             .ok_or(BorrowingProviderError::Rejected)
     }
 
+    /// Returns the live state of each requested token's Venus market.
+    ///
+    /// The provider only lists every market on the chain, so the listing is read
+    /// once per cache window and the requested rows are selected from it here.
+    /// That turns the second and later lookups in a request — a borrow reads the
+    /// market, then reads it again to price the account's risk — into memory work.
     pub(super) async fn market_states(
         &self,
         requested_tokens: &HashSet<Address>,
     ) -> Result<HashMap<Address, MarketState>, BorrowingProviderError> {
+        let markets = self.listed_markets().await?;
+        let mut states = HashMap::with_capacity(requested_tokens.len());
+
+        for market in markets.iter() {
+            let Some(contract) = market
+                .underlying_address
+                .as_deref()
+                .and_then(|address| address.parse::<Address>().ok())
+            else {
+                continue;
+            };
+            if !requested_tokens.contains(&contract) {
+                continue;
+            }
+
+            let state = MarketState::try_from(market.clone())?;
+            if state.comptroller == self.comptroller {
+                states.insert(contract, state);
+            }
+        }
+
+        Ok(states)
+    }
+
+    async fn listed_markets(&self) -> Result<Arc<Vec<Market>>, BorrowingProviderError> {
+        self.markets
+            .get_or_load((), async { self.read_markets().await.map(Arc::new) })
+            .await
+    }
+
+    async fn read_markets(&self) -> Result<Vec<Market>, BorrowingProviderError> {
         let mut page = 0;
-        let mut fetched = 0;
-        let mut states = HashMap::new();
+        let mut markets = Vec::new();
 
         loop {
             let response = get_markets(
@@ -257,33 +296,15 @@ impl VenusBorrowingAdapter {
             let total =
                 usize::try_from(response.total).map_err(|_| BorrowingProviderError::InvalidData)?;
             let result_count = response.result.len();
-            fetched += result_count;
+            markets.extend(response.result);
 
-            for market in response.result {
-                let Some(contract) = market
-                    .underlying_address
-                    .as_deref()
-                    .and_then(|address| address.parse::<Address>().ok())
-                else {
-                    continue;
-                };
-                if !requested_tokens.contains(&contract) {
-                    continue;
-                }
-
-                let state = MarketState::try_from(market)?;
-                if state.comptroller == self.comptroller {
-                    states.insert(contract, state);
-                }
-            }
-
-            if result_count == 0 || fetched >= total {
+            if result_count == 0 || markets.len() >= total {
                 break;
             }
             page += 1;
         }
 
-        Ok(states)
+        Ok(markets)
     }
 }
 

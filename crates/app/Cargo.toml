@@ -12,6 +12,7 @@ stockfront-adapters = { path = "../adapters" }
 stockfront-core.workspace = true
 thiserror.workspace = true
 tokio = { workspace = true, features = ["macros", "net", "rt-multi-thread", "signal"] }
+tracing-subscriber = { version = "0.3.20", features = ["env-filter"] }
 
 [lints]
 workspace = true

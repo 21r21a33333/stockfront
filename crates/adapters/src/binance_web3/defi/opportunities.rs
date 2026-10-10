@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::{collections::HashSet, sync::Arc};
 
 use alloy_primitives::Address;
 use async_trait::async_trait;
@@ -13,7 +13,7 @@ use stockfront_core::{
 
 use super::{
     super::{
-        client::BinanceWeb3Client,
+        client::{BinanceWeb3Client, InvestmentListKind},
         provider::{InvalidProviderData, parse, required, required_non_empty},
     },
     investments::INVESTMENT_PAGE_SIZE,
@@ -31,23 +31,20 @@ impl EarnReader for BinanceWeb3Client {
         if investment_ids.is_empty() {
             return Ok(Vec::new());
         }
-        let mut opportunities = Vec::with_capacity(investment_ids.len());
+        let details = self
+            .investment_details::<EarnProviderError>(&investment_ids)
+            .await?;
+        let mut opportunities = Vec::with_capacity(details.len());
 
-        for investment_id in investment_ids {
-            let Some(detail) = self
-                .investment_detail::<EarnProviderError>(&investment_id)
-                .await?
-            else {
+        for (investment_id, detail) in investment_ids.iter().zip(details) {
+            let Some(detail) = detail.filter(|detail| is_bsc_earn(&detail.investment)) else {
                 continue;
             };
-            if !is_bsc_earn(&detail.investment) {
-                continue;
-            }
             if let Ok(opportunity) = EarnOpportunity::try_from(ProviderEarnOpportunity {
-                investment_id,
+                investment_id: investment_id.clone(),
                 asset,
                 observed_at_ms: detail.observed_at_ms,
-                detail: detail.investment,
+                detail: detail.investment.clone(),
             }) {
                 opportunities.push(opportunity);
             }
@@ -78,7 +75,7 @@ impl EarnReader for BinanceWeb3Client {
             investment_id: investment_id.to_owned(),
             asset,
             observed_at_ms: detail.observed_at_ms,
-            detail: detail.investment,
+            detail: detail.investment.clone(),
         })
         .map(Some)
         .map_err(Into::into)
@@ -90,9 +87,14 @@ impl EarnReader for BinanceWeb3Client {
 }
 
 impl BinanceWeb3Client {
-    async fn earn_investment_ids(&self, asset: Address) -> Result<Vec<String>, EarnProviderError> {
-        self.investment_ids::<EarnProviderError, _>(|page| earn_list_request(asset, page))
-            .await
+    async fn earn_investment_ids(
+        &self,
+        asset: Address,
+    ) -> Result<Arc<Vec<String>>, EarnProviderError> {
+        self.investment_ids::<EarnProviderError, _>(InvestmentListKind::Earn, asset, |page| {
+            earn_list_request(asset, page)
+        })
+        .await
     }
 
     pub(super) async fn is_bsc_earn_investment(

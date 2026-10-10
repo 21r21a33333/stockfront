@@ -12,7 +12,7 @@ use stockfront_core::{
 
 use super::{
     super::{
-        client::BinanceWeb3Client,
+        client::{BinanceWeb3Client, InvestmentListKind},
         provider::{InvalidProviderData, parse, parse_optional, required, required_non_empty},
     },
     investments::INVESTMENT_PAGE_SIZE,
@@ -25,26 +25,28 @@ impl LiquidityReader for BinanceWeb3Client {
         bstock_token: Address,
     ) -> Result<Vec<LiquidityOpportunity>, LiquidityProviderError> {
         let investment_ids = self
-            .investment_ids::<LiquidityProviderError, _>(|page| {
-                liquidity_list_request(bstock_token, page)
-            })
+            .investment_ids::<LiquidityProviderError, _>(
+                InvestmentListKind::Liquidity,
+                bstock_token,
+                |page| liquidity_list_request(bstock_token, page),
+            )
             .await?;
         if investment_ids.is_empty() {
             return Ok(Vec::new());
         }
+        let details = self
+            .investment_details::<LiquidityProviderError>(&investment_ids)
+            .await?;
+        let mut opportunities = Vec::with_capacity(details.len());
 
-        let mut opportunities = Vec::with_capacity(investment_ids.len());
-        for investment_id in investment_ids {
-            let Some(detail) = self
-                .investment_detail::<LiquidityProviderError>(&investment_id)
-                .await?
-            else {
+        for (investment_id, detail) in investment_ids.iter().zip(details) {
+            let Some(detail) = detail else {
                 continue;
             };
             if let Ok(opportunity) = LiquidityOpportunity::try_from(ProviderLiquidityOpportunity {
-                investment_id,
+                investment_id: investment_id.clone(),
                 observed_at_ms: detail.observed_at_ms,
-                detail: detail.investment,
+                detail: detail.investment.clone(),
             }) {
                 opportunities.push(opportunity);
             }

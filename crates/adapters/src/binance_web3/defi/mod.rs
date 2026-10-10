@@ -7,3 +7,5 @@ mod liquidity_positions;
 mod mapping;
 mod opportunities;
 mod positions;
+
+pub(crate) use investments::ProviderInvestmentDetail;

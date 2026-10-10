@@ -39,48 +39,72 @@ impl BstockBalanceReader for BinanceWeb3Client {
             });
         }
 
-        let mut observed_at_ms = None;
-        let mut balances = Vec::with_capacity(assets.len());
-        for batch in assets.chunks(MAX_TOKENS_PER_REQUEST) {
-            let response = get_token_balances_by_address(
-                &self.configuration,
-                GetTokenBalancesByAddressParams {
-                    get_token_balances_by_address_request: balance_request(wallet, batch),
-                },
-            )
-            .await
-            .map_err(|_| BalanceReaderError::Unavailable)?;
-
-            if !business_succeeded(response.code, response.success) {
-                return Err(BalanceReaderError::Unavailable);
-            }
-            let timestamp = response.timestamp.ok_or(BalanceReaderError::InvalidData)?;
-            observed_at_ms =
-                Some(observed_at_ms.map_or(timestamp, |current: i64| current.min(timestamp)));
-
-            let mut returned = HashMap::with_capacity(batch.len());
-            for value in response
-                .data
-                .unwrap_or_default()
-                .into_iter()
-                .flat_map(|group| group.token_assets.unwrap_or_default())
-            {
-                let balance = BstockBalance::try_from(ProviderBalance(value))?;
-                returned.insert(balance.id, balance);
-            }
-
-            balances.extend(batch.iter().map(|id| {
-                returned.remove(id).unwrap_or(BstockBalance {
-                    id: *id,
-                    raw_amount: U256::ZERO,
-                    amount: Decimal::ZERO,
-                })
-            }));
-        }
+        // The provider caps a request at a score of tokens, so a full catalogue
+        // needs several; they describe the same instant and are read as one.
+        let batches = assets
+            .chunks(MAX_TOKENS_PER_REQUEST)
+            .map(|batch| self.read_balance_batch(wallet, batch));
+        let reads = futures_util::future::try_join_all(batches).await?;
+        let observed_at_ms = reads
+            .iter()
+            .map(|read| read.observed_at_ms)
+            .min()
+            .ok_or(BalanceReaderError::InvalidData)?;
 
         Ok(BstockBalanceSnapshot {
-            observed_at_ms: observed_at_ms.ok_or(BalanceReaderError::InvalidData)?,
-            balances,
+            observed_at_ms,
+            balances: reads.into_iter().flat_map(|read| read.balances).collect(),
+        })
+    }
+}
+
+struct BalanceBatch {
+    observed_at_ms: i64,
+    balances: Vec<BstockBalance>,
+}
+
+impl BinanceWeb3Client {
+    async fn read_balance_batch(
+        &self,
+        wallet: WalletAddress,
+        batch: &[BstockId],
+    ) -> Result<BalanceBatch, BalanceReaderError> {
+        let response = get_token_balances_by_address(
+            &self.configuration,
+            GetTokenBalancesByAddressParams {
+                get_token_balances_by_address_request: balance_request(wallet, batch),
+            },
+        )
+        .await
+        .map_err(|_| BalanceReaderError::Unavailable)?;
+
+        if !business_succeeded(response.code, response.success) {
+            return Err(BalanceReaderError::Unavailable);
+        }
+        let observed_at_ms = response.timestamp.ok_or(BalanceReaderError::InvalidData)?;
+        let mut returned = HashMap::with_capacity(batch.len());
+        for value in response
+            .data
+            .unwrap_or_default()
+            .into_iter()
+            .flat_map(|group| group.token_assets.unwrap_or_default())
+        {
+            let balance = BstockBalance::try_from(ProviderBalance(value))?;
+            returned.insert(balance.id, balance);
+        }
+
+        Ok(BalanceBatch {
+            observed_at_ms,
+            balances: batch
+                .iter()
+                .map(|id| {
+                    returned.remove(id).unwrap_or(BstockBalance {
+                        id: *id,
+                        raw_amount: U256::ZERO,
+                        amount: Decimal::ZERO,
+                    })
+                })
+                .collect(),
         })
     }
 }

@@ -6,15 +6,23 @@ use reqwest_middleware::ClientBuilder;
 use stockfront_core::bstock_market::BNB_CHAIN_ID;
 use thiserror::Error;
 use url::Url;
-use venus_api::apis::configuration::Configuration;
+use venus_api::{apis::configuration::Configuration, models::Market};
 
-use crate::binance_web3::BinanceWeb3Client;
+use crate::{binance_web3::BinanceWeb3Client, cache::TtlCache};
+
+/// How long one read of the Venus market listing is reused.
+///
+/// Listing the markets costs seconds and every borrowing route needs it, often
+/// twice. Rates and caps drift per block, so the window stays short enough that
+/// a preview and the transaction it produces agree.
+const MARKETS_TTL: Duration = Duration::from_secs(30);
 
 pub struct VenusBorrowingAdapter {
     pub(super) api: Configuration,
     pub(super) comptroller: Address,
     pub(super) binance: Arc<BinanceWeb3Client>,
     pub(super) provider: DynProvider,
+    pub(super) markets: TtlCache<(), Arc<Vec<Market>>>,
 }
 
 impl VenusBorrowingAdapter {
@@ -31,6 +39,7 @@ impl VenusBorrowingAdapter {
         timeout: Duration,
     ) -> Result<Self, VenusConfigurationError> {
         let client = reqwest::Client::builder()
+            .gzip(true)
             .timeout(timeout)
             .build()
             .map_err(|_| VenusConfigurationError::Unavailable)?;
@@ -56,6 +65,7 @@ impl VenusBorrowingAdapter {
             comptroller,
             binance,
             provider,
+            markets: TtlCache::new(1, MARKETS_TTL),
         })
     }
 }
