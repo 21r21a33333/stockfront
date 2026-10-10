@@ -70,7 +70,7 @@ impl<T: Serialize> IntoResponse for Response<T> {
 pub(super) type ApiResult<T> = Result<Response<T>, ApiError>;
 pub(super) type ErrorResponse = Response<()>;
 
-#[derive(Debug, Serialize)]
+#[derive(utoipa::ToSchema, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(super) struct List<T> {
     items: Vec<T>,

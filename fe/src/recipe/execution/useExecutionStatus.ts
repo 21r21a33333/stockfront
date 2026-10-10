@@ -164,17 +164,19 @@ async function readStatus({
         error:
           attempt.kind === "SUPPLY"
             ? "Atomic approval and supply reverted. Prepare the supply again before retrying."
-            : attempt.kind === "WITHDRAW"
-              ? "Withdrawal reverted. Prepare the withdrawal again before retrying."
-              : attempt.kind === "ENABLE_COLLATERAL"
-                ? "Collateral activation reverted. Prepare it again before borrowing."
-                : attempt.kind === "BORROW"
-                  ? "Borrow reverted. Refresh the risk preview before retrying."
-                  : attempt.kind === "REPAY"
-                    ? "Repayment reverted. Refresh the live debt before retrying."
-                    : reference.atomicRequired
-                      ? "Atomic approval and swap reverted. Refresh the route before retrying."
-                      : "Transaction failed. Refresh the route before retrying.",
+            : attempt.kind === "EARN_DEPOSIT"
+              ? "Atomic approval and earn deposit reverted. Prepare the deposit again before retrying."
+              : attempt.kind === "WITHDRAW"
+                ? "Withdrawal reverted. Prepare the withdrawal again before retrying."
+                : attempt.kind === "ENABLE_COLLATERAL"
+                  ? "Collateral activation reverted. Prepare it again before borrowing."
+                  : attempt.kind === "BORROW"
+                    ? "Borrow reverted. Refresh the risk preview before retrying."
+                    : attempt.kind === "REPAY"
+                      ? "Repayment reverted. Refresh the live debt before retrying."
+                      : reference.atomicRequired
+                        ? "Atomic approval and swap reverted. Refresh the route before retrying."
+                        : "Transaction failed. Refresh the route before retrying.",
       };
     if (result.status !== "success") return undefined;
     if (reference.atomicRequired && !result.atomic)

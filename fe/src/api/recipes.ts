@@ -17,6 +17,12 @@ export const recipesApi = {
     apiResult(api.POST("/v1/recipes/preview", { body })),
   prepare: (body: PrepareRecipeRequest) =>
     apiResult(api.POST("/v1/recipes/prepare", { body })),
+  carryOpportunities: (collateralToken: string, debtToken: string) =>
+    apiResult(
+      api.GET("/v1/carry/opportunities", {
+        params: { query: { collateralToken, debtToken } },
+      }),
+    ),
   borrowingAccount: (address: string) =>
     apiResult(
       api.GET("/v1/wallets/{address}/loans", {

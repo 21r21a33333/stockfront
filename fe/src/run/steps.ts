@@ -18,7 +18,14 @@ export interface RunStep {
   error?: string;
 }
 
-const actions = new Set(["TRADE", "SUPPLY", "WITHDRAW", "BORROW", "REPAY"]);
+const actions = new Set([
+  "TRADE",
+  "SUPPLY",
+  "EARN_DEPOSIT",
+  "WITHDRAW",
+  "BORROW",
+  "REPAY",
+]);
 
 /**
  * One step per action block, in recipe order. A block is done only when its own

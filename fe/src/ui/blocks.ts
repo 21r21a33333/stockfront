@@ -52,6 +52,8 @@ export function blockKind(kind: RecipePrimitiveKind): BlockKind {
       return "trade";
     case "SUPPLY":
       return "supply";
+    case "EARN_DEPOSIT":
+      return "earn";
     case "BORROW":
       return "borrow";
     case "REPAY":

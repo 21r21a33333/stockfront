@@ -500,3 +500,36 @@
     transform: none;
   }
 }
+
+.hint {
+  margin: 0;
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+
+.opportunities {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.opportunity {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--paper);
+  text-align: left;
+  cursor: pointer;
+}
+
+.opportunity[aria-pressed="true"] {
+  border-color: var(--ink);
+  background: var(--wash);
+}

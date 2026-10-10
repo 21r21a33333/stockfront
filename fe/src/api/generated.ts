@@ -48,6 +48,22 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/carry/opportunities": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: operations["opportunities"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/recipe-primitives": {
     parameters: {
       query?: never;
@@ -912,6 +928,32 @@ export interface components {
       };
       status: components["schemas"]["Status"];
     };
+    Response_List_CarryOpportunity: {
+      error?: components["schemas"]["Error"];
+      result?: {
+        items: {
+          asset: components["schemas"]["BorrowingToken"];
+          availableBorrowLiquidity: string;
+          /** Format: int64 */
+          baseEarnRateBps: number;
+          baseEarnRateDisplay: string;
+          baseSpreadPercent?: string | null;
+          borrowApyPercent: string;
+          investmentId: string;
+          investmentName: string;
+          /** Format: int64 */
+          observedAtMs: number;
+          protocolId: string;
+          protocolLogoUrl?: string | null;
+          protocolName: string;
+          qualification: components["schemas"]["CarryQualification"];
+          rateType: components["schemas"]["EarnRateType"];
+          reasons: components["schemas"]["CarryOpportunityReason"][];
+          reportedTvlUsd?: string | null;
+        }[];
+      };
+      status: components["schemas"]["Status"];
+    };
     Response_PreparedRecipe: {
       error?: components["schemas"]["Error"];
       result?: {
@@ -1248,6 +1290,8 @@ export type Response_BorrowingAccount =
   components["schemas"]["Response_BorrowingAccount"];
 export type Response_ComposedStrategy =
   components["schemas"]["Response_ComposedStrategy"];
+export type Response_List_CarryOpportunity =
+  components["schemas"]["Response_List_CarryOpportunity"];
 export type Response_PreparedRecipe =
   components["schemas"]["Response_PreparedRecipe"];
 export type Response_RecipeCatalog =
@@ -1361,6 +1405,36 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["Response_TradeTransactionStatus"];
+        };
+      };
+      default: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Response"];
+        };
+      };
+    };
+  };
+  opportunities: {
+    parameters: {
+      query: {
+        collateralToken: string;
+        debtToken: string;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Response_List_CarryOpportunity"];
         };
       };
       default: {

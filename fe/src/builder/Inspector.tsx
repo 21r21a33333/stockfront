@@ -1,5 +1,7 @@
+import { useQuery } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import { formatUnits } from "viem";
+import { recipesApi } from "@/api/recipes";
 import { compatibleTradeAssets } from "@/recipe/editor/tradePolicy";
 import { borrowDebtAssets } from "@/recipe/editor/borrowPolicy";
 import { useRecipeEditor } from "@/recipe/editor/store";
@@ -147,6 +149,8 @@ function Fields({
       return <TradeFields node={node} ctx={ctx} index={index} />;
     case "SUPPLY":
       return <SupplyFields node={node} ctx={ctx} index={index} />;
+    case "EARN_DEPOSIT":
+      return <EarnFields node={node} ctx={ctx} index={index} />;
     case "BORROW":
       return <BorrowFields node={node} ctx={ctx} index={index} />;
     case "REPAY":
@@ -487,6 +491,98 @@ function SupplyFields({
           </dd>
         </dl>
       ) : null}
+    </>
+  );
+}
+
+function EarnFields({
+  node,
+  ctx,
+  index,
+}: {
+  node: RecipeFlowNode;
+  ctx: DescribeContext;
+  index: number;
+}) {
+  const editor = useRecipeEditor();
+  const data = node.data;
+  const depositToken = inputToken(ctx, index);
+  const token = assetFor(ctx.assets, depositToken);
+  const collateralToken =
+    data.kind === "EARN_DEPOSIT" ? data.collateralToken : undefined;
+  const investmentId =
+    data.kind === "EARN_DEPOSIT" ? data.investmentId : undefined;
+  const opportunities = useQuery({
+    queryKey: ["carry-opportunities", collateralToken, depositToken],
+    enabled: Boolean(collateralToken && depositToken),
+    queryFn: () =>
+      recipesApi.carryOpportunities(collateralToken!, depositToken!),
+  });
+  if (data.kind !== "EARN_DEPOSIT") return null;
+  // The best spread is what the user is choosing between, so lead with it.
+  const ranked = [...(opportunities.data?.items ?? [])].sort(
+    (left, right) => right.baseEarnRateBps - left.baseEarnRateBps,
+  );
+  return (
+    <>
+      <Section label="Amount">
+        <div className={styles.boundAmount}>
+          <span className="mono">All {token?.symbol ?? "tokens"}</span>
+          <span className={`mono ${styles.fromTag}`}>from step {index}</span>
+        </div>
+      </Section>
+      <Section label="Benchmark collateral" htmlFor={`collateral-${node.id}`}>
+        <TokenSelect
+          id={`collateral-${node.id}`}
+          options={ctx.assets.filter((asset) => asset.kind === "bstock")}
+          value={collateralToken}
+          searchPlaceholder="Search stocks"
+          onChange={(token) =>
+            editor.updateNode(node.id, {
+              collateralToken: token,
+              investmentId: undefined,
+            })
+          }
+        />
+      </Section>
+      <Section label="Earn opportunity">
+        {!collateralToken ? (
+          <p className={`mono ${styles.hint}`}>
+            Pick the benchmark stock first
+          </p>
+        ) : opportunities.isPending ? (
+          <p className={`mono ${styles.hint}`}>Loading opportunities…</p>
+        ) : ranked.length === 0 ? (
+          <p className={`mono ${styles.hint}`}>
+            No earn opportunity clears the borrow rate right now
+          </p>
+        ) : (
+          <ul className={styles.opportunities}>
+            {ranked.map((opportunity) => (
+              <li key={opportunity.investmentId}>
+                <button
+                  type="button"
+                  aria-pressed={opportunity.investmentId === investmentId}
+                  className={styles.opportunity}
+                  onClick={() =>
+                    editor.updateNode(node.id, {
+                      investmentId: opportunity.investmentId,
+                    })
+                  }
+                >
+                  <span className={styles.stockName}>
+                    <strong>{opportunity.investmentName}</strong>
+                    <small>{opportunity.protocolName}</small>
+                  </span>
+                  <span className={`mono ${styles.tag}`}>
+                    {opportunity.baseEarnRateDisplay}
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Section>
     </>
   );
 }

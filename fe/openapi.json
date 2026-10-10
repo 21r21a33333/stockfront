@@ -109,6 +109,46 @@
         }
       }
     },
+    "/v1/carry/opportunities": {
+      "get": {
+        "tags": ["super::handlers::carry"],
+        "operationId": "opportunities",
+        "parameters": [
+          {
+            "name": "collateralToken",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "debtToken",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Response_List_CarryOpportunity"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Response" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/recipe-primitives": {
       "get": {
         "tags": ["super::handlers::recipes"],
@@ -1721,6 +1761,66 @@
                   { "type": "null" },
                   { "$ref": "#/components/schemas/RecipeValidationReport" }
                 ]
+              }
+            }
+          },
+          "status": { "$ref": "#/components/schemas/Status" }
+        }
+      },
+      "Response_List_CarryOpportunity": {
+        "type": "object",
+        "required": ["status"],
+        "properties": {
+          "error": { "$ref": "#/components/schemas/Error" },
+          "result": {
+            "type": "object",
+            "required": ["items"],
+            "properties": {
+              "items": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "investmentId",
+                    "investmentName",
+                    "protocolId",
+                    "protocolName",
+                    "asset",
+                    "rateType",
+                    "baseEarnRateBps",
+                    "baseEarnRateDisplay",
+                    "borrowApyPercent",
+                    "availableBorrowLiquidity",
+                    "qualification",
+                    "reasons",
+                    "observedAtMs"
+                  ],
+                  "properties": {
+                    "asset": { "$ref": "#/components/schemas/BorrowingToken" },
+                    "availableBorrowLiquidity": { "type": "string" },
+                    "baseEarnRateBps": { "type": "integer", "format": "int64" },
+                    "baseEarnRateDisplay": { "type": "string" },
+                    "baseSpreadPercent": { "type": ["string", "null"] },
+                    "borrowApyPercent": { "type": "string" },
+                    "investmentId": { "type": "string" },
+                    "investmentName": { "type": "string" },
+                    "observedAtMs": { "type": "integer", "format": "int64" },
+                    "protocolId": { "type": "string" },
+                    "protocolLogoUrl": { "type": ["string", "null"] },
+                    "protocolName": { "type": "string" },
+                    "qualification": {
+                      "$ref": "#/components/schemas/CarryQualification"
+                    },
+                    "rateType": { "$ref": "#/components/schemas/EarnRateType" },
+                    "reasons": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/CarryOpportunityReason"
+                      }
+                    },
+                    "reportedTvlUsd": { "type": ["string", "null"] }
+                  }
+                }
               }
             }
           },

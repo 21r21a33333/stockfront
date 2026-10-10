@@ -980,6 +980,26 @@ function reviewCard(
         methods,
       };
     }
+    case "EARN_DEPOSIT": {
+      const asset = assetFor(assets, input?.token);
+      const opportunity =
+        borrowing.kind === "EARN_DEPOSIT"
+          ? borrowing.action.opportunity
+          : undefined;
+      return {
+        title: `${approve ? "Approve + " : ""}Deposit into ${opportunity?.investmentName ?? "earn"}`,
+        pay: input
+          ? {
+              amount: amountText(input.amount, asset),
+              symbol: asset?.symbol ?? "",
+            }
+          : undefined,
+        fee: venusFee,
+        venue: opportunity?.protocolName ?? "Earn",
+        contract,
+        methods,
+      };
+    }
     case "ENABLE_COLLATERAL": {
       const asset = assetFor(
         assets,
@@ -1151,6 +1171,8 @@ function stepTitle(
     }
     case "SUPPLY":
       return `Supply ${assetFor(assets, inputToken)?.symbol ?? ""} to Venus`;
+    case "EARN_DEPOSIT":
+      return `Deposit ${assetFor(assets, inputToken)?.symbol ?? ""} into earn`;
     case "BORROW": {
       const debt = assetFor(assets, node.debtToken);
       return `${step.collateralEnabled ? "" : "Enable collateral, then "}Borrow ${amountText(node.rawAmount, debt)} ${debt?.symbol ?? ""}`;

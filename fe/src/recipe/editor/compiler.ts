@@ -38,6 +38,17 @@ export function buildRecipe(
         venue: node.data.venue,
       });
     } else if (
+      node.data.kind === "EARN_DEPOSIT" &&
+      node.data.collateralToken &&
+      node.data.investmentId
+    ) {
+      result.push({
+        id: node.id,
+        kind: node.data.kind,
+        collateralToken: node.data.collateralToken,
+        investmentId: node.data.investmentId,
+      });
+    } else if (
       node.data.kind === "SUPPLIED_POSITION" &&
       node.data.pool &&
       node.data.token

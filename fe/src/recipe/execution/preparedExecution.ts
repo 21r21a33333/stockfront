@@ -17,15 +17,18 @@ export type PreparedExecution =
         | "APPROVAL"
         | "TRADE"
         | "SUPPLY"
+        | "EARN_DEPOSIT"
         | "WITHDRAW"
         | "ENABLE_COLLATERAL"
         | "BORROW"
         | "REPAY";
-      executionMode: "SWAP" | "SUPPLY" | "WITHDRAW" | "BORROW" | "REPAY";
+      executionMode:
+        "SWAP" | "SUPPLY" | "EARN_DEPOSIT" | "WITHDRAW" | "BORROW" | "REPAY";
       steps: (
         | "APPROVAL"
         | "TRADE"
         | "SUPPLY"
+        | "EARN_DEPOSIT"
         | "WITHDRAW"
         | "ENABLE_COLLATERAL"
         | "BORROW"
@@ -63,6 +66,7 @@ export async function preparedExecution(
   const approval = prepared.steps.find((step) => step.kind === "APPROVAL");
   const trade = prepared.steps.find((step) => step.kind === "TRADE");
   const supply = prepared.steps.find((step) => step.kind === "SUPPLY");
+  const earn = prepared.steps.find((step) => step.kind === "EARN_DEPOSIT");
   const withdrawal = prepared.steps.find((step) => step.kind === "WITHDRAW");
   const collateral = prepared.steps.find(
     (step) => step.kind === "ENABLE_COLLATERAL",
@@ -144,6 +148,23 @@ export async function preparedExecution(
       steps: ["WITHDRAW"],
       calls: [call(transaction)],
       atomicRequired: false,
+    };
+  }
+
+  if (earn?.kind === "EARN_DEPOSIT") {
+    if (prepared.steps.length !== 1)
+      throw new Error(
+        "An earn deposit preparation must contain one recipe step.",
+      );
+    const calls = earnDepositCalls(earn.action.transactions);
+    return {
+      kind: "CALL_BATCH",
+      nodeId,
+      action: "EARN_DEPOSIT",
+      executionMode: "EARN_DEPOSIT",
+      steps: ["EARN_DEPOSIT"],
+      calls,
+      atomicRequired: calls.length > 1,
     };
   }
 
@@ -229,6 +250,21 @@ export async function preparedExecution(
     };
   }
   throw new Error("Unsupported prepared action.");
+}
+
+function earnDepositCalls(
+  transactions: Extract<
+    PreparedRecipe["steps"][number],
+    { kind: "EARN_DEPOSIT" }
+  >["action"]["transactions"],
+) {
+  const kinds = transactions.map((transaction) => transaction.kind);
+  const validDeposit = kinds.length === 1 && kinds[0] === "DEPOSIT";
+  const validApprovalAndDeposit =
+    kinds.length === 2 && kinds[0] === "APPROVE" && kinds[1] === "DEPOSIT";
+  if (!validDeposit && !validApprovalAndDeposit)
+    throw new Error("The prepared earn deposit is incomplete.");
+  return transactions.map(call);
 }
 
 function supplyCalls(

@@ -11,11 +11,22 @@ use stockfront_core::carry::{
 };
 
 use super::super::{
-    primitives::{ApiResult, List, Response},
+    primitives::{ApiResult, ErrorResponse, List, Response},
     request::CarryOpportunitiesRequest,
 };
 use super::{parse_token_address, parse_wallet};
 
+#[utoipa::path(
+    get, path = "/v1/carry/opportunities",
+    params(
+        ("collateralToken" = String, Query),
+        ("debtToken" = String, Query)
+    ),
+    responses(
+        (status = 200, body = Response<List<CarryOpportunity>>),
+        (status = "default", body = ErrorResponse)
+    )
+)]
 pub(in crate::http) async fn opportunities(
     State(service): State<Arc<CarryService>>,
     request: Result<Query<CarryOpportunitiesRequest>, QueryRejection>,

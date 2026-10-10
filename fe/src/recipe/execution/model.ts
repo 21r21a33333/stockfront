@@ -30,7 +30,14 @@ export interface ExecutionAttempt {
   kind: PreparedRecipeStep["kind"];
   attempt: number;
   phase: ExecutionPhase;
-  executionMode?: "SWAP" | "RFQ" | "SUPPLY" | "WITHDRAW" | "BORROW" | "REPAY";
+  executionMode?:
+    | "SWAP"
+    | "RFQ"
+    | "SUPPLY"
+    | "EARN_DEPOSIT"
+    | "WITHDRAW"
+    | "BORROW"
+    | "REPAY";
   steps: PreparedRecipeStep["kind"][];
   reference?: ExecutionReference;
   firstSubmittedAtMs?: number;
