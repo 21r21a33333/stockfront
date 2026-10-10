@@ -380,6 +380,30 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn an_unreadable_earn_catalog_asks_rather_than_losing_the_draft() {
+        let model = Arc::new(ScriptedModel::new(vec![Ok(draft(vec![
+            wallet_usdt("10"),
+            StrategyStep::EarnDeposit {
+                symbol: "TSLAB".to_owned(),
+            },
+        ]))]));
+
+        let composed = composer_with_earn(model, Arc::new(DownEarn))
+            .compose(&request("earn on 10 usdt against my tesla"))
+            .await
+            .unwrap_or_else(|error| panic!("a provider blip failed the composition: {error}"));
+
+        assert!(composed.recipe.is_none());
+        assert_eq!(composed.missing_inputs.len(), 1);
+        assert!(
+            composed.missing_inputs[0].contains("temporarily unavailable"),
+            "the user is not told why: {:?}",
+            composed.missing_inputs
+        );
+        assert_eq!(composed.intent.steps.len(), 2, "the draft was discarded");
+    }
+
+    #[tokio::test]
     async fn persistent_invalid_drafts_stop_after_the_call_budget_without_a_recipe() {
         let model = Arc::new(ScriptedModel::new(vec![
             Ok(draft(vec![StrategyStep::Supply])),
@@ -477,7 +501,41 @@ mod tests {
         }
     }
 
+    /// An earn catalog that is down, to prove a blip does not lose the draft.
+    struct DownEarn;
+
+    #[async_trait]
+    impl EarnReader for DownEarn {
+        async fn opportunities(
+            &self,
+            _asset: Address,
+        ) -> Result<Vec<EarnOpportunity>, EarnProviderError> {
+            Err(EarnProviderError::Unavailable)
+        }
+
+        async fn opportunity(
+            &self,
+            _investment_id: &str,
+        ) -> Result<Option<EarnOpportunity>, EarnProviderError> {
+            Err(EarnProviderError::Unavailable)
+        }
+
+        async fn positions(
+            &self,
+            _wallet: WalletAddress,
+        ) -> Result<CarryAccount, EarnProviderError> {
+            Err(EarnProviderError::Unavailable)
+        }
+    }
+
     fn composer(model: Arc<ScriptedModel>) -> StrategyComposerService {
+        composer_with_earn(model, Arc::new(Unused))
+    }
+
+    fn composer_with_earn(
+        model: Arc<ScriptedModel>,
+        earn: Arc<dyn EarnReader>,
+    ) -> StrategyComposerService {
         let catalog = Arc::new(FixedCatalog);
         let market = Arc::new(BstockMarketService::new(catalog.clone()));
         let policy = TradePolicy::new([USDT], 100, 50)
@@ -496,7 +554,7 @@ mod tests {
         ));
         let carry = Arc::new(CarryService::new(
             borrowing.clone(),
-            Arc::new(Unused),
+            earn,
             Arc::new(Unused),
             CarryPolicy::new(vec![BEST_INVESTMENT.to_owned(), "lesser".to_owned()], 100),
         ));

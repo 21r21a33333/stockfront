@@ -552,6 +552,12 @@ function EarnFields({
           </p>
         ) : opportunities.isPending ? (
           <p className={`mono ${styles.hint}`}>Loading opportunities…</p>
+        ) : opportunities.isError ? (
+          // A provider blip is not the same as nothing qualifying, and saying so
+          // would send the user off to change a benchmark that is already right.
+          <p className={`mono ${styles.hint}`}>
+            Could not reach the earn catalog. Try again in a moment.
+          </p>
         ) : ranked.length === 0 ? (
           <p className={`mono ${styles.hint}`}>
             No earn opportunity clears the borrow rate right now
