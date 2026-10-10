@@ -1,5 +1,5 @@
 import type { RecipeNode, TradeQuote } from "@/api/generated";
-import type { ExecutionAttempt } from "@/recipe/execution/model";
+import { isActionKind, type ExecutionAttempt } from "@/recipe/execution/model";
 
 export type StepState =
   | "done"
@@ -18,15 +18,6 @@ export interface RunStep {
   error?: string;
 }
 
-const actions = new Set([
-  "TRADE",
-  "SUPPLY",
-  "EARN_DEPOSIT",
-  "WITHDRAW",
-  "BORROW",
-  "REPAY",
-]);
-
 /**
  * One step per action block, in recipe order. A block is done only when its own
  * action completed; an approval or collateral activation alone never completes it.
@@ -38,7 +29,7 @@ export function runSteps(
 ): RunStep[] {
   let currentFound = false;
   return nodes
-    .filter((node) => actions.has(node.kind))
+    .filter((node) => isActionKind(node.kind))
     .map((node) => {
       const own = attempts.filter((item) => item.nodeId === node.id);
       const latest = own.at(-1);

@@ -3,6 +3,7 @@ import type {
   RecipeCompletedNode,
   RecipeDefinition,
   RecipeNodeOutput,
+  RecipePrimitive,
 } from "@/api/generated";
 import type { Address, Hash } from "viem";
 
@@ -36,14 +37,7 @@ export interface ExecutionAttempt {
   kind: PreparedRecipeStep["kind"];
   attempt: number;
   phase: ExecutionPhase;
-  executionMode?:
-    | "SWAP"
-    | "RFQ"
-    | "SUPPLY"
-    | "EARN_DEPOSIT"
-    | "WITHDRAW"
-    | "BORROW"
-    | "REPAY";
+  executionMode?: ExecutionMode;
   steps: PreparedRecipeStep["kind"][];
   reference?: ExecutionReference;
   firstSubmittedAtMs?: number;
@@ -53,6 +47,9 @@ export interface ExecutionAttempt {
   expectedOutput?: RecipeNodeOutput;
   error?: string;
 }
+
+export type ExecutionMode =
+  "SWAP" | "RFQ" | "SUPPLY" | "EARN_DEPOSIT" | "WITHDRAW" | "BORROW" | "REPAY";
 
 export interface ExecutionRun {
   version: 2;
@@ -130,15 +127,29 @@ export function executionProgress(
   );
 }
 
+/**
+ * Which primitives carry out an action, as a record so the compiler refuses one
+ * the recipe language has gained. The rest only name an asset or a position, and
+ * a run that contains no action can never finish.
+ */
+const ACTIONS: Record<RecipePrimitive["kind"], boolean> = {
+  WALLET_ASSET: false,
+  SUPPLIED_POSITION: false,
+  BORROWED_POSITION: false,
+  TRADE: true,
+  SUPPLY: true,
+  EARN_DEPOSIT: true,
+  WITHDRAW: true,
+  BORROW: true,
+  REPAY: true,
+};
+
+export function isActionKind(kind: string): boolean {
+  return ACTIONS[kind as RecipePrimitive["kind"]] === true;
+}
+
 export function isRunComplete(run: ExecutionRun): boolean {
-  const actions = run.recipe.nodes.filter(
-    (node) =>
-      node.kind === "TRADE" ||
-      node.kind === "SUPPLY" ||
-      node.kind === "WITHDRAW" ||
-      node.kind === "BORROW" ||
-      node.kind === "REPAY",
-  );
+  const actions = run.recipe.nodes.filter((node) => isActionKind(node.kind));
   const latest = latestAttempts(run.attempts);
   return (
     actions.length > 0 &&
@@ -157,15 +168,7 @@ export function completedRecipeNodes(
   attempts: ExecutionAttempt[],
 ): RecipeCompletedNode[] {
   return latestAttempts(attempts)
-    .filter(
-      (item) =>
-        (item.kind === "TRADE" ||
-          item.kind === "SUPPLY" ||
-          item.kind === "WITHDRAW" ||
-          item.kind === "BORROW" ||
-          item.kind === "REPAY") &&
-        item.phase === "complete",
-    )
+    .filter((item) => isActionKind(item.kind) && item.phase === "complete")
     .map((item) => ({
       nodeId: item.nodeId,
       outputs:

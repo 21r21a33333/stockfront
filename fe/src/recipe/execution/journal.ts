@@ -1,13 +1,67 @@
-import type { RecipeDefinition, RecipeNodeOutput } from "@/api/generated";
+import type {
+  PreparedRecipeStep,
+  RecipeDefinition,
+  RecipeNodeOutput,
+  RecipePrimitive,
+} from "@/api/generated";
 import type { Address, Hash } from "viem";
 import type {
   ExecutionAttempt,
+  ExecutionMode,
   ExecutionPhase,
   ExecutionReference,
   ExecutionRun,
 } from "./model";
 
 export * from "./model";
+
+/**
+ * Every action and mode a stored attempt may name, as records so the compiler
+ * refuses a primitive the recipe language has gained but the journal has not.
+ * A missing one is written and then rejected on the way back, stranding the run.
+ */
+const KINDS: Record<PreparedRecipeStep["kind"], true> = {
+  APPROVAL: true,
+  TRADE: true,
+  SUPPLY: true,
+  EARN_DEPOSIT: true,
+  WITHDRAW: true,
+  ENABLE_COLLATERAL: true,
+  BORROW: true,
+  REPAY: true,
+};
+
+/**
+ * What each recipe node must carry to be trusted after a reload, one entry per
+ * primitive so a new one cannot be stored and then refused on the way back.
+ */
+const NODES: Record<
+  RecipePrimitive["kind"],
+  (node: Record<string, unknown>) => boolean
+> = {
+  WALLET_ASSET: (node) => address(node.token) && unsigned(node.rawAmount),
+  SUPPLIED_POSITION: (node) =>
+    node.venue === "venus" && address(node.pool) && address(node.token),
+  BORROWED_POSITION: (node) =>
+    node.venue === "venus" && address(node.pool) && address(node.token),
+  TRADE: (node) => address(node.buyToken),
+  SUPPLY: (node) => node.venue === "venus",
+  WITHDRAW: () => true,
+  BORROW: (node) => address(node.debtToken) && unsigned(node.rawAmount),
+  REPAY: () => true,
+  EARN_DEPOSIT: (node) =>
+    address(node.collateralToken) && typeof node.investmentId === "string",
+};
+
+const MODES: Record<ExecutionMode, true> = {
+  SWAP: true,
+  RFQ: true,
+  SUPPLY: true,
+  EARN_DEPOSIT: true,
+  WITHDRAW: true,
+  BORROW: true,
+  REPAY: true,
+};
 
 const PHASES: ExecutionPhase[] = [
   "awaiting",
@@ -126,24 +180,9 @@ function validRecipe(
       (node) =>
         isRecord(node) &&
         nonEmpty(node.id) &&
-        ((node.kind === "TRADE" && address(node.buyToken)) ||
-          (node.kind === "SUPPLY" && node.venue === "venus") ||
-          (node.kind === "SUPPLIED_POSITION" &&
-            node.venue === "venus" &&
-            address(node.pool) &&
-            address(node.token)) ||
-          (node.kind === "BORROWED_POSITION" &&
-            node.venue === "venus" &&
-            address(node.pool) &&
-            address(node.token)) ||
-          node.kind === "WITHDRAW" ||
-          node.kind === "REPAY" ||
-          (node.kind === "BORROW" &&
-            address(node.debtToken) &&
-            unsigned(node.rawAmount)) ||
-          (node.kind === "WALLET_ASSET" &&
-            address(node.token) &&
-            unsigned(node.rawAmount))),
+        typeof node.kind === "string" &&
+        node.kind in NODES &&
+        NODES[node.kind as RecipePrimitive["kind"]](node),
     ) &&
     Array.isArray(value.edges) &&
     value.edges.every(
@@ -175,43 +214,26 @@ function validAttempt(value: unknown, recipe: RecipeDefinition): boolean {
     nonEmpty(value.id) &&
     nonEmpty(value.nodeId) &&
     recipe.nodes.some((node) => node.id === value.nodeId) &&
-    (value.kind === "APPROVAL" ||
-      value.kind === "TRADE" ||
-      value.kind === "SUPPLY" ||
-      value.kind === "WITHDRAW" ||
-      value.kind === "ENABLE_COLLATERAL" ||
-      value.kind === "BORROW" ||
-      value.kind === "REPAY") &&
+    known(KINDS, value.kind) &&
     PHASES.includes(value.phase as ExecutionPhase) &&
     Number.isInteger(value.attempt) &&
     Number(value.attempt) > 0 &&
     Array.isArray(value.steps) &&
     value.steps.length > 0 &&
-    value.steps.every(
-      (step) =>
-        step === "APPROVAL" ||
-        step === "TRADE" ||
-        step === "SUPPLY" ||
-        step === "WITHDRAW" ||
-        step === "ENABLE_COLLATERAL" ||
-        step === "BORROW" ||
-        step === "REPAY",
-    ) &&
+    value.steps.every((step) => known(KINDS, step)) &&
     optionalString(value.error) &&
     optionalBoolean(value.approvalSkipped) &&
     optionalBoolean(value.amountsUnavailable) &&
     optionalFinite(value.firstSubmittedAtMs) &&
-    (value.executionMode === undefined ||
-      value.executionMode === "SWAP" ||
-      value.executionMode === "RFQ" ||
-      value.executionMode === "SUPPLY" ||
-      value.executionMode === "WITHDRAW" ||
-      value.executionMode === "BORROW" ||
-      value.executionMode === "REPAY") &&
+    (value.executionMode === undefined || known(MODES, value.executionMode)) &&
     validReference(value.reference) &&
     outputMatchesNode &&
     expectedMatchesNode
   );
+}
+
+function known(allowed: Record<string, true>, value: unknown): boolean {
+  return typeof value === "string" && value in allowed;
 }
 
 function validReference(value: unknown): boolean {
