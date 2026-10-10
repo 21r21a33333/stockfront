@@ -172,6 +172,38 @@ it("settles an atomic batch once and restores the exact output", async () => {
   expect(mocks.sendCalls).toHaveBeenCalledTimes(1);
 });
 
+it("settles from the chain when the wallet has forgotten the batch", async () => {
+  const plan = preparedSwap();
+  const { result } = renderHook(
+    () => useRecipeExecution({ recipe, prepared: plan }),
+    { wrapper: Wrapper },
+  );
+  await act(() => result.current.execute());
+
+  // The batch id is only known for the life of the wallet session, so after a
+  // reload the hash captured while it was still pending is the way back.
+  mocks.getCallsStatus.mockResolvedValueOnce({
+    status: "pending",
+    receipts: [{ transactionHash: hash }],
+  });
+  await act(() => result.current.checkStatus());
+  expect(readRun(wallet, 56)?.attempts[0]?.reference).toMatchObject({
+    transactionHash: hash,
+  });
+
+  mocks.getCallsStatus.mockRejectedValue(new Error("unknown bundle id"));
+  mocks.getReceipt.mockResolvedValue({
+    status: "success",
+    logs: [transferLog(wallet, token, wallet, 23n)],
+  });
+
+  await act(() => result.current.checkStatus());
+
+  await waitFor(() => expect(result.current.completed).toBe(true));
+  expect(mocks.getReceipt).toHaveBeenCalledWith({ hash });
+  expect(mocks.sendCalls).toHaveBeenCalledTimes(1);
+});
+
 it("skips a proven allowance and simulates before sending one swap call", async () => {
   mocks.publicRequest.mockImplementation(async ({ params }) =>
     params[0].data.startsWith("0xdd62ed3e") ? "0x64" : "0x",

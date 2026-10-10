@@ -16,6 +16,8 @@ const CHECK_WINDOW_MS = 120_000;
 // BNB Chain produces a block roughly every 0.75s, so a slower poll reports a
 // settled action long after it landed.
 const CHECK_INTERVAL_MS = 1_500;
+/// Three unreadable reads in a row is a status we cannot reach, not a slow one.
+const UNREADABLE_LIMIT = 3;
 
 export function useExecutionStatus({
   run,
@@ -35,6 +37,7 @@ export function useExecutionStatus({
   const walletClient = wallet as CallsStatusClient | undefined;
   const pending = latestAttempts(run?.attempts ?? []).find(isUnresolved);
   const retryAfter = useRef(0);
+  const unreadable = useRef(0);
   const [active, setActive] = useState(visibleAndOnline);
   const [deadline, setDeadline] = useState(Date.now() + CHECK_WINDOW_MS);
   const [paused, setPaused] = useState(false);
@@ -59,6 +62,7 @@ export function useExecutionStatus({
 
   useEffect(() => {
     retryAfter.current = 0;
+    unreadable.current = 0;
     resetWindow();
   }, [run?.id, pending?.id]);
 
@@ -105,6 +109,7 @@ export function useExecutionStatus({
           walletClient,
           signal,
         });
+        unreadable.current = 0;
         if (!signal.aborted && patch) await onStatus(run, pending, patch);
       } catch (cause) {
         if (
@@ -112,6 +117,15 @@ export function useExecutionStatus({
           cause.retryAfterMs !== undefined
         )
           retryAfter.current = Date.now() + cause.retryAfterMs;
+        unreadable.current += 1;
+        // Spinning on a status that cannot be read strands the run, so hand the
+        // user the recovery actions instead of waiting out the window.
+        if (unreadable.current >= UNREADABLE_LIMIT && !signal.aborted)
+          await onStatus(run, pending, {
+            phase: "attention",
+            error:
+              "We could not read this action's status. Check your wallet activity before retrying.",
+          });
         throw cause;
       }
       return null;
@@ -157,7 +171,23 @@ async function readStatus({
   );
 
   if (reference.kind === "CALL_BATCH" && walletClient) {
-    const result = await walletClient.getCallsStatus({ id: reference.id });
+    // A batch id lives only as long as the wallet session, so after a reload the
+    // only durable handle on the action is the hash it already produced.
+    const result = await walletClient
+      .getCallsStatus({ id: reference.id })
+      .catch((cause: unknown) => {
+        if (!reference.transactionHash) throw cause;
+        return undefined;
+      });
+    if (!result)
+      return await minedStatus(
+        publicClient,
+        attempt,
+        buyToken,
+        run.wallet,
+        reference,
+        reference.transactionHash as Hash,
+      );
     if (result.status === "failure")
       return {
         phase: "failed",
@@ -178,7 +208,11 @@ async function readStatus({
                         ? "Atomic approval and swap reverted. Refresh the route before retrying."
                         : "Transaction failed. Refresh the route before retrying.",
       };
-    if (result.status !== "success") return undefined;
+    const pendingHash = result.receipts?.at(-1)?.transactionHash;
+    if (result.status !== "success")
+      return pendingHash && pendingHash !== reference.transactionHash
+        ? { reference: { ...reference, transactionHash: pendingHash } }
+        : undefined;
     if (reference.atomicRequired && !result.atomic)
       return {
         phase: "attention",
@@ -221,24 +255,40 @@ async function readStatus({
     };
   }
 
-  if (reference.kind === "LEGACY_TRANSACTION") {
-    const receipt = await publicClient.getTransactionReceipt({
-      hash: reference.transactionHash,
-    });
-    if (receipt.status === "reverted")
-      return {
-        phase: "failed",
-        error: "Transaction reverted. Refresh the route before retrying.",
-      };
-    return completePatch(
+  if (reference.kind === "LEGACY_TRANSACTION")
+    return await minedStatus(
+      publicClient,
       attempt,
-      buyToken?.kind === "TRADE" ? buyToken.buyToken : undefined,
-      receipt.logs,
+      buyToken,
       run.wallet,
       reference,
+      reference.transactionHash,
     );
-  }
   return undefined;
+}
+
+/// Reads an action's outcome from the chain rather than from the wallet.
+async function minedStatus(
+  publicClient: NonNullable<ReturnType<typeof usePublicClient>>,
+  attempt: ExecutionAttempt,
+  buyToken: { kind: string; buyToken?: Address } | undefined,
+  wallet: Address,
+  reference: NonNullable<ExecutionAttempt["reference"]>,
+  hash: Hash,
+): Promise<Partial<ExecutionAttempt> | undefined> {
+  const receipt = await publicClient.getTransactionReceipt({ hash });
+  if (receipt.status === "reverted")
+    return {
+      phase: "failed",
+      error: "Transaction reverted. Refresh the route before retrying.",
+    };
+  return completePatch(
+    attempt,
+    buyToken?.kind === "TRADE" ? buyToken.buyToken : undefined,
+    receipt.logs,
+    wallet,
+    reference,
+  );
 }
 
 function completePatch(
