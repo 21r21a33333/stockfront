@@ -11,8 +11,7 @@ use stockfront_core::{
 use super::{
     client::BinanceWeb3Client,
     provider::{
-        BinanceRequestError, InvalidProviderData, business_succeeded, map_request_error, parse,
-        required,
+        BinanceRequestError, InvalidProviderData, business_succeeded, parse, required, retried,
     },
 };
 
@@ -31,14 +30,17 @@ impl BinanceWeb3Client {
     {
         let mut request = GetDefiPositionsRequest::new(vec![wallet.as_address().to_string()]);
         request.binance_chain_ids = Some(vec![BNB_CHAIN_ID.to_string()]);
-        let response = get_defi_positions(
-            &self.configuration,
-            GetDefiPositionsParams {
-                get_defi_positions_request: request,
-            },
-        )
+        // The third of the DeFi reads, and the one every position view and earn
+        // withdrawal depends on; it fails as often as the other two.
+        let response = retried(|| {
+            get_defi_positions(
+                &self.configuration,
+                GetDefiPositionsParams {
+                    get_defi_positions_request: request.clone(),
+                },
+            )
+        })
         .await
-        .map_err(map_request_error)
         .map_err(E::from)?;
         if !business_succeeded(response.code, response.success) {
             return Err(E::from(BinanceRequestError::Unavailable));
