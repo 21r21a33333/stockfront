@@ -25,6 +25,7 @@ const KINDS: Record<PreparedRecipeStep["kind"], true> = {
   TRADE: true,
   SUPPLY: true,
   EARN_DEPOSIT: true,
+  EARN_WITHDRAW: true,
   WITHDRAW: true,
   ENABLE_COLLATERAL: true,
   BORROW: true,
@@ -51,6 +52,8 @@ const NODES: Record<
   REPAY: () => true,
   EARN_DEPOSIT: (node) =>
     address(node.collateralToken) && typeof node.investmentId === "string",
+  EARN_POSITION: (node) => typeof node.investmentId === "string",
+  EARN_WITHDRAW: () => true,
 };
 
 const MODES: Record<ExecutionMode, true> = {
@@ -58,6 +61,7 @@ const MODES: Record<ExecutionMode, true> = {
   RFQ: true,
   SUPPLY: true,
   EARN_DEPOSIT: true,
+  EARN_WITHDRAW: true,
   WITHDRAW: true,
   BORROW: true,
   REPAY: true,

@@ -24,6 +24,7 @@ use utoipa::OpenApi;
         super::handlers::strategies::compose,
         super::handlers::borrowing::account,
         super::handlers::carry::opportunities,
+        super::handlers::carry::positions,
         super::handlers::trades::submit_order,
         super::handlers::trades::order_status,
         super::handlers::trades::transaction_status,

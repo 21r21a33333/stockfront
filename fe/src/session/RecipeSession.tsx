@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { Address } from "viem";
 import { useAccount } from "wagmi";
 import type {
+  CarryPosition,
   RecipeDefinition,
   RecipePreviewRequest,
   TradeQuote,
@@ -53,6 +54,12 @@ export function RecipeSessionProvider({
   const borrowing = useQuery({
     queryKey: ["borrowing-account", account.address?.toLowerCase()],
     queryFn: () => recipesApi.borrowingAccount(account.address!),
+    enabled: walletReady,
+    refetchInterval: 15_000,
+  });
+  const earn = useQuery({
+    queryKey: ["carry-positions", account.address?.toLowerCase()],
+    queryFn: () => recipesApi.carryPositions(account.address!),
     enabled: walletReady,
     refetchInterval: 15_000,
   });
@@ -297,6 +304,18 @@ export function RecipeSessionProvider({
     );
   }
 
+  function startEarnWithdrawal(position: CarryPosition): void {
+    const investmentId = position.investmentIds[0];
+    if (!investmentId) return;
+    editor.loadGraph(
+      linearGraph([
+        { data: { kind: "EARN_POSITION", investmentId } },
+        { data: { kind: "EARN_WITHDRAW" } },
+      ]),
+      `Withdraw from ${position.protocolName}`,
+    );
+  }
+
   const value: RecipeSessionValue = {
     catalog: catalog.data,
     catalogError:
@@ -329,6 +348,9 @@ export function RecipeSessionProvider({
     execution,
     loadDefinition,
     startFromPosition,
+    earnPositions: earn.data?.positions ?? [],
+    refetchEarnPositions: () => void earn.refetch(),
+    startEarnWithdrawal,
   };
   return (
     <RecipeSessionContext.Provider value={value}>

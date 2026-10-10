@@ -60,7 +60,9 @@ export function blockKind(kind: RecipePrimitiveKind): BlockKind {
       return "repay";
     case "WITHDRAW":
       return "withdraw";
-    default:
-      return "liquidity";
+    case "EARN_POSITION":
+      return "earn";
+    case "EARN_WITHDRAW":
+      return "withdraw";
   }
 }

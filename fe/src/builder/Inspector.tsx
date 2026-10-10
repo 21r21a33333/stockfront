@@ -160,6 +160,10 @@ function Fields({
     case "SUPPLIED_POSITION":
     case "BORROWED_POSITION":
       return <PositionFields node={node} ctx={ctx} />;
+    case "EARN_POSITION":
+      return <EarnPositionFields node={node} ctx={ctx} />;
+    case "EARN_WITHDRAW":
+      return <EarnWithdrawFields node={node} ctx={ctx} />;
   }
 }
 
@@ -757,6 +761,80 @@ function WithdrawFields({
           {position
             ? `${formatPositionAmount(position.amount)} ${position.token.symbol}`
             : `All ${token?.symbol ?? ""}`}
+        </span>
+        <span className={`mono ${styles.fromTag}`}>
+          {position ? formatUsd(position.valueUsd) : "to your wallet"}
+        </span>
+      </div>
+    </Section>
+  );
+}
+
+function EarnPositionFields({
+  node,
+  ctx,
+}: {
+  node: RecipeFlowNode;
+  ctx: DescribeContext;
+}) {
+  const editor = useRecipeEditor();
+  const data = node.data;
+  if (data.kind !== "EARN_POSITION") return null;
+  return (
+    <Section label="Earning">
+      {ctx.earnPositions.length === 0 ? (
+        <p className={styles.muted}>
+          {ctx.walletReady
+            ? "No earn positions in this wallet yet."
+            : "Connect a wallet to see your earn positions."}
+        </p>
+      ) : (
+        <div className={styles.tokenList}>
+          {ctx.earnPositions.map((position) => {
+            const investmentId = position.investmentIds[0];
+            const active = data.investmentId === investmentId;
+            return (
+              <button
+                type="button"
+                key={position.positionId}
+                className={`${styles.tokenRow} ${active ? styles.tokenRowActive : ""}`}
+                onClick={() =>
+                  investmentId &&
+                  editor.updateNode(node.id, { ...data, investmentId })
+                }
+              >
+                <TokenDot symbol={position.protocolName} />
+                <span className={styles.tokenSymbol}>
+                  {position.protocolName}
+                </span>
+                <span className={`mono ${styles.tokenBalance}`}>
+                  {formatUsd(position.valueUsd)}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </Section>
+  );
+}
+
+function EarnWithdrawFields({
+  node,
+  ctx,
+}: {
+  node: RecipeFlowNode;
+  ctx: DescribeContext;
+}) {
+  if (node.data.kind !== "EARN_WITHDRAW") return null;
+  const preview = ctx.previews.find((item) => item.nodeId === node.id);
+  const position =
+    preview?.kind === "EARN_WITHDRAW" ? preview.position : undefined;
+  return (
+    <Section label="Withdraws all of your earn position">
+      <div className={styles.boundAmount}>
+        <span className="mono">
+          {position ? position.protocolName : "The whole position"}
         </span>
         <span className={`mono ${styles.fromTag}`}>
           {position ? formatUsd(position.valueUsd) : "to your wallet"}

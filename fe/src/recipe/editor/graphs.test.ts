@@ -96,8 +96,16 @@ describe("nextKinds", () => {
       "WALLET_ASSET",
       "SUPPLIED_POSITION",
       "BORROWED_POSITION",
+      "EARN_POSITION",
     ]);
     expect(nextKinds("SUPPLY")).toEqual([]);
     expect(nextKinds("BORROWED_POSITION")).toEqual(["REPAY"]);
+    expect(nextKinds("EARN_POSITION")).toEqual(["EARN_WITHDRAW"]);
+    expect(nextKinds("EARN_WITHDRAW")).toEqual([]);
+    // A deposit may be funded from the wallet or from the loan it is
+    // benchmarked against, but never from a trade the compiler would reject.
+    expect(nextKinds("WALLET_ASSET")).toContain("EARN_DEPOSIT");
+    expect(nextKinds("BORROW")).toContain("EARN_DEPOSIT");
+    expect(nextKinds("TRADE")).not.toContain("EARN_DEPOSIT");
   });
 });

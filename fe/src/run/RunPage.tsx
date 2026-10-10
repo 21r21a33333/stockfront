@@ -980,6 +980,20 @@ function reviewCard(
         methods,
       };
     }
+    case "EARN_WITHDRAW": {
+      const position =
+        preview?.kind === "EARN_WITHDRAW" ? preview.position : undefined;
+      return {
+        title: "Withdraw from earn",
+        get: position
+          ? { amount: formatUsd(position.valueUsd), symbol: "" }
+          : undefined,
+        fee: venusFee,
+        venue: position?.protocolName ?? "Earn",
+        contract,
+        methods,
+      };
+    }
     case "EARN_DEPOSIT": {
       const asset = assetFor(assets, input?.token);
       const opportunity =
@@ -1181,6 +1195,8 @@ function stepTitle(
       return "Repay full debt";
     case "WITHDRAW":
       return "Withdraw to wallet";
+    case "EARN_WITHDRAW":
+      return "Withdraw from earn";
     default:
       return node.kind;
   }

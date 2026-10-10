@@ -68,6 +68,14 @@ pub(in crate::http) async fn prepare_redemption_claim(
     Ok(Response::ok(claim))
 }
 
+#[utoipa::path(
+    get, path = "/v1/wallets/{address}/carry-positions",
+    params(("address" = String, Path)),
+    responses(
+        (status = 200, body = Response<CarryAccount>),
+        (status = "default", body = ErrorResponse)
+    )
+)]
 pub(in crate::http) async fn positions(
     State(service): State<Arc<CarryService>>,
     Path(address): Path<String>,

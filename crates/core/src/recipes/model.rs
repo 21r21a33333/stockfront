@@ -78,7 +78,7 @@ use crate::{
     },
     bstock_market::BstockSummary,
     bstock_trade::{PreparedApproval, PreparedTrade, TokenAmount, TradeQuote},
-    carry::{CarryOpportunity, PreparedCarryDeposit},
+    carry::{CarryActionPlan, CarryOpportunity, CarryPosition, PreparedCarryDeposit},
     serialization::{deserialize_from_string, serialize_all_as_strings, serialize_as_string},
     wallet_portfolio::WalletAddress,
 };
@@ -95,10 +95,12 @@ pub enum RecipePrimitiveKind {
     Borrow,
     Repay,
     EarnDeposit,
+    EarnPosition,
+    EarnWithdraw,
 }
 
 impl RecipePrimitiveKind {
-    pub(super) const ALL: [Self; 9] = [
+    pub(super) const ALL: [Self; 11] = [
         Self::WalletAsset,
         Self::SuppliedPosition,
         Self::BorrowedPosition,
@@ -108,6 +110,8 @@ impl RecipePrimitiveKind {
         Self::Borrow,
         Self::Repay,
         Self::EarnDeposit,
+        Self::EarnPosition,
+        Self::EarnWithdraw,
     ];
 }
 
@@ -129,6 +133,7 @@ pub enum RecipeOptionSource {
     SuppliedPositions,
     BorrowedPositions,
     EarnOpportunities,
+    EarnPositions,
 }
 
 #[derive(utoipa::ToSchema, Clone, Copy, Debug, Eq, PartialEq, Serialize)]
@@ -237,6 +242,7 @@ pub enum RecipePortValueType {
     TokenAmount,
     SuppliedPosition,
     BorrowedPosition,
+    EarnPosition,
 }
 
 #[derive(utoipa::ToSchema, Clone, Copy, Debug, Eq, PartialEq, Serialize)]
@@ -294,6 +300,8 @@ impl RecipePrimitiveKind {
             Self::Borrow => borrow_descriptor(self),
             Self::Repay => repay_descriptor(self),
             Self::EarnDeposit => earn_deposit_descriptor(self),
+            Self::EarnPosition => earn_position_descriptor(self),
+            Self::EarnWithdraw => earn_withdraw_descriptor(self),
         }
     }
 }
@@ -434,6 +442,32 @@ fn withdraw_descriptor(kind: RecipePrimitiveKind) -> RecipePrimitiveDescriptor {
             "position",
             RecipePortValueType::SuppliedPosition,
         )],
+    }
+}
+
+fn earn_position_descriptor(kind: RecipePrimitiveKind) -> RecipePrimitiveDescriptor {
+    RecipePrimitiveDescriptor {
+        kind,
+        name: "Earn position",
+        description: "An existing earn deposit held by the running wallet.",
+        fields: vec![RecipeFieldDescriptor {
+            key: "investmentId",
+            name: "Earn position",
+            control: RecipeFieldControl::Position,
+            required: true,
+            option_sources: vec![RecipeOptionSource::EarnPositions],
+        }],
+        ports: vec![output_port("position", RecipePortValueType::EarnPosition)],
+    }
+}
+
+fn earn_withdraw_descriptor(kind: RecipePrimitiveKind) -> RecipePrimitiveDescriptor {
+    RecipePrimitiveDescriptor {
+        kind,
+        name: "Withdraw from earn",
+        description: "Withdraw the complete earn position to the running wallet.",
+        fields: Vec::new(),
+        ports: vec![input_port("position", RecipePortValueType::EarnPosition)],
     }
 }
 
@@ -586,6 +620,11 @@ pub enum RecipePrimitive {
         #[serde(rename = "investmentId")]
         investment_id: String,
     },
+    EarnPosition {
+        #[serde(rename = "investmentId")]
+        investment_id: String,
+    },
+    EarnWithdraw,
 }
 
 impl RecipePrimitive {
@@ -600,6 +639,8 @@ impl RecipePrimitive {
             Self::Borrow { .. } => RecipePrimitiveKind::Borrow,
             Self::Repay => RecipePrimitiveKind::Repay,
             Self::EarnDeposit { .. } => RecipePrimitiveKind::EarnDeposit,
+            Self::EarnPosition { .. } => RecipePrimitiveKind::EarnPosition,
+            Self::EarnWithdraw => RecipePrimitiveKind::EarnWithdraw,
         }
     }
 }
@@ -739,6 +780,15 @@ pub enum RecipeNodePreview {
         #[serde(rename = "waitingFor", skip_serializing_if = "Vec::is_empty")]
         waiting_for: Vec<Uuid>,
     },
+    EarnWithdraw {
+        #[serde(rename = "nodeId")]
+        node_id: Uuid,
+        state: RecipeNodeState,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        position: Option<CarryPosition>,
+        #[serde(rename = "waitingFor", skip_serializing_if = "Vec::is_empty")]
+        waiting_for: Vec<Uuid>,
+    },
     Borrow {
         #[serde(rename = "nodeId")]
         node_id: Uuid,
@@ -826,6 +876,12 @@ pub enum PreparedRecipeStep {
         #[serde(rename = "nodeId")]
         node_id: Uuid,
         action: PreparedBorrowingAction,
+    },
+    EarnWithdraw {
+        #[serde(rename = "nodeId")]
+        node_id: Uuid,
+        #[schema(inline)]
+        action: CarryActionPlan,
     },
     EnableCollateral {
         #[serde(rename = "nodeId")]

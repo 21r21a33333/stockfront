@@ -23,6 +23,12 @@ export const recipesApi = {
         params: { query: { collateralToken, debtToken } },
       }),
     ),
+  carryPositions: (address: string) =>
+    apiResult(
+      api.GET("/v1/wallets/{address}/carry-positions", {
+        params: { path: { address } },
+      }),
+    ),
   borrowingAccount: (address: string) =>
     apiResult(
       api.GET("/v1/wallets/{address}/loans", {

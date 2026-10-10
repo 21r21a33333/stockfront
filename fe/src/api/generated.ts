@@ -144,6 +144,22 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/wallets/{address}/carry-positions": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: operations["positions"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/wallets/{address}/loans": {
     parameters: {
       query?: never;
@@ -284,6 +300,14 @@ export interface components {
       underlyingTicker: string;
       volume24hUsd?: string;
     };
+    CarryAccount: {
+      /** Format: int64 */
+      chainId: number;
+      /** Format: int64 */
+      observedAtMs: number;
+      positions: components["schemas"]["CarryPosition"][];
+      totalValueUsd: string;
+    };
     CarryActionPreview: components["schemas"]["ActionPreview"] & {
       redemptionDelay?: null | components["schemas"]["RedemptionDelay"];
     };
@@ -314,8 +338,21 @@ export interface components {
       | "UNSUPPORTED_RATE_TYPE"
       | "INSUFFICIENT_BASE_SPREAD"
       | "UNREVIEWED_INVESTMENT";
+    CarryPosition: {
+      assets: components["schemas"]["BorrowingAsset"][];
+      investmentIds: string[];
+      positionId: string;
+      protocolId: string;
+      protocolName: string;
+      redemption?: null | components["schemas"]["CarryRedemption"];
+      valueUsd: string;
+    };
     /** @enum {string} */
     CarryQualification: "ELIGIBLE" | "REVIEW_REQUIRED" | "UNAVAILABLE";
+    CarryRedemption: {
+      claimable: boolean;
+      id: string;
+    };
     ComposeStrategyRequest: {
       previous?: null | components["schemas"]["StrategyIntent"];
       prompt: string;
@@ -436,6 +473,28 @@ export interface components {
           action: components["schemas"]["PreparedBorrowingAction"];
           /** @enum {string} */
           kind: "WITHDRAW";
+          /** Format: uuid */
+          nodeId: string;
+        }
+      | {
+          action: {
+            preview: components["schemas"]["CarryActionPreview"];
+            transactions: {
+              /** Format: hex */
+              data: `0x${string}`;
+              gasLimit?: string;
+              gasPrice?: string;
+              /** @enum {string} */
+              kind: "APPROVE" | "DEPOSIT" | "REDEEM" | "CLAIM";
+              maxFeePerGas?: string;
+              maxPriorityFeePerGas?: string;
+              /** Format: evm-address */
+              to: `0x${string}`;
+              value: string;
+            }[];
+          };
+          /** @enum {string} */
+          kind: "EARN_WITHDRAW";
           /** Format: uuid */
           nodeId: string;
         }
@@ -674,6 +733,15 @@ export interface components {
           waitingFor?: string[];
         }
       | {
+          /** @enum {string} */
+          kind: "EARN_WITHDRAW";
+          /** Format: uuid */
+          nodeId: string;
+          position?: null | components["schemas"]["CarryPosition"];
+          state: components["schemas"]["RecipeNodeState"];
+          waitingFor?: string[];
+        }
+      | {
           capability?: null | components["schemas"]["BorrowCapability"];
           /** @enum {string} */
           kind: "BORROW";
@@ -721,7 +789,8 @@ export interface components {
       | "BSTOCKS"
       | "SUPPLIED_POSITIONS"
       | "BORROWED_POSITIONS"
-      | "EARN_OPPORTUNITIES";
+      | "EARN_OPPORTUNITIES"
+      | "EARN_POSITIONS";
     RecipePortDescriptor: {
       direction: components["schemas"]["RecipePortDirection"];
       flow: components["schemas"]["RecipePortFlow"];
@@ -743,7 +812,10 @@ export interface components {
     };
     /** @enum {string} */
     RecipePortValueType:
-      "TOKEN_AMOUNT" | "SUPPLIED_POSITION" | "BORROWED_POSITION";
+      | "TOKEN_AMOUNT"
+      | "SUPPLIED_POSITION"
+      | "BORROWED_POSITION"
+      | "EARN_POSITION";
     RecipePreview: {
       nodes: components["schemas"]["RecipeNodePreview"][];
     };
@@ -809,6 +881,15 @@ export interface components {
           investmentId: string;
           /** @enum {string} */
           kind: "EARN_DEPOSIT";
+        }
+      | {
+          investmentId: string;
+          /** @enum {string} */
+          kind: "EARN_POSITION";
+        }
+      | {
+          /** @enum {string} */
+          kind: "EARN_WITHDRAW";
         };
     RecipePrimitiveDescriptor: {
       description: string;
@@ -827,7 +908,9 @@ export interface components {
       | "WITHDRAW"
       | "BORROW"
       | "REPAY"
-      | "EARN_DEPOSIT";
+      | "EARN_DEPOSIT"
+      | "EARN_POSITION"
+      | "EARN_WITHDRAW";
     RecipeRepayPolicy: {
       allowedInputs: components["schemas"]["RecipeRepayRule"][];
       debtTokens: `0x${string}`[];
@@ -913,6 +996,18 @@ export interface components {
         totalBorrowedUsd: string;
         totalSuppliedUsd: string;
         venue: components["schemas"]["BorrowingVenue"];
+      };
+      status: components["schemas"]["Status"];
+    };
+    Response_CarryAccount: {
+      error?: components["schemas"]["Error"];
+      result?: {
+        /** Format: int64 */
+        chainId: number;
+        /** Format: int64 */
+        observedAtMs: number;
+        positions: components["schemas"]["CarryPosition"][];
+        totalValueUsd: string;
       };
       status: components["schemas"]["Status"];
     };
@@ -1208,11 +1303,14 @@ export type BorrowingToken = components["schemas"]["BorrowingToken"];
 export type BorrowingVenue = components["schemas"]["BorrowingVenue"];
 export type BstockId = components["schemas"]["BstockId"];
 export type BstockSummary = components["schemas"]["BstockSummary"];
+export type CarryAccount = components["schemas"]["CarryAccount"];
 export type CarryActionPreview = components["schemas"]["CarryActionPreview"];
 export type CarryOpportunity = components["schemas"]["CarryOpportunity"];
 export type CarryOpportunityReason =
   components["schemas"]["CarryOpportunityReason"];
+export type CarryPosition = components["schemas"]["CarryPosition"];
 export type CarryQualification = components["schemas"]["CarryQualification"];
+export type CarryRedemption = components["schemas"]["CarryRedemption"];
 export type ComposeStrategyRequest =
   components["schemas"]["ComposeStrategyRequest"];
 export type ComposedStrategy = components["schemas"]["ComposedStrategy"];
@@ -1293,6 +1391,8 @@ export type RepaymentCapabilityUnavailableReason =
 export type Response = components["schemas"]["Response"];
 export type Response_BorrowingAccount =
   components["schemas"]["Response_BorrowingAccount"];
+export type Response_CarryAccount =
+  components["schemas"]["Response_CarryAccount"];
 export type Response_ComposedStrategy =
   components["schemas"]["Response_ComposedStrategy"];
 export type Response_List_CarryOpportunity =
@@ -1591,6 +1691,35 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["Response_ComposedStrategy"];
+        };
+      };
+      default: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Response"];
+        };
+      };
+    };
+  };
+  positions: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        address: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Response_CarryAccount"];
         };
       };
       default: {

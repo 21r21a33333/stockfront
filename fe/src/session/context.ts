@@ -2,6 +2,7 @@ import { createContext, useContext } from "react";
 import type { Address } from "viem";
 import type {
   BorrowingAccount,
+  CarryPosition,
   PreparedRecipe,
   RecipeCatalog,
   RecipeContext,
@@ -58,6 +59,9 @@ export interface RecipeSessionValue {
     position: { venue: "venus"; pool: Address; token: Address },
     action: "BORROW" | "WITHDRAW" | "REPAY",
   ): void;
+  earnPositions: CarryPosition[];
+  refetchEarnPositions(): void;
+  startEarnWithdrawal(position: CarryPosition): void;
 }
 
 export const RecipeSessionContext = createContext<RecipeSessionValue | null>(

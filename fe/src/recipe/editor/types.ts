@@ -51,6 +51,15 @@ export type WithdrawNodeData = {
   kind: "WITHDRAW";
 };
 
+export type EarnPositionNodeData = {
+  kind: "EARN_POSITION";
+  investmentId?: string;
+};
+
+export type EarnWithdrawNodeData = {
+  kind: "EARN_WITHDRAW";
+};
+
 export type BorrowNodeData = {
   kind: "BORROW";
   debtToken?: Address;
@@ -68,6 +77,8 @@ export type RecipeNodeData =
   | TradeNodeData
   | SupplyNodeData
   | EarnDepositNodeData
+  | EarnPositionNodeData
+  | EarnWithdrawNodeData
   | WithdrawNodeData
   | BorrowNodeData
   | RepayNodeData;
@@ -80,6 +91,8 @@ export interface RecipeFlowNode {
     | "trade"
     | "supply"
     | "earnDeposit"
+    | "earnPosition"
+    | "earnWithdraw"
     | "withdraw"
     | "borrow"
     | "repay";
@@ -117,6 +130,10 @@ export function flowType(kind: RecipePrimitiveKind): RecipeFlowNode["type"] {
       return "supply";
     case "EARN_DEPOSIT":
       return "earnDeposit";
+    case "EARN_POSITION":
+      return "earnPosition";
+    case "EARN_WITHDRAW":
+      return "earnWithdraw";
     case "WITHDRAW":
       return "withdraw";
     case "BORROW":

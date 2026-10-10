@@ -38,7 +38,7 @@ pub struct EarnOpportunity {
     pub observed_at_ms: i64,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[derive(utoipa::ToSchema, Clone, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CarryPosition {
     pub position_id: String,
@@ -51,14 +51,14 @@ pub struct CarryPosition {
     pub redemption: Option<CarryRedemption>,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[derive(utoipa::ToSchema, Clone, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CarryRedemption {
     pub id: String,
     pub claimable: bool,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[derive(utoipa::ToSchema, Clone, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CarryAccount {
     pub chain_id: u64,
@@ -193,9 +193,12 @@ pub struct CarryActionPreview {
     pub redemption_delay: Option<RedemptionDelay>,
 }
 
-#[derive(Debug, Eq, PartialEq, Serialize)]
+#[derive(utoipa::ToSchema, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CarryActionPlan {
+    // The generic prepared-transaction schema is shared with borrowing, so this
+    // one is inlined to keep the carry kinds out of that definition.
+    #[schema(inline)]
     pub transactions: Vec<PreparedCarryTransaction>,
     pub preview: CarryActionPreview,
 }

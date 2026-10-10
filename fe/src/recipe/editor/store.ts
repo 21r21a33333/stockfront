@@ -23,6 +23,7 @@ export interface EditorDefaults {
     pool: Address;
     token: Address;
   };
+  earnPosition?: { investmentId: string };
   borrowedPosition?: {
     venue: "venus";
     pool: Address;
@@ -98,7 +99,15 @@ function nodeFor(
         data: { kind, venue: "venus" },
       };
     case "EARN_DEPOSIT":
+    case "EARN_WITHDRAW":
       return { id, type: flowType(kind), position, data: { kind } };
+    case "EARN_POSITION":
+      return {
+        id,
+        type: flowType(kind),
+        position,
+        data: { kind, investmentId: defaults.earnPosition?.investmentId },
+      };
     case "SUPPLIED_POSITION":
       return {
         id,

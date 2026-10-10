@@ -37,8 +37,9 @@ use crate::{
         TokenAmount, TradeError, TradeQuoteRequest,
     },
     carry::{
-        CarryOpportunityQuery, CarryQualification, CarryService, CarryServiceError,
-        CarryTransactionKind, PrepareCarryDepositRequest,
+        CarryOpportunityQuery, CarryPosition, CarryQualification, CarryService, CarryServiceError,
+        CarryTransactionKind, CarryWithdrawalAmount, PrepareCarryDepositRequest,
+        PrepareCarryWithdrawalRequest,
     },
     wallet_portfolio::WalletAddress,
 };
@@ -267,6 +268,14 @@ impl RecipeService {
                         *collateral_token,
                         investment_id,
                         &completed,
+                    )
+                    .await?
+                }
+                RecipeAction::EarnWithdraw { position } => {
+                    self.preview_earn_withdrawal(
+                        step.node_id,
+                        &position.investment_id,
+                        request.context.wallet,
                     )
                     .await?
                 }
@@ -518,83 +527,90 @@ impl RecipeService {
 
         let mut prepared = Vec::with_capacity(ready.len() * 2);
         for (step, input) in ready {
-            match (&step.action, input) {
-                (RecipeAction::Trade { buy_token, .. }, ReadyInput::Asset(input)) => {
-                    let selection = selections
-                        .get(&step.node_id)
-                        .copied()
-                        .ok_or(RecipeError::InvalidSelection)?;
-                    prepared.extend(
-                        self.prepare_trade_step(
-                            step.node_id,
-                            input,
-                            *buy_token,
-                            selection,
-                            request.context.wallet,
-                        )
-                        .await?,
-                    );
-                }
-                (RecipeAction::Supply { .. }, ReadyInput::Asset(input)) => {
-                    prepared.push(
-                        self.prepare_supply_step(step.node_id, input, request.context.wallet)
-                            .await?,
-                    );
-                }
-                (RecipeAction::Withdraw { .. }, ReadyInput::Withdrawal(position)) => {
-                    prepared.push(
-                        self.prepare_withdrawal_step(
-                            step.node_id,
-                            position,
-                            request.context.wallet,
-                        )
-                        .await?,
-                    );
-                }
-                (RecipeAction::Borrow { .. }, ReadyInput::Borrow(capability, collateral)) => {
-                    prepared.push(
-                        self.prepare_borrow_step(
-                            step.node_id,
-                            *capability,
-                            collateral,
-                            request.context.wallet,
-                        )
-                        .await?,
-                    );
-                }
-                (RecipeAction::Repay { .. }, ReadyInput::Repay(capability)) => {
-                    prepared.push(
-                        self.prepare_repayment_step(
-                            step.node_id,
-                            *capability,
-                            request.context.wallet,
-                        )
-                        .await?,
-                    );
-                }
-                (
-                    RecipeAction::EarnDeposit {
-                        collateral_token,
-                        investment_id,
-                        ..
-                    },
-                    ReadyInput::Asset(input),
-                ) => {
-                    prepared.push(
-                        self.prepare_earn_deposit_step(
-                            step.node_id,
-                            input,
-                            *collateral_token,
-                            investment_id.clone(),
-                            request.context.wallet,
-                        )
-                        .await?,
-                    );
-                }
-                _ => return Err(RecipeError::InvalidContext),
-            }
+            prepared.extend(
+                self.prepare_ready_step(step, input, &selections, request.context.wallet)
+                    .await?,
+            );
         }
         Ok(PreparedRecipe { steps: prepared })
+    }
+
+    /// Turns one ready step into the transactions its action needs.
+    async fn prepare_ready_step(
+        &self,
+        step: &super::LogicalStep,
+        input: ReadyInput,
+        selections: &HashMap<Uuid, &RecipeNodeSelection>,
+        wallet: WalletAddress,
+    ) -> Result<Vec<PreparedRecipeStep>, RecipeError> {
+        let mut prepared = Vec::new();
+        match (&step.action, input) {
+            (RecipeAction::Trade { buy_token, .. }, ReadyInput::Asset(input)) => {
+                let selection = selections
+                    .get(&step.node_id)
+                    .copied()
+                    .ok_or(RecipeError::InvalidSelection)?;
+                prepared.extend(
+                    self.prepare_trade_step(step.node_id, input, *buy_token, selection, wallet)
+                        .await?,
+                );
+            }
+            (RecipeAction::Supply { .. }, ReadyInput::Asset(input)) => {
+                prepared.push(
+                    self.prepare_supply_step(step.node_id, input, wallet)
+                        .await?,
+                );
+            }
+            (RecipeAction::Withdraw { .. }, ReadyInput::Withdrawal(position)) => {
+                prepared.push(
+                    self.prepare_withdrawal_step(step.node_id, position, wallet)
+                        .await?,
+                );
+            }
+            (RecipeAction::Borrow { .. }, ReadyInput::Borrow(capability, collateral)) => {
+                prepared.push(
+                    self.prepare_borrow_step(step.node_id, *capability, collateral, wallet)
+                        .await?,
+                );
+            }
+            (RecipeAction::Repay { .. }, ReadyInput::Repay(capability)) => {
+                prepared.push(
+                    self.prepare_repayment_step(step.node_id, *capability, wallet)
+                        .await?,
+                );
+            }
+            (RecipeAction::EarnWithdraw { position }, ReadyInput::EarnWithdrawal) => {
+                prepared.push(
+                    self.prepare_earn_withdrawal_step(
+                        step.node_id,
+                        &position.investment_id,
+                        wallet,
+                    )
+                    .await?,
+                );
+            }
+            (
+                RecipeAction::EarnDeposit {
+                    collateral_token,
+                    investment_id,
+                    ..
+                },
+                ReadyInput::Asset(input),
+            ) => {
+                prepared.push(
+                    self.prepare_earn_deposit_step(
+                        step.node_id,
+                        input,
+                        *collateral_token,
+                        investment_id.clone(),
+                        wallet,
+                    )
+                    .await?,
+                );
+            }
+            _ => return Err(RecipeError::InvalidContext),
+        }
+        Ok(prepared)
     }
 
     async fn ready_steps<'a>(
@@ -649,6 +665,15 @@ impl RecipeService {
                         .await?;
                     if capability.unavailable_reasons.is_empty() {
                         ready.push((step, ReadyInput::Repay(Box::new(capability))));
+                    }
+                }
+                RecipeAction::EarnWithdraw { position } => {
+                    if self
+                        .earn_position(wallet, &position.investment_id)
+                        .await?
+                        .is_some()
+                    {
+                        ready.push((step, ReadyInput::EarnWithdrawal));
                     }
                 }
             }
@@ -890,6 +915,62 @@ impl RecipeService {
         Ok(PreparedRecipeStep::Repay { node_id, action })
     }
 
+    /// Reads the wallet's live earn position for one investment.
+    async fn earn_position(
+        &self,
+        wallet: WalletAddress,
+        investment_id: &str,
+    ) -> Result<Option<CarryPosition>, RecipeError> {
+        Ok(self
+            .carry
+            .positions(wallet)
+            .await?
+            .positions
+            .into_iter()
+            .find(|position| {
+                position
+                    .investment_ids
+                    .iter()
+                    .any(|held| held == investment_id)
+            }))
+    }
+
+    async fn preview_earn_withdrawal(
+        &self,
+        node_id: Uuid,
+        investment_id: &str,
+        wallet: WalletAddress,
+    ) -> Result<RecipeNodePreview, RecipeError> {
+        let position = self.earn_position(wallet, investment_id).await?;
+        Ok(RecipeNodePreview::EarnWithdraw {
+            node_id,
+            state: if position.is_some() {
+                RecipeNodeState::Ready
+            } else {
+                RecipeNodeState::OutputUnavailable
+            },
+            position,
+            waiting_for: Vec::new(),
+        })
+    }
+
+    async fn prepare_earn_withdrawal_step(
+        &self,
+        node_id: Uuid,
+        investment_id: &str,
+        wallet: WalletAddress,
+    ) -> Result<PreparedRecipeStep, RecipeError> {
+        let action = self
+            .carry
+            .prepare_withdrawal(&PrepareCarryWithdrawalRequest {
+                wallet,
+                investment_id: investment_id.to_owned(),
+                amount: CarryWithdrawalAmount::Full,
+            })
+            .await?;
+        Ok(PreparedRecipeStep::EarnWithdraw { node_id, action })
+    }
+
     async fn resolve_withdrawal(
         &self,
         wallet: WalletAddress,
@@ -965,6 +1046,12 @@ fn completed_preview(step: &super::LogicalStep) -> RecipeNodePreview {
             node_id: step.node_id,
             state: RecipeNodeState::Complete,
             opportunity: None,
+            waiting_for: Vec::new(),
+        },
+        RecipeAction::EarnWithdraw { .. } => RecipeNodePreview::EarnWithdraw {
+            node_id: step.node_id,
+            state: RecipeNodeState::Complete,
+            position: None,
             waiting_for: Vec::new(),
         },
         RecipeAction::Withdraw { .. } => RecipeNodePreview::Withdraw {
@@ -1104,6 +1191,7 @@ enum ResolvedAsset {
 enum ReadyInput {
     Asset(TokenAmount),
     Withdrawal(BorrowingAsset),
+    EarnWithdrawal,
     Borrow(Box<BorrowCapability>, SuppliedPositionRef),
     Repay(Box<RepaymentCapability>),
 }
@@ -1176,6 +1264,7 @@ fn validate_completed_context<'a>(
             | RecipeAction::Withdraw { .. }
             | RecipeAction::Repay { .. }
             | RecipeAction::EarnDeposit { .. }
+            | RecipeAction::EarnWithdraw { .. }
                 if !node.outputs.is_empty() =>
             {
                 return Err(RecipeError::InvalidContext);
@@ -1183,7 +1272,8 @@ fn validate_completed_context<'a>(
             RecipeAction::Supply { .. }
             | RecipeAction::Withdraw { .. }
             | RecipeAction::Repay { .. }
-            | RecipeAction::EarnDeposit { .. } => {}
+            | RecipeAction::EarnDeposit { .. }
+            | RecipeAction::EarnWithdraw { .. } => {}
             RecipeAction::Borrow {
                 debt_token,
                 raw_amount,
@@ -1216,7 +1306,8 @@ fn validate_completed_context<'a>(
             RecipeAction::Supply { asset, .. } | RecipeAction::EarnDeposit { asset, .. } => asset,
             RecipeAction::Withdraw { .. }
             | RecipeAction::Borrow { .. }
-            | RecipeAction::Repay { .. } => continue,
+            | RecipeAction::Repay { .. }
+            | RecipeAction::EarnWithdraw { .. } => continue,
         };
         if let AssetRef::NodeOutput { node_id, port, .. } = input {
             let dependency = completed.get(node_id).ok_or(RecipeError::InvalidContext)?;
@@ -1298,7 +1389,7 @@ fn validate_action_policy(
                     "supply accepts supported bStocks, not settlement tokens",
                 ));
             }
-            RecipeAction::Supply { .. } => {}
+            RecipeAction::Supply { .. } | RecipeAction::EarnWithdraw { .. } => {}
             RecipeAction::EarnDeposit {
                 asset,
                 collateral_token,
@@ -1430,6 +1521,7 @@ mod tests {
             AssetKind, BNB_CHAIN_ID, BstockCatalog, BstockDetails, BstockId, BstockSummary,
             CatalogError,
         },
+        bstock_trade::SettlementPairs,
         bstock_trade::{
             PreparedApproval, PreparedTrade, PreparedTransaction, SubmitOrderRequest,
             SubmittedOrder, TokenAmount, TradeExecutionMode, TradeGateway, TradeGatewayError,
@@ -2384,7 +2476,8 @@ mod tests {
             | PreparedRecipeStep::EnableCollateral { .. }
             | PreparedRecipeStep::Borrow { .. }
             | PreparedRecipeStep::Repay { .. }
-            | PreparedRecipeStep::EarnDeposit { .. } => false,
+            | PreparedRecipeStep::EarnDeposit { .. }
+            | PreparedRecipeStep::EarnWithdraw { .. } => false,
         }));
         assert_eq!(
             gateway.prepared(),
@@ -2731,9 +2824,13 @@ mod tests {
     }
 
     fn service() -> (RecipeService, Arc<RecordingGateway>) {
+        gated_service(SettlementPairs::Rejected)
+    }
+
+    fn gated_service(settlement_pairs: SettlementPairs) -> (RecipeService, Arc<RecordingGateway>) {
         let catalog = Arc::new(FixedCatalog(vec![summary()]));
         let gateway = Arc::new(RecordingGateway::default());
-        let policy = TradePolicy::new([SETTLEMENT], 100, 50)
+        let policy = TradePolicy::new([SETTLEMENT], 100, 50, SettlementPairs::Rejected)
             .unwrap_or_else(|error| panic!("test policy is invalid: {error}"));
         let trade = Arc::new(BstockTradeService::new(
             gateway.clone(),
@@ -2770,7 +2867,7 @@ mod tests {
         let trade = Arc::new(BstockTradeService::new(
             Arc::new(RecordingGateway::default()),
             catalog.clone(),
-            TradePolicy::new([SETTLEMENT], 100, 50)
+            TradePolicy::new([SETTLEMENT], 100, 50, SettlementPairs::Rejected)
                 .unwrap_or_else(|error| panic!("test policy is invalid: {error}")),
         ));
         let market = Arc::new(BstockMarketService::new(catalog));
@@ -3124,7 +3221,8 @@ mod tests {
                 | RecipeNodePreview::Withdraw { state, .. }
                 | RecipeNodePreview::Borrow { state, .. }
                 | RecipeNodePreview::Repay { state, .. }
-                | RecipeNodePreview::EarnDeposit { state, .. } => *state,
+                | RecipeNodePreview::EarnDeposit { state, .. }
+                | RecipeNodePreview::EarnWithdraw { state, .. } => *state,
             })
             .collect()
     }

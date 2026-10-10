@@ -26,6 +26,11 @@ pub(super) struct SuppliedPositionRef {
     pub token: Address,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(super) struct EarnPositionRef {
+    pub investment_id: String,
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) struct BorrowedPositionRef {
     pub venue: BorrowingVenue,
@@ -71,6 +76,9 @@ pub(super) enum RecipeAction {
         asset: AssetRef,
         collateral_token: Address,
         investment_id: String,
+    },
+    EarnWithdraw {
+        position: EarnPositionRef,
     },
 }
 

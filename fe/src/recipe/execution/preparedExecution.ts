@@ -19,17 +19,25 @@ export type PreparedExecution =
         | "TRADE"
         | "SUPPLY"
         | "EARN_DEPOSIT"
+        | "EARN_WITHDRAW"
         | "WITHDRAW"
         | "ENABLE_COLLATERAL"
         | "BORROW"
         | "REPAY";
       executionMode:
-        "SWAP" | "SUPPLY" | "EARN_DEPOSIT" | "WITHDRAW" | "BORROW" | "REPAY";
+        | "SWAP"
+        | "SUPPLY"
+        | "EARN_DEPOSIT"
+        | "EARN_WITHDRAW"
+        | "WITHDRAW"
+        | "BORROW"
+        | "REPAY";
       steps: (
         | "APPROVAL"
         | "TRADE"
         | "SUPPLY"
         | "EARN_DEPOSIT"
+        | "EARN_WITHDRAW"
         | "WITHDRAW"
         | "ENABLE_COLLATERAL"
         | "BORROW"
@@ -71,6 +79,9 @@ export async function preparedExecution(
   const supply = prepared.steps.find((step) => step.kind === "SUPPLY");
   const earn = prepared.steps.find((step) => step.kind === "EARN_DEPOSIT");
   const withdrawal = prepared.steps.find((step) => step.kind === "WITHDRAW");
+  const earnWithdrawal = prepared.steps.find(
+    (step) => step.kind === "EARN_WITHDRAW",
+  );
   const collateral = prepared.steps.find(
     (step) => step.kind === "ENABLE_COLLATERAL",
   );
@@ -155,6 +166,23 @@ export async function preparedExecution(
       steps: ["WITHDRAW"],
       calls: [call(transaction)],
       atomicRequired: false,
+    };
+  }
+
+  if (earnWithdrawal?.kind === "EARN_WITHDRAW") {
+    if (prepared.steps.length !== 1)
+      throw new ExecutionMessage(
+        "An earn withdrawal preparation must contain one recipe step.",
+      );
+    const calls = earnWithdrawalCalls(earnWithdrawal.action.transactions);
+    return {
+      kind: "CALL_BATCH",
+      nodeId,
+      action: "EARN_WITHDRAW",
+      executionMode: "EARN_WITHDRAW",
+      steps: ["EARN_WITHDRAW"],
+      calls,
+      atomicRequired: calls.length > 1,
     };
   }
 
@@ -260,6 +288,23 @@ export async function preparedExecution(
     };
   }
   throw new ExecutionMessage("Unsupported prepared action.");
+}
+
+function earnWithdrawalCalls(
+  transactions: Extract<
+    PreparedRecipe["steps"][number],
+    { kind: "EARN_WITHDRAW" }
+  >["action"]["transactions"],
+) {
+  // Redeeming burns a share token the vault already holds, so an approval only
+  // appears when the provider asks for one.
+  const kinds = transactions.map((transaction) => transaction.kind);
+  const validRedeem = kinds.length === 1 && kinds[0] === "REDEEM";
+  const validApprovalAndRedeem =
+    kinds.length === 2 && kinds[0] === "APPROVE" && kinds[1] === "REDEEM";
+  if (!validRedeem && !validApprovalAndRedeem)
+    throw new ExecutionMessage("The prepared earn withdrawal is incomplete.");
+  return transactions.map(call);
 }
 
 function earnDepositCalls(

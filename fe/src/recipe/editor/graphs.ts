@@ -37,41 +37,64 @@ export function chainOrder(
 }
 
 /** Actions that may consume the output of `last`; an empty chain may only start with a source. */
+/**
+ * What each node may be followed by. Every kind answers, so a new primitive is
+ * a build failure here rather than one the builder silently cannot reach.
+ */
+const FOLLOWS: Record<RecipeNodeData["kind"], RecipePrimitiveKind[]> = {
+  WALLET_ASSET: ["TRADE", "SUPPLY", "EARN_DEPOSIT"],
+  TRADE: ["TRADE", "SUPPLY"],
+  BORROW: ["TRADE", "EARN_DEPOSIT"],
+  SUPPLIED_POSITION: ["BORROW", "WITHDRAW"],
+  BORROWED_POSITION: ["REPAY"],
+  EARN_POSITION: ["EARN_WITHDRAW"],
+  SUPPLY: [],
+  WITHDRAW: [],
+  REPAY: [],
+  EARN_DEPOSIT: [],
+  EARN_WITHDRAW: [],
+};
+
+/** Actions that may consume the output of `last`; an empty chain may only start with a source. */
 export function nextKinds(
   last?: RecipeNodeData["kind"],
 ): RecipePrimitiveKind[] {
-  switch (last) {
-    case undefined:
-      return ["WALLET_ASSET", "SUPPLIED_POSITION", "BORROWED_POSITION"];
-    case "WALLET_ASSET":
-      return ["TRADE", "SUPPLY"];
-    case "TRADE":
-      return ["TRADE", "SUPPLY"];
-    case "BORROW":
-      return ["TRADE"];
-    case "SUPPLIED_POSITION":
-      return ["BORROW", "WITHDRAW"];
-    case "BORROWED_POSITION":
-      return ["REPAY"];
-    default:
-      return [];
-  }
+  return last === undefined
+    ? [
+        "WALLET_ASSET",
+        "SUPPLIED_POSITION",
+        "BORROWED_POSITION",
+        "EARN_POSITION",
+      ]
+    : FOLLOWS[last];
 }
 
-const outputPort: Partial<Record<RecipeNodeData["kind"], string>> = {
+const outputPort: Record<RecipeNodeData["kind"], string | undefined> = {
   WALLET_ASSET: "asset",
   TRADE: "buy",
   BORROW: "borrowed",
   SUPPLIED_POSITION: "position",
   BORROWED_POSITION: "debt",
+  EARN_POSITION: "position",
+  SUPPLY: undefined,
+  WITHDRAW: undefined,
+  REPAY: undefined,
+  EARN_DEPOSIT: undefined,
+  EARN_WITHDRAW: undefined,
 };
 
-const inputPort: Partial<Record<RecipeNodeData["kind"], string>> = {
+const inputPort: Record<RecipeNodeData["kind"], string | undefined> = {
   TRADE: "sell",
   SUPPLY: "asset",
   BORROW: "collateral",
   WITHDRAW: "position",
   REPAY: "debt",
+  EARN_DEPOSIT: "asset",
+  EARN_WITHDRAW: "position",
+  WALLET_ASSET: undefined,
+  SUPPLIED_POSITION: undefined,
+  BORROWED_POSITION: undefined,
+  EARN_POSITION: undefined,
 };
 
 /** A linear chain of node data wired output→input, laid out top to bottom. */
@@ -146,6 +169,9 @@ function nodeData(node: RecipeNode, assets: AssetOption[]): RecipeNodeData {
         pool: node.pool,
         token: node.token,
       };
+    case "EARN_POSITION":
+      return { kind: node.kind, investmentId: node.investmentId };
+    case "EARN_WITHDRAW":
     case "WITHDRAW":
     case "REPAY":
       return { kind: node.kind };

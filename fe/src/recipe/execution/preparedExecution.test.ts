@@ -202,6 +202,58 @@ it("keeps approval before an earn deposit in one atomic wallet batch", async () 
   });
 });
 
+it("turns one earn redemption into one wallet call", async () => {
+  const prepared: PreparedRecipe = {
+    steps: [
+      {
+        kind: "EARN_WITHDRAW",
+        nodeId: "earn",
+        action: {
+          transactions: [
+            { kind: "REDEEM", to: market, data: "0xe3511faf", value: "0" },
+          ],
+          preview: {},
+        },
+      },
+    ],
+  };
+
+  // Redeeming burns a share the vault already holds, so there is nothing to
+  // approve and nothing to make atomic.
+  await expect(
+    preparedExecution(prepared, {} as never, owner),
+  ).resolves.toEqual({
+    kind: "CALL_BATCH",
+    nodeId: "earn",
+    action: "EARN_WITHDRAW",
+    executionMode: "EARN_WITHDRAW",
+    steps: ["EARN_WITHDRAW"],
+    calls: [{ to: market, data: "0xe3511faf", value: 0n }],
+    atomicRequired: false,
+  });
+});
+
+it("refuses an earn withdrawal whose provider plan is missing the redemption", async () => {
+  const prepared: PreparedRecipe = {
+    steps: [
+      {
+        kind: "EARN_WITHDRAW",
+        nodeId: "earn",
+        action: {
+          transactions: [
+            { kind: "APPROVE", to: market, data: "0x095ea7b3", value: "0" },
+          ],
+          preview: {},
+        },
+      },
+    ],
+  };
+
+  await expect(preparedExecution(prepared, {} as never, owner)).rejects.toThrow(
+    "The prepared earn withdrawal is incomplete.",
+  );
+});
+
 it("refuses an earn deposit whose provider plan is missing the deposit", async () => {
   const prepared: PreparedRecipe = {
     steps: [

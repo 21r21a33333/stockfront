@@ -7,6 +7,7 @@ import type {
 import { diagnosticsForNode } from "@/recipe/editor/compiler";
 import type { BorrowedPositionOption } from "@/recipe/editor/repaymentPolicy";
 import type { AssetOption, RecipeFlowNode } from "@/recipe/editor/types";
+import type { CarryPosition } from "@/api/generated";
 import type { SuppliedPositionOption } from "@/recipe/editor/withdrawalPolicy";
 import { formatDisplayAmount, formatPositionAmount } from "@/recipe/format";
 import { formatHealth } from "@/ui/health";
@@ -16,6 +17,7 @@ export interface DescribeContext {
   assets: AssetOption[];
   suppliedPositions: SuppliedPositionOption[];
   borrowedPositions: BorrowedPositionOption[];
+  earnPositions: CarryPosition[];
   previews: RecipeNodePreview[];
   routes: Record<string, TradeQuote>;
   diagnostics: RecipeDiagnostic[];
@@ -256,6 +258,31 @@ export function describe(
             text: `Earns ${opportunity.baseEarnRateDisplay}`,
           });
       }
+      break;
+    }
+    case "EARN_POSITION": {
+      description = {
+        name: "Earn position",
+        detail: data.investmentId
+          ? "Held earn deposit"
+          : "Pick an earn position",
+      };
+      break;
+    }
+    case "EARN_WITHDRAW": {
+      const position =
+        preview?.kind === "EARN_WITHDRAW" ? preview.position : undefined;
+      description = {
+        name: "Withdraw from earn",
+        detail: position
+          ? `All of your ${position.protocolName} position`
+          : "All of the earn position",
+      };
+      if (preview?.kind === "EARN_WITHDRAW" && preview.state === "READY")
+        checks.push({
+          ok: true,
+          text: "The position is available to withdraw",
+        });
       break;
     }
     case "WITHDRAW": {

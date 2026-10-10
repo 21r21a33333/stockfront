@@ -49,7 +49,14 @@ export interface ExecutionAttempt {
 }
 
 export type ExecutionMode =
-  "SWAP" | "RFQ" | "SUPPLY" | "EARN_DEPOSIT" | "WITHDRAW" | "BORROW" | "REPAY";
+  | "SWAP"
+  | "RFQ"
+  | "SUPPLY"
+  | "EARN_DEPOSIT"
+  | "EARN_WITHDRAW"
+  | "WITHDRAW"
+  | "BORROW"
+  | "REPAY";
 
 export interface ExecutionRun {
   version: 2;
@@ -139,6 +146,8 @@ const ACTIONS: Record<RecipePrimitive["kind"], boolean> = {
   TRADE: true,
   SUPPLY: true,
   EARN_DEPOSIT: true,
+  EARN_POSITION: false,
+  EARN_WITHDRAW: true,
   WITHDRAW: true,
   BORROW: true,
   REPAY: true,

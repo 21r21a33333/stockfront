@@ -260,6 +260,37 @@ export function PositionsSheet() {
                 />
               ) : null}
             </section>
+
+            <section className={styles.section}>
+              <h3 className="mono">Earning</h3>
+              {session.earnPositions.map((position) => (
+                <div key={position.positionId} className={styles.row}>
+                  <BlockIcon
+                    kind="earn"
+                    size={36}
+                    radius={10}
+                    tint="var(--sky)"
+                  />
+                  <span className={styles.rowText}>
+                    <strong>{position.protocolName}</strong>
+                    <small>{formatUsd(position.valueUsd)}</small>
+                  </span>
+                  <span className={styles.rowActions}>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        use(() => session.startEarnWithdrawal(position))
+                      }
+                    >
+                      Withdraw
+                    </button>
+                  </span>
+                </div>
+              ))}
+              {session.earnPositions.length === 0 ? (
+                <p className={styles.muted}>No earn positions.</p>
+              ) : null}
+            </section>
           </div>
         )}
       </aside>

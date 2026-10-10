@@ -21,7 +21,7 @@ use uuid::Uuid;
 use super::{
     AssetRef, BorrowedPositionRef, LogicalPlan, LogicalStep, RecipeAction, RecipeDefinition,
     RecipeDiagnostic, RecipeDiagnosticCode, RecipeDiagnosticLocation, RecipeGraph, RecipePrimitive,
-    RecipeValidationReport, SuppliedPositionRef,
+    RecipeValidationReport, SuppliedPositionRef, plan::EarnPositionRef,
 };
 use crate::bstock_market::BNB_CHAIN_ID;
 
@@ -125,6 +125,7 @@ fn lower(graph: &RecipeGraph<'_>) -> Result<LogicalPlan, RecipeDiagnostic> {
     let mut values = HashMap::<(Uuid, String), AssetRef>::new();
     let mut positions = HashMap::<(Uuid, String), SuppliedPositionRef>::new();
     let mut debts = HashMap::<(Uuid, String), BorrowedPositionRef>::new();
+    let mut earn = HashMap::<(Uuid, String), EarnPositionRef>::new();
     let mut borrow_collateral = HashMap::<Uuid, alloy_primitives::Address>::new();
     let mut steps = Vec::new();
 
@@ -154,24 +155,7 @@ fn lower(graph: &RecipeGraph<'_>) -> Result<LogicalPlan, RecipeDiagnostic> {
                 values.insert((node_id, "buy".to_owned()), output);
             }
             RecipePrimitive::Supply { venue } => {
-                let (asset, dependency) = input_asset(
-                    graph,
-                    &values,
-                    node_id,
-                    "asset",
-                    "the supply input is not available before this step",
-                )?;
-                steps.push(LogicalStep {
-                    node_id,
-                    dependencies: matches!(asset, AssetRef::NodeOutput { .. })
-                        .then_some(dependency)
-                        .into_iter()
-                        .collect(),
-                    action: RecipeAction::Supply {
-                        asset,
-                        venue: *venue,
-                    },
-                });
+                steps.push(lower_supply(graph, &values, node_id, *venue)?);
             }
             RecipePrimitive::Withdraw => {
                 let position = input_position(graph, &positions, node_id)?;
@@ -200,6 +184,12 @@ fn lower(graph: &RecipeGraph<'_>) -> Result<LogicalPlan, RecipeDiagnostic> {
                     dependencies: Vec::new(),
                     action: RecipeAction::Repay { debt },
                 });
+            }
+            RecipePrimitive::EarnPosition { investment_id } => {
+                register_earn_position(&mut earn, node_id, investment_id.clone());
+            }
+            RecipePrimitive::EarnWithdraw => {
+                steps.push(lower_earn_withdraw(graph, &earn, node_id)?);
             }
             RecipePrimitive::EarnDeposit {
                 collateral_token,
@@ -382,6 +372,72 @@ fn input_position_on(
             node_id,
             port,
             "the supplied position is not available before this step",
+        )
+    })
+}
+
+fn lower_supply(
+    graph: &RecipeGraph<'_>,
+    values: &HashMap<(Uuid, String), AssetRef>,
+    node_id: Uuid,
+    venue: crate::bstock_borrowing::BorrowingVenue,
+) -> Result<LogicalStep, RecipeDiagnostic> {
+    let (asset, dependency) = input_asset(
+        graph,
+        values,
+        node_id,
+        "asset",
+        "the supply input is not available before this step",
+    )?;
+    Ok(LogicalStep {
+        node_id,
+        dependencies: matches!(asset, AssetRef::NodeOutput { .. })
+            .then_some(dependency)
+            .into_iter()
+            .collect(),
+        action: RecipeAction::Supply { asset, venue },
+    })
+}
+
+fn register_earn_position(
+    positions: &mut HashMap<(Uuid, String), EarnPositionRef>,
+    node_id: Uuid,
+    investment_id: String,
+) {
+    positions.insert(
+        (node_id, "position".to_owned()),
+        EarnPositionRef { investment_id },
+    );
+}
+
+fn lower_earn_withdraw(
+    graph: &RecipeGraph<'_>,
+    positions: &HashMap<(Uuid, String), EarnPositionRef>,
+    node_id: Uuid,
+) -> Result<LogicalStep, RecipeDiagnostic> {
+    Ok(LogicalStep {
+        node_id,
+        dependencies: Vec::new(),
+        action: RecipeAction::EarnWithdraw {
+            position: input_earn_position(graph, positions, node_id)?,
+        },
+    })
+}
+
+fn input_earn_position(
+    graph: &RecipeGraph<'_>,
+    positions: &HashMap<(Uuid, String), EarnPositionRef>,
+    node_id: Uuid,
+) -> Result<EarnPositionRef, RecipeDiagnostic> {
+    let edge = graph
+        .incoming(node_id, "position")
+        .ok_or_else(|| missing_input(node_id, "position"))?;
+    let source_key = (edge.edge.from.node_id, edge.edge.from.port.clone());
+    positions.get(&source_key).cloned().ok_or_else(|| {
+        unavailable_input(
+            node_id,
+            "position",
+            "the earn position is not available before this step",
         )
     })
 }
@@ -585,6 +641,72 @@ mod tests {
                 venue: BorrowingVenue::Venus,
             }
         );
+    }
+
+    #[test]
+    fn compiles_earn_position_into_terminal_withdrawal() {
+        let recipe = RecipeDefinition {
+            schema_version: SCHEMA_VERSION,
+            chain_id: BNB_CHAIN_ID,
+            nodes: vec![
+                RecipeNode {
+                    id: POSITION_ID,
+                    primitive: RecipePrimitive::EarnPosition {
+                        investment_id: "investment".to_owned(),
+                    },
+                },
+                RecipeNode {
+                    id: WITHDRAW_ID,
+                    primitive: RecipePrimitive::EarnWithdraw,
+                },
+            ],
+            edges: vec![RecipeEdge {
+                id: Uuid::from_u128(11),
+                from: RecipePortRef {
+                    node_id: POSITION_ID,
+                    port: "position".to_owned(),
+                },
+                to: RecipePortRef {
+                    node_id: WITHDRAW_ID,
+                    port: "position".to_owned(),
+                },
+            }],
+        };
+
+        let compiled = compile(&recipe);
+        let plan = compiled
+            .plan
+            .unwrap_or_else(|| panic!("valid earn withdrawal did not produce a plan"));
+
+        assert!(compiled.report.valid);
+        // The source only names the position, so the withdrawal is the one step.
+        assert_eq!(plan.steps.len(), 1);
+        assert_eq!(
+            plan.steps[0].action,
+            RecipeAction::EarnWithdraw {
+                position: EarnPositionRef {
+                    investment_id: "investment".to_owned(),
+                },
+            }
+        );
+    }
+
+    #[test]
+    fn rejects_an_earn_withdrawal_with_no_position_connected() {
+        let recipe = RecipeDefinition {
+            schema_version: SCHEMA_VERSION,
+            chain_id: BNB_CHAIN_ID,
+            nodes: vec![RecipeNode {
+                id: WITHDRAW_ID,
+                primitive: RecipePrimitive::EarnWithdraw,
+            }],
+            edges: Vec::new(),
+        };
+
+        let compiled = compile(&recipe);
+
+        assert!(!compiled.report.valid);
+        assert!(compiled.plan.is_none());
     }
 
     #[test]

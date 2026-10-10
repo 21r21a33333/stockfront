@@ -313,6 +313,40 @@
         }
       }
     },
+    "/v1/wallets/{address}/carry-positions": {
+      "get": {
+        "tags": ["super::handlers::carry"],
+        "operationId": "positions",
+        "parameters": [
+          {
+            "name": "address",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Response_CarryAccount"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Response" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/wallets/{address}/loans": {
       "get": {
         "tags": ["super::handlers::borrowing"],
@@ -579,6 +613,19 @@
           }
         ]
       },
+      "CarryAccount": {
+        "type": "object",
+        "required": ["chainId", "positions", "totalValueUsd", "observedAtMs"],
+        "properties": {
+          "chainId": { "type": "integer", "format": "int64", "minimum": 0 },
+          "observedAtMs": { "type": "integer", "format": "int64" },
+          "positions": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/CarryPosition" }
+          },
+          "totalValueUsd": { "type": "string" }
+        }
+      },
       "CarryActionPreview": {
         "allOf": [
           { "$ref": "#/components/schemas/ActionPreview" },
@@ -646,9 +693,45 @@
           "UNREVIEWED_INVESTMENT"
         ]
       },
+      "CarryPosition": {
+        "type": "object",
+        "required": [
+          "positionId",
+          "investmentIds",
+          "protocolId",
+          "protocolName",
+          "valueUsd",
+          "assets"
+        ],
+        "properties": {
+          "assets": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/BorrowingAsset" }
+          },
+          "investmentIds": { "type": "array", "items": { "type": "string" } },
+          "positionId": { "type": "string" },
+          "protocolId": { "type": "string" },
+          "protocolName": { "type": "string" },
+          "redemption": {
+            "oneOf": [
+              { "type": "null" },
+              { "$ref": "#/components/schemas/CarryRedemption" }
+            ]
+          },
+          "valueUsd": { "type": "string" }
+        }
+      },
       "CarryQualification": {
         "type": "string",
         "enum": ["ELIGIBLE", "REVIEW_REQUIRED", "UNAVAILABLE"]
+      },
+      "CarryRedemption": {
+        "type": "object",
+        "required": ["id", "claimable"],
+        "properties": {
+          "claimable": { "type": "boolean" },
+          "id": { "type": "string" }
+        }
       },
       "ComposeStrategyRequest": {
         "type": "object",
@@ -862,6 +945,43 @@
                 "$ref": "#/components/schemas/PreparedBorrowingAction"
               },
               "kind": { "type": "string", "enum": ["WITHDRAW"] },
+              "nodeId": { "type": "string", "format": "uuid" }
+            }
+          },
+          {
+            "type": "object",
+            "required": ["nodeId", "action", "kind"],
+            "properties": {
+              "action": {
+                "type": "object",
+                "required": ["transactions", "preview"],
+                "properties": {
+                  "preview": {
+                    "$ref": "#/components/schemas/CarryActionPreview"
+                  },
+                  "transactions": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": ["kind", "to", "data", "value"],
+                      "properties": {
+                        "data": { "type": "string", "format": "hex" },
+                        "gasLimit": { "type": "string" },
+                        "gasPrice": { "type": "string" },
+                        "kind": {
+                          "type": "string",
+                          "enum": ["APPROVE", "DEPOSIT", "REDEEM", "CLAIM"]
+                        },
+                        "maxFeePerGas": { "type": "string" },
+                        "maxPriorityFeePerGas": { "type": "string" },
+                        "to": { "type": "string", "format": "evm-address" },
+                        "value": { "type": "string" }
+                      }
+                    }
+                  }
+                }
+              },
+              "kind": { "type": "string", "enum": ["EARN_WITHDRAW"] },
               "nodeId": { "type": "string", "format": "uuid" }
             }
           },
@@ -1304,6 +1424,25 @@
             "type": "object",
             "required": ["nodeId", "state", "kind"],
             "properties": {
+              "kind": { "type": "string", "enum": ["EARN_WITHDRAW"] },
+              "nodeId": { "type": "string", "format": "uuid" },
+              "position": {
+                "oneOf": [
+                  { "type": "null" },
+                  { "$ref": "#/components/schemas/CarryPosition" }
+                ]
+              },
+              "state": { "$ref": "#/components/schemas/RecipeNodeState" },
+              "waitingFor": {
+                "type": "array",
+                "items": { "type": "string", "format": "uuid" }
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": ["nodeId", "state", "kind"],
+            "properties": {
               "capability": {
                 "oneOf": [
                   { "type": "null" },
@@ -1393,7 +1532,8 @@
           "BSTOCKS",
           "SUPPLIED_POSITIONS",
           "BORROWED_POSITIONS",
-          "EARN_OPPORTUNITIES"
+          "EARN_OPPORTUNITIES",
+          "EARN_POSITIONS"
         ]
       },
       "RecipePortDescriptor": {
@@ -1428,7 +1568,12 @@
       },
       "RecipePortValueType": {
         "type": "string",
-        "enum": ["TOKEN_AMOUNT", "SUPPLIED_POSITION", "BORROWED_POSITION"]
+        "enum": [
+          "TOKEN_AMOUNT",
+          "SUPPLIED_POSITION",
+          "BORROWED_POSITION",
+          "EARN_POSITION"
+        ]
       },
       "RecipePreview": {
         "type": "object",
@@ -1522,6 +1667,21 @@
               "investmentId": { "type": "string" },
               "kind": { "type": "string", "enum": ["EARN_DEPOSIT"] }
             }
+          },
+          {
+            "type": "object",
+            "required": ["investmentId", "kind"],
+            "properties": {
+              "investmentId": { "type": "string" },
+              "kind": { "type": "string", "enum": ["EARN_POSITION"] }
+            }
+          },
+          {
+            "type": "object",
+            "required": ["kind"],
+            "properties": {
+              "kind": { "type": "string", "enum": ["EARN_WITHDRAW"] }
+            }
           }
         ]
       },
@@ -1553,7 +1713,9 @@
           "WITHDRAW",
           "BORROW",
           "REPAY",
-          "EARN_DEPOSIT"
+          "EARN_DEPOSIT",
+          "EARN_POSITION",
+          "EARN_WITHDRAW"
         ]
       },
       "RecipeRepayPolicy": {
@@ -1726,6 +1888,32 @@
               "totalBorrowedUsd": { "type": "string" },
               "totalSuppliedUsd": { "type": "string" },
               "venue": { "$ref": "#/components/schemas/BorrowingVenue" }
+            }
+          },
+          "status": { "$ref": "#/components/schemas/Status" }
+        }
+      },
+      "Response_CarryAccount": {
+        "type": "object",
+        "required": ["status"],
+        "properties": {
+          "error": { "$ref": "#/components/schemas/Error" },
+          "result": {
+            "type": "object",
+            "required": [
+              "chainId",
+              "positions",
+              "totalValueUsd",
+              "observedAtMs"
+            ],
+            "properties": {
+              "chainId": { "type": "integer", "format": "int64", "minimum": 0 },
+              "observedAtMs": { "type": "integer", "format": "int64" },
+              "positions": {
+                "type": "array",
+                "items": { "$ref": "#/components/schemas/CarryPosition" }
+              },
+              "totalValueUsd": { "type": "string" }
             }
           },
           "status": { "$ref": "#/components/schemas/Status" }
