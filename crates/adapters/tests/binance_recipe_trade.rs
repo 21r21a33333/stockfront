@@ -13,8 +13,10 @@ use stockfront_core::{
     },
     bstock_market::{BNB_CHAIN_ID, BstockMarketService},
     bstock_trade::{
-        BstockTradeService, PreparedTrade, TokenAmount, TradeExecutionMode, TradePolicy,
+        BstockTradeService, PreparedTrade, SettlementTokenMetadata, TokenAmount,
+        TradeExecutionMode, TradePolicy,
     },
+    carry::{CarryPolicy, CarryService},
     recipes::{
         PrepareRecipeRequest, PreparedRecipeStep, RecipeCompletedNode, RecipeContext,
         RecipeDefinition, RecipeEdge, RecipeNode, RecipeNodeOutput, RecipeNodePreview,
@@ -125,16 +127,27 @@ async fn live_recipe_service() -> Result<RecipeService, Box<dyn Error>> {
     ));
     let venus = Arc::new(live_venus_adapter(true).await?);
     let borrowing = Arc::new(BorrowingService::new(
-        client,
+        client.clone(),
         venus.clone(),
         venus,
         BorrowingPolicy::new(vec![USDT])?,
+    ));
+    let carry = Arc::new(CarryService::new(
+        borrowing.clone(),
+        client.clone(),
+        client,
+        CarryPolicy::new(Vec::new(), 100),
     ));
     Ok(RecipeService::new(
         market,
         trades,
         borrowing,
-        vec![USDT],
+        carry,
+        vec![SettlementTokenMetadata {
+            address: USDT,
+            symbol: "USDT".to_owned(),
+            decimals: 18,
+        }],
         VENUS_COMPTROLLER,
     ))
 }

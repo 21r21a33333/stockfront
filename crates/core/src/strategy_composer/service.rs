@@ -3,12 +3,13 @@ use std::sync::Arc;
 use thiserror::Error;
 
 use super::{
-    ComposeContext, ComposeStrategyRequest, ComposedStrategy, RejectedDraft,
-    SettlementTokenMetadata, StrategyDraft, StrategyModel, StrategyModelError,
+    ComposeContext, ComposeStrategyRequest, ComposedStrategy, RejectedDraft, StrategyDraft,
+    StrategyModel, StrategyModelError,
     resolve::{Resolution, Resolver, step_index},
 };
 use crate::{
     bstock_borrowing::{BorrowingService, BorrowingServiceError},
+    bstock_trade::SettlementTokenMetadata,
     recipes::{
         RecipeDiagnostic, RecipeDiagnosticLocation, RecipeDiagnosticSeverity, RecipeError,
         RecipeService,
@@ -197,6 +198,11 @@ mod tests {
             PreparedTrade, SubmitOrderRequest, SubmittedOrder, TradeGateway, TradeGatewayError,
             TradeOrderStatus, TradePolicy, TradeQuote, TradeQuoteRequest, TradeTransactionStatus,
         },
+        carry::{
+            CarryAccount, CarryActionPlan, CarryPolicy, CarryService, EarnActionGateway,
+            EarnDepositCommand, EarnOpportunity, EarnProviderError, EarnReader,
+            EarnRedemptionClaimCommand, EarnWithdrawalCommand,
+        },
         strategy_composer::{StrategyIntent, StrategyStep},
         wallet_portfolio::WalletAddress,
     };
@@ -345,11 +351,22 @@ mod tests {
             BorrowingPolicy::new(vec![USDT])
                 .unwrap_or_else(|error| panic!("valid borrowing policy rejected: {error}")),
         ));
+        let carry = Arc::new(CarryService::new(
+            borrowing.clone(),
+            Arc::new(Unused),
+            Arc::new(Unused),
+            CarryPolicy::new(Vec::new(), 100),
+        ));
         let recipes = Arc::new(RecipeService::new(
             market,
             trade,
             borrowing.clone(),
-            vec![USDT],
+            carry,
+            vec![SettlementTokenMetadata {
+                address: USDT,
+                symbol: "USDT".to_owned(),
+                decimals: 18,
+            }],
             POOL,
         ));
         StrategyComposerService::new(
@@ -461,6 +478,54 @@ mod tests {
             _: B256,
         ) -> Result<TradeTransactionStatus, TradeGatewayError> {
             Err(TradeGatewayError::Unavailable)
+        }
+    }
+
+    #[async_trait]
+    impl EarnReader for Unused {
+        async fn opportunities(
+            &self,
+            _asset: Address,
+        ) -> Result<Vec<EarnOpportunity>, EarnProviderError> {
+            unreachable!("the composer never reads earn opportunities")
+        }
+
+        async fn opportunity(
+            &self,
+            _investment_id: &str,
+        ) -> Result<Option<EarnOpportunity>, EarnProviderError> {
+            unreachable!("the composer never reads an earn opportunity")
+        }
+
+        async fn positions(
+            &self,
+            _wallet: WalletAddress,
+        ) -> Result<CarryAccount, EarnProviderError> {
+            unreachable!("the composer never reads earn positions")
+        }
+    }
+
+    #[async_trait]
+    impl EarnActionGateway for Unused {
+        async fn prepare_deposit(
+            &self,
+            _command: &EarnDepositCommand,
+        ) -> Result<CarryActionPlan, EarnProviderError> {
+            unreachable!("the composer never prepares an earn deposit")
+        }
+
+        async fn prepare_withdrawal(
+            &self,
+            _command: &EarnWithdrawalCommand,
+        ) -> Result<CarryActionPlan, EarnProviderError> {
+            unreachable!("the composer never prepares an earn withdrawal")
+        }
+
+        async fn prepare_redemption_claim(
+            &self,
+            _command: &EarnRedemptionClaimCommand,
+        ) -> Result<CarryActionPlan, EarnProviderError> {
+            unreachable!("the composer never claims an earn redemption")
         }
     }
 

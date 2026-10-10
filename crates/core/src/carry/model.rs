@@ -15,7 +15,7 @@ pub struct CarryOpportunityQuery {
     pub debt_token: Address,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[derive(utoipa::ToSchema, Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "UPPERCASE")]
 pub enum EarnRateType {
     Apy,
@@ -67,7 +67,7 @@ pub struct CarryAccount {
     pub observed_at_ms: i64,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[derive(utoipa::ToSchema, Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum CarryQualification {
     Eligible,
@@ -75,7 +75,7 @@ pub enum CarryQualification {
     Unavailable,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[derive(utoipa::ToSchema, Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum CarryOpportunityReason {
     EarnUnavailable,
@@ -85,7 +85,7 @@ pub enum CarryOpportunityReason {
     UnreviewedInvestment,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[derive(utoipa::ToSchema, Clone, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CarryOpportunity {
     pub investment_id: String,
@@ -171,7 +171,7 @@ pub struct EarnRedemptionClaimCommand {
     pub redemption_id: String,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[derive(utoipa::ToSchema, Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum CarryTransactionKind {
     Approve,
@@ -184,7 +184,7 @@ pub type PreparedCarryTransaction = PreparedTransaction<CarryTransactionKind>;
 
 pub type CarryBalanceChange = AssetBalanceChange;
 
-#[derive(Debug, Default, Eq, PartialEq, Serialize)]
+#[derive(utoipa::ToSchema, Debug, Default, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CarryActionPreview {
     #[serde(flatten)]
@@ -200,17 +200,20 @@ pub struct CarryActionPlan {
     pub preview: CarryActionPreview,
 }
 
-#[derive(Debug, Eq, PartialEq, Serialize)]
+#[derive(utoipa::ToSchema, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RedemptionDelay {
     pub min_days: Decimal,
     pub max_days: Decimal,
 }
 
-#[derive(Debug, Eq, PartialEq, Serialize)]
+#[derive(utoipa::ToSchema, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PreparedCarryDeposit {
     pub opportunity: CarryOpportunity,
+    // The generic prepared-transaction schema is shared with borrowing, so this
+    // one is inlined to keep the carry kinds out of that definition.
+    #[schema(inline)]
     pub transactions: Vec<PreparedCarryTransaction>,
     pub preview: CarryActionPreview,
 }

@@ -67,6 +67,11 @@ pub(super) enum RecipeAction {
     Repay {
         debt: BorrowedPositionRef,
     },
+    EarnDeposit {
+        asset: AssetRef,
+        collateral_token: Address,
+        investment_id: String,
+    },
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]

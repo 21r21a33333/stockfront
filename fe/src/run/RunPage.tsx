@@ -941,9 +941,14 @@ function reviewCard(
   const borrowing = prepared.find(
     (item) => item.kind !== "APPROVAL" && item.kind !== "TRADE",
   );
-  const health =
+  const actionPreview =
     borrowing && "action" in borrowing && "preview" in borrowing.action
       ? borrowing.action.preview
+      : undefined;
+  // An earn deposit previews a carry position, which carries no loan health.
+  const health =
+    actionPreview && "healthFactorAfter" in actionPreview
+      ? actionPreview
       : undefined;
   const healthCard =
     health?.healthFactorAfter || health?.healthFactorBefore
@@ -954,8 +959,8 @@ function reviewCard(
             : undefined,
         }
       : undefined;
-  const venusFee = health?.estimatedNetworkFee
-    ? `≈ ${formatPositionAmount(health.estimatedNetworkFee.amount)} ${health.estimatedNetworkFee.tokenSymbol}`
+  const venusFee = actionPreview?.estimatedNetworkFee
+    ? `≈ ${formatPositionAmount(actionPreview.estimatedNetworkFee.amount)} ${actionPreview.estimatedNetworkFee.tokenSymbol}`
     : feeText;
 
   switch (borrowing?.kind) {

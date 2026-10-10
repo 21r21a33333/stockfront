@@ -65,7 +65,7 @@ pub struct ActionWarning {
     pub message: String,
 }
 
-#[derive(Debug, Eq, PartialEq, Serialize)]
+#[derive(utoipa::ToSchema, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AssetBalanceChange {
     pub token: BorrowingToken,
@@ -74,7 +74,7 @@ pub struct AssetBalanceChange {
     pub value_usd: Option<Decimal>,
 }
 
-#[derive(Debug, Default, Eq, PartialEq, Serialize)]
+#[derive(utoipa::ToSchema, Debug, Default, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ActionPreview {
     #[serde(skip_serializing_if = "Vec::is_empty")]
@@ -85,6 +85,7 @@ pub struct ActionPreview {
         skip_serializing_if = "Option::is_none",
         serialize_with = "crate::serialization::serialize_optional_as_string"
     )]
+    #[schema(value_type = Option<String>, format = "evm-address", nullable = false)]
     pub interact_with: Option<Address>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub warnings: Vec<ActionWarning>,

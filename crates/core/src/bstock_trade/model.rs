@@ -262,3 +262,11 @@ pub struct TradeTransactionStatus {
     #[schema(nullable = false)]
     pub error: Option<String>,
 }
+
+/// Configured settlement-token metadata read from the token contracts.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SettlementTokenMetadata {
+    pub address: Address,
+    pub symbol: String,
+    pub decimals: u8,
+}

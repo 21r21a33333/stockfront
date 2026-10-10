@@ -105,6 +105,19 @@ fn validate_node_fields(recipe: &RecipeDefinition, diagnostics: &mut Vec<RecipeD
                 "amount must be greater than zero",
             ));
         }
+        if matches!(
+            &node.primitive,
+            RecipePrimitive::EarnDeposit { investment_id, .. } if investment_id.trim().is_empty()
+        ) {
+            diagnostics.push(RecipeDiagnostic::error(
+                RecipeDiagnosticCode::MissingInvestmentId,
+                RecipeDiagnosticLocation::Field {
+                    node_id: node.id,
+                    field: "investmentId".to_owned(),
+                },
+                "select an earn opportunity",
+            ));
+        }
     }
 }
 
@@ -112,6 +125,7 @@ fn lower(graph: &RecipeGraph<'_>) -> Result<LogicalPlan, RecipeDiagnostic> {
     let mut values = HashMap::<(Uuid, String), AssetRef>::new();
     let mut positions = HashMap::<(Uuid, String), SuppliedPositionRef>::new();
     let mut debts = HashMap::<(Uuid, String), BorrowedPositionRef>::new();
+    let mut borrow_collateral = HashMap::<Uuid, alloy_primitives::Address>::new();
     let mut steps = Vec::new();
 
     for node_id in graph.topological_order() {
@@ -135,32 +149,9 @@ fn lower(graph: &RecipeGraph<'_>) -> Result<LogicalPlan, RecipeDiagnostic> {
                 register_borrowed_position(&mut debts, node_id, *venue, *pool, *token);
             }
             RecipePrimitive::Trade { buy_token } => {
-                let (sell, dependency) = input_asset(
-                    graph,
-                    &values,
-                    node_id,
-                    "sell",
-                    "the trade input is not available before this step",
-                )?;
-                steps.push(LogicalStep {
-                    node_id,
-                    dependencies: matches!(sell, AssetRef::NodeOutput { .. })
-                        .then_some(dependency)
-                        .into_iter()
-                        .collect(),
-                    action: RecipeAction::Trade {
-                        sell,
-                        buy_token: *buy_token,
-                    },
-                });
-                values.insert(
-                    (node_id, "buy".to_owned()),
-                    AssetRef::NodeOutput {
-                        node_id,
-                        port: "buy".to_owned(),
-                        token: *buy_token,
-                    },
-                );
+                let (step, output) = lower_trade(graph, &values, node_id, *buy_token)?;
+                steps.push(step);
+                values.insert((node_id, "buy".to_owned()), output);
             }
             RecipePrimitive::Supply { venue } => {
                 let (asset, dependency) = input_asset(
@@ -196,6 +187,9 @@ fn lower(graph: &RecipeGraph<'_>) -> Result<LogicalPlan, RecipeDiagnostic> {
             } => {
                 let (step, output) =
                     lower_borrow(graph, &positions, node_id, *debt_token, *raw_amount)?;
+                if let RecipeAction::Borrow { collateral, .. } = &step.action {
+                    borrow_collateral.insert(node_id, collateral.token);
+                }
                 steps.push(step);
                 values.insert((node_id, "borrowed".to_owned()), output);
             }
@@ -206,6 +200,19 @@ fn lower(graph: &RecipeGraph<'_>) -> Result<LogicalPlan, RecipeDiagnostic> {
                     dependencies: Vec::new(),
                     action: RecipeAction::Repay { debt },
                 });
+            }
+            RecipePrimitive::EarnDeposit {
+                collateral_token,
+                investment_id,
+            } => {
+                steps.push(lower_earn_deposit(
+                    graph,
+                    &values,
+                    &borrow_collateral,
+                    node_id,
+                    *collateral_token,
+                    investment_id.clone(),
+                )?);
             }
         }
     }
@@ -262,6 +269,75 @@ fn lower_borrow(
             token: debt_token,
         },
     ))
+}
+
+fn lower_trade(
+    graph: &RecipeGraph<'_>,
+    values: &HashMap<(Uuid, String), AssetRef>,
+    node_id: Uuid,
+    buy_token: alloy_primitives::Address,
+) -> Result<(LogicalStep, AssetRef), RecipeDiagnostic> {
+    let (sell, dependency) = input_asset(
+        graph,
+        values,
+        node_id,
+        "sell",
+        "the trade input is not available before this step",
+    )?;
+    Ok((
+        LogicalStep {
+            node_id,
+            dependencies: matches!(sell, AssetRef::NodeOutput { .. })
+                .then_some(dependency)
+                .into_iter()
+                .collect(),
+            action: RecipeAction::Trade { sell, buy_token },
+        },
+        AssetRef::NodeOutput {
+            node_id,
+            port: "buy".to_owned(),
+            token: buy_token,
+        },
+    ))
+}
+
+fn lower_earn_deposit(
+    graph: &RecipeGraph<'_>,
+    values: &HashMap<(Uuid, String), AssetRef>,
+    borrow_collateral: &HashMap<Uuid, alloy_primitives::Address>,
+    node_id: Uuid,
+    collateral_token: alloy_primitives::Address,
+    investment_id: String,
+) -> Result<LogicalStep, RecipeDiagnostic> {
+    let (asset, source_id) = input_asset(
+        graph,
+        values,
+        node_id,
+        "asset",
+        "the earn deposit input is not available before this step",
+    )?;
+    let dependencies = if matches!(asset, AssetRef::NodeOutput { .. }) {
+        let collateral = borrow_collateral
+            .get(&source_id)
+            .ok_or_else(|| unsupported_earn_input(node_id))?;
+        // The spread is benchmarked against the loan that funded the deposit, so
+        // an unrelated collateral would misreport it.
+        if *collateral != collateral_token {
+            return Err(earn_collateral_mismatch(node_id));
+        }
+        vec![source_id]
+    } else {
+        Vec::new()
+    };
+    Ok(LogicalStep {
+        node_id,
+        dependencies,
+        action: RecipeAction::EarnDeposit {
+            asset,
+            collateral_token,
+            investment_id,
+        },
+    })
 }
 
 fn input_asset(
@@ -336,6 +412,28 @@ fn unavailable_input(node_id: Uuid, port: &str, message: &'static str) -> Recipe
             port: port.to_owned(),
         },
         message,
+    )
+}
+
+fn unsupported_earn_input(node_id: Uuid) -> RecipeDiagnostic {
+    RecipeDiagnostic::error(
+        RecipeDiagnosticCode::UnsupportedEarnDepositInput,
+        RecipeDiagnosticLocation::Port {
+            node_id,
+            port: "asset".to_owned(),
+        },
+        "an earn deposit accepts only a wallet asset or a borrowed stablecoin",
+    )
+}
+
+fn earn_collateral_mismatch(node_id: Uuid) -> RecipeDiagnostic {
+    RecipeDiagnostic::error(
+        RecipeDiagnosticCode::EarnCollateralMismatch,
+        RecipeDiagnosticLocation::Field {
+            node_id,
+            field: "collateralToken".to_owned(),
+        },
+        "the benchmark collateral must match the upstream borrow collateral",
     )
 }
 

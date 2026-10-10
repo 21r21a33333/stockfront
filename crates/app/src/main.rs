@@ -19,7 +19,7 @@ use stockfront_core::{
     baskets::BasketService,
     bstock_borrowing::{BorrowingPolicy, BorrowingService},
     bstock_market::{Address, BstockMarketService},
-    bstock_trade::{BstockTradeService, TradePolicy},
+    bstock_trade::{BstockTradeService, SettlementTokenMetadata, TradePolicy},
     carry::{CarryPolicy, CarryService},
     liquidity::{LiquidityPolicy, LiquidityService},
     managed_portfolios::ManagedPortfolioService,
@@ -115,16 +115,18 @@ async fn main() -> Result<(), Box<dyn Error>> {
         Duration::from_secs(10),
     )?);
     let managed_portfolios = Arc::new(ManagedPortfolioService::new(glider));
+    let settlement_metadata = venus
+        .settlement_token_metadata(&trade_settlement_tokens)
+        .await?;
     let recipes = recipe_routes(
-        &venus,
         market.clone(),
         trades.clone(),
         borrowing.clone(),
-        trade_settlement_tokens,
+        carry.clone(),
+        settlement_metadata,
         venus_comptroller,
         ai,
-    )
-    .await?;
+    )?;
     let app = bstock_router(market)
         .merge(wallet_router(wallet_portfolio))
         .merge(trade_router(trades))
@@ -139,23 +141,23 @@ async fn main() -> Result<(), Box<dyn Error>> {
 }
 
 /// Builds the recipe API and the AI composer that drafts recipes for it.
-async fn recipe_routes(
-    venus: &VenusBorrowingAdapter,
+fn recipe_routes(
     market: Arc<BstockMarketService>,
     trades: Arc<BstockTradeService>,
     borrowing: Arc<BorrowingService>,
-    settlement_tokens: Vec<Address>,
+    carry: Arc<CarryService>,
+    settlement_metadata: Vec<SettlementTokenMetadata>,
     pool: Address,
     ai: AiSettings,
 ) -> Result<axum::Router, Box<dyn Error>> {
-    let settlement_metadata = venus.settlement_token_metadata(&settlement_tokens).await?;
     let model = strategy_model(&ai)?;
     drop(ai);
     let recipes = Arc::new(RecipeService::new(
         market,
         trades,
         borrowing.clone(),
-        settlement_tokens,
+        carry,
+        settlement_metadata.clone(),
         pool,
     ));
     let composer =

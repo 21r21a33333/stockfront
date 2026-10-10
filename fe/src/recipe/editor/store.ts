@@ -97,6 +97,8 @@ function nodeFor(
         position,
         data: { kind, venue: "venus" },
       };
+    case "EARN_DEPOSIT":
+      return { id, type: flowType(kind), position, data: { kind } };
     case "SUPPLIED_POSITION":
       return {
         id,

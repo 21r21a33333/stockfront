@@ -44,6 +44,11 @@ pub enum RecipeDiagnosticCode {
     UnsupportedBorrowPosition,
     UnsupportedBorrowAsset,
     UnsupportedRepaymentPosition,
+    UnsupportedEarnDepositInput,
+    UnsupportedEarnDepositAsset,
+    UnsupportedEarnCollateral,
+    EarnCollateralMismatch,
+    MissingInvestmentId,
 }
 
 #[derive(utoipa::ToSchema, Clone, Debug, Eq, PartialEq, Serialize)]

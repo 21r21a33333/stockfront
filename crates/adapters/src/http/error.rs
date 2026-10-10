@@ -398,6 +398,7 @@ impl From<RecipeError> for ApiError {
             RecipeError::Market(error) => error.into(),
             RecipeError::Trade(error) => error.into(),
             RecipeError::Borrowing(error) => error.into(),
+            RecipeError::Carry(error) => error.into(),
         }
     }
 }

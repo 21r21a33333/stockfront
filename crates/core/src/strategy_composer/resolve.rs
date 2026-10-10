@@ -8,12 +8,13 @@ use rust_decimal::Decimal;
 use uuid::Uuid;
 
 use super::{
-    ComposerAsset, ComposerAssetKind, ComposerPosition, ComposerPositionKind,
-    SettlementTokenMetadata, StrategyIntent, StrategyStep,
+    ComposerAsset, ComposerAssetKind, ComposerPosition, ComposerPositionKind, StrategyIntent,
+    StrategyStep,
 };
 use crate::{
     bstock_borrowing::{BorrowingAccount, BorrowingVenue},
     bstock_market::{BNB_CHAIN_ID, BstockSummary},
+    bstock_trade::SettlementTokenMetadata,
     recipes::{
         RecipeDefinition, RecipeEdge, RecipeNode, RecipePortRef, RecipePrimitive, SCHEMA_VERSION,
     },

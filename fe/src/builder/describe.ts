@@ -238,6 +238,26 @@ export function describe(
       }
       break;
     }
+    case "EARN_DEPOSIT": {
+      const opportunity =
+        preview?.kind === "EARN_DEPOSIT" ? preview.opportunity : undefined;
+      description = {
+        name: "Earn deposit",
+        detail: opportunity
+          ? `${opportunity.investmentName} on ${opportunity.protocolName}`
+          : "Pick an earn opportunity",
+      };
+      if (opportunity) {
+        for (const reason of opportunity.reasons)
+          checks.push({ ok: false, text: earnReason(reason) });
+        if (opportunity.reasons.length === 0)
+          checks.push({
+            ok: true,
+            text: `Earns ${opportunity.baseEarnRateDisplay}`,
+          });
+      }
+      break;
+    }
     case "WITHDRAW": {
       const token = inputToken(ctx, index);
       description = {
@@ -298,6 +318,21 @@ function borrowReason(reason: string, minimum: string): string {
       return "Loan health can't be calculated";
     default:
       return `Health would fall below ${minimum}`;
+  }
+}
+
+function earnReason(reason: string): string {
+  switch (reason) {
+    case "EARN_UNAVAILABLE":
+      return "This earn opportunity isn't accepting deposits right now";
+    case "BORROW_UNAVAILABLE":
+      return "The benchmark loan isn't available against this stock";
+    case "UNSUPPORTED_RATE_TYPE":
+      return "This opportunity quotes a rate Stockfront can't compare";
+    case "INSUFFICIENT_BASE_SPREAD":
+      return "The earn rate doesn't clear the borrow rate by enough";
+    default:
+      return "This earn opportunity hasn't been reviewed";
   }
 }
 

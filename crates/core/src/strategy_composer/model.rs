@@ -1,4 +1,3 @@
-use alloy_primitives::Address;
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 
@@ -114,14 +113,6 @@ pub struct ComposerPosition {
 pub enum ComposerPositionKind {
     Supplied,
     Borrowed,
-}
-
-/// Configured settlement-token metadata read from the token contracts.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct SettlementTokenMetadata {
-    pub address: Address,
-    pub symbol: String,
-    pub decimals: u8,
 }
 
 #[derive(utoipa::ToSchema, Debug, Serialize)]

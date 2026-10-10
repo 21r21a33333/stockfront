@@ -310,6 +310,26 @@
   },
   "components": {
     "schemas": {
+      "ActionPreview": {
+        "type": "object",
+        "properties": {
+          "balanceChanges": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/AssetBalanceChange" }
+          },
+          "estimatedNetworkFee": {
+            "oneOf": [
+              { "type": "null" },
+              { "$ref": "#/components/schemas/NetworkFee" }
+            ]
+          },
+          "interactWith": { "type": "string", "format": "evm-address" },
+          "warnings": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/ActionWarning" }
+          }
+        }
+      },
       "ActionWarning": {
         "type": "object",
         "required": ["code", "level", "message"],
@@ -317,6 +337,15 @@
           "code": { "type": "string" },
           "level": { "type": "string" },
           "message": { "type": "string" }
+        }
+      },
+      "AssetBalanceChange": {
+        "type": "object",
+        "required": ["token", "amount"],
+        "properties": {
+          "amount": { "type": "string" },
+          "token": { "$ref": "#/components/schemas/BorrowingToken" },
+          "valueUsd": { "type": ["string", "null"] }
         }
       },
       "AssetKind": {
@@ -510,6 +539,77 @@
           }
         ]
       },
+      "CarryActionPreview": {
+        "allOf": [
+          { "$ref": "#/components/schemas/ActionPreview" },
+          {
+            "type": "object",
+            "properties": {
+              "redemptionDelay": {
+                "oneOf": [
+                  { "type": "null" },
+                  { "$ref": "#/components/schemas/RedemptionDelay" }
+                ]
+              }
+            }
+          }
+        ]
+      },
+      "CarryOpportunity": {
+        "type": "object",
+        "required": [
+          "investmentId",
+          "investmentName",
+          "protocolId",
+          "protocolName",
+          "asset",
+          "rateType",
+          "baseEarnRateBps",
+          "baseEarnRateDisplay",
+          "borrowApyPercent",
+          "availableBorrowLiquidity",
+          "qualification",
+          "reasons",
+          "observedAtMs"
+        ],
+        "properties": {
+          "asset": { "$ref": "#/components/schemas/BorrowingToken" },
+          "availableBorrowLiquidity": { "type": "string" },
+          "baseEarnRateBps": { "type": "integer", "format": "int64" },
+          "baseEarnRateDisplay": { "type": "string" },
+          "baseSpreadPercent": { "type": ["string", "null"] },
+          "borrowApyPercent": { "type": "string" },
+          "investmentId": { "type": "string" },
+          "investmentName": { "type": "string" },
+          "observedAtMs": { "type": "integer", "format": "int64" },
+          "protocolId": { "type": "string" },
+          "protocolLogoUrl": { "type": ["string", "null"] },
+          "protocolName": { "type": "string" },
+          "qualification": {
+            "$ref": "#/components/schemas/CarryQualification"
+          },
+          "rateType": { "$ref": "#/components/schemas/EarnRateType" },
+          "reasons": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/CarryOpportunityReason" }
+          },
+          "reportedTvlUsd": { "type": ["string", "null"] }
+        }
+      },
+      "CarryOpportunityReason": {
+        "type": "string",
+        "enum": [
+          "EARN_UNAVAILABLE",
+          "BORROW_UNAVAILABLE",
+          "UNSUPPORTED_RATE_TYPE",
+          "INSUFFICIENT_BASE_SPREAD",
+          "UNREVIEWED_INVESTMENT"
+        ]
+      },
+      "CarryQualification": {
+        "type": "string",
+        "enum": ["ELIGIBLE", "REVIEW_REQUIRED", "UNAVAILABLE"]
+      },
       "ComposeStrategyRequest": {
         "type": "object",
         "required": ["prompt"],
@@ -552,6 +652,7 @@
           }
         }
       },
+      "EarnRateType": { "type": "string", "enum": ["APY", "APR"] },
       "Error": {
         "type": "object",
         "required": ["code", "message"],
@@ -644,6 +745,34 @@
           }
         }
       },
+      "PreparedCarryDeposit": {
+        "type": "object",
+        "required": ["opportunity", "transactions", "preview"],
+        "properties": {
+          "opportunity": { "$ref": "#/components/schemas/CarryOpportunity" },
+          "preview": { "$ref": "#/components/schemas/CarryActionPreview" },
+          "transactions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["kind", "to", "data", "value"],
+              "properties": {
+                "data": { "type": "string", "format": "hex" },
+                "gasLimit": { "type": "string" },
+                "gasPrice": { "type": "string" },
+                "kind": {
+                  "type": "string",
+                  "enum": ["APPROVE", "DEPOSIT", "REDEEM", "CLAIM"]
+                },
+                "maxFeePerGas": { "type": "string" },
+                "maxPriorityFeePerGas": { "type": "string" },
+                "to": { "type": "string", "format": "evm-address" },
+                "value": { "type": "string" }
+              }
+            }
+          }
+        }
+      },
       "PreparedRecipe": {
         "type": "object",
         "required": ["steps"],
@@ -727,6 +856,15 @@
                 "$ref": "#/components/schemas/PreparedBorrowingAction"
               },
               "kind": { "type": "string", "enum": ["REPAY"] },
+              "nodeId": { "type": "string", "format": "uuid" }
+            }
+          },
+          {
+            "type": "object",
+            "required": ["nodeId", "action", "kind"],
+            "properties": {
+              "action": { "$ref": "#/components/schemas/PreparedCarryDeposit" },
+              "kind": { "type": "string", "enum": ["EARN_DEPOSIT"] },
               "nodeId": { "type": "string", "format": "uuid" }
             }
           }
@@ -826,13 +964,17 @@
           "supplyPolicy",
           "withdrawalPolicy",
           "borrowPolicy",
-          "repayPolicy"
+          "repayPolicy",
+          "earnDepositPolicy"
         ],
         "properties": {
           "borrowPolicy": { "$ref": "#/components/schemas/RecipeBorrowPolicy" },
           "bstocks": {
             "type": "array",
             "items": { "$ref": "#/components/schemas/BstockSummary" }
+          },
+          "earnDepositPolicy": {
+            "$ref": "#/components/schemas/RecipeEarnDepositPolicy"
           },
           "primitives": {
             "type": "array",
@@ -938,7 +1080,12 @@
           "UNSUPPORTED_WITHDRAWAL_POSITION",
           "UNSUPPORTED_BORROW_POSITION",
           "UNSUPPORTED_BORROW_ASSET",
-          "UNSUPPORTED_REPAYMENT_POSITION"
+          "UNSUPPORTED_REPAYMENT_POSITION",
+          "UNSUPPORTED_EARN_DEPOSIT_INPUT",
+          "UNSUPPORTED_EARN_DEPOSIT_ASSET",
+          "UNSUPPORTED_EARN_COLLATERAL",
+          "EARN_COLLATERAL_MISMATCH",
+          "MISSING_INVESTMENT_ID"
         ]
       },
       "RecipeDiagnosticLocation": {
@@ -988,6 +1135,21 @@
         "type": "string",
         "enum": ["ERROR", "WARNING"]
       },
+      "RecipeEarnDepositPolicy": {
+        "type": "object",
+        "description": "Structural policy for earn deposits.\n\nReviewed investment IDs and spread qualification stay backend-owned live\ndata. Only the graph shapes the editor may build are published here.",
+        "required": ["allowedInputs", "depositTokens"],
+        "properties": {
+          "allowedInputs": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/RecipePrimitiveKind" }
+          },
+          "depositTokens": {
+            "type": "array",
+            "items": { "type": "string", "format": "evm-address" }
+          }
+        }
+      },
       "RecipeEdge": {
         "type": "object",
         "required": ["id", "from", "to"],
@@ -999,7 +1161,7 @@
       },
       "RecipeFieldControl": {
         "type": "string",
-        "enum": ["TOKEN", "AMOUNT", "VENUE", "POSITION"]
+        "enum": ["TOKEN", "AMOUNT", "VENUE", "POSITION", "INVESTMENT"]
       },
       "RecipeFieldDescriptor": {
         "type": "object",
@@ -1135,6 +1297,28 @@
                 "items": { "type": "string", "format": "uuid" }
               }
             }
+          },
+          {
+            "type": "object",
+            "required": ["nodeId", "state", "kind"],
+            "properties": {
+              "kind": { "type": "string", "enum": ["EARN_DEPOSIT"] },
+              "nodeId": { "type": "string", "format": "uuid" },
+              "opportunity": {
+                "oneOf": [
+                  { "type": "null" },
+                  {
+                    "$ref": "#/components/schemas/CarryOpportunity",
+                    "description": "The selected route, carrying its own qualification and reasons when\nthe investment is known but not currently depositable."
+                  }
+                ]
+              },
+              "state": { "$ref": "#/components/schemas/RecipeNodeState" },
+              "waitingFor": {
+                "type": "array",
+                "items": { "type": "string", "format": "uuid" }
+              }
+            }
           }
         ]
       },
@@ -1168,7 +1352,8 @@
           "SETTLEMENT_TOKENS",
           "BSTOCKS",
           "SUPPLIED_POSITIONS",
-          "BORROWED_POSITIONS"
+          "BORROWED_POSITIONS",
+          "EARN_OPPORTUNITIES"
         ]
       },
       "RecipePortDescriptor": {
@@ -1288,6 +1473,15 @@
             "type": "object",
             "required": ["kind"],
             "properties": { "kind": { "type": "string", "enum": ["REPAY"] } }
+          },
+          {
+            "type": "object",
+            "required": ["collateralToken", "investmentId", "kind"],
+            "properties": {
+              "collateralToken": { "type": "string", "format": "evm-address" },
+              "investmentId": { "type": "string" },
+              "kind": { "type": "string", "enum": ["EARN_DEPOSIT"] }
+            }
           }
         ]
       },
@@ -1318,7 +1512,8 @@
           "SUPPLY",
           "WITHDRAW",
           "BORROW",
-          "REPAY"
+          "REPAY",
+          "EARN_DEPOSIT"
         ]
       },
       "RecipeRepayPolicy": {
@@ -1404,6 +1599,14 @@
       "RecipeWithdrawalUnavailableReason": {
         "type": "string",
         "enum": ["POSITION_NOT_FOUND", "UNSUPPORTED_POOL", "OUTSTANDING_DEBT"]
+      },
+      "RedemptionDelay": {
+        "type": "object",
+        "required": ["minDays", "maxDays"],
+        "properties": {
+          "maxDays": { "type": "string" },
+          "minDays": { "type": "string" }
+        }
       },
       "RepaymentCapability": {
         "type": "object",
@@ -1558,7 +1761,8 @@
               "supplyPolicy",
               "withdrawalPolicy",
               "borrowPolicy",
-              "repayPolicy"
+              "repayPolicy",
+              "earnDepositPolicy"
             ],
             "properties": {
               "borrowPolicy": {
@@ -1567,6 +1771,9 @@
               "bstocks": {
                 "type": "array",
                 "items": { "$ref": "#/components/schemas/BstockSummary" }
+              },
+              "earnDepositPolicy": {
+                "$ref": "#/components/schemas/RecipeEarnDepositPolicy"
               },
               "primitives": {
                 "type": "array",

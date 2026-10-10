@@ -1,5 +1,5 @@
 use alloy_primitives::Address;
-use stockfront_core::strategy_composer::SettlementTokenMetadata;
+use stockfront_core::bstock_trade::SettlementTokenMetadata;
 
 use super::{VenusBorrowingAdapter, VenusConfigurationError, contracts::IERC20};
 

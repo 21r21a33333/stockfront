@@ -27,6 +27,12 @@ export type SupplyNodeData = {
   venue: BorrowingVenue;
 };
 
+export type EarnDepositNodeData = {
+  kind: "EARN_DEPOSIT";
+  collateralToken?: Address;
+  investmentId?: string;
+};
+
 export type SuppliedPositionNodeData = {
   kind: "SUPPLIED_POSITION";
   venue: BorrowingVenue;
@@ -61,6 +67,7 @@ export type RecipeNodeData =
   | BorrowedPositionNodeData
   | TradeNodeData
   | SupplyNodeData
+  | EarnDepositNodeData
   | WithdrawNodeData
   | BorrowNodeData
   | RepayNodeData;
@@ -72,6 +79,7 @@ export interface RecipeFlowNode {
     | "borrowedPosition"
     | "trade"
     | "supply"
+    | "earnDeposit"
     | "withdraw"
     | "borrow"
     | "repay";
@@ -107,6 +115,8 @@ export function flowType(kind: RecipePrimitiveKind): RecipeFlowNode["type"] {
       return "trade";
     case "SUPPLY":
       return "supply";
+    case "EARN_DEPOSIT":
+      return "earnDeposit";
     case "WITHDRAW":
       return "withdraw";
     case "BORROW":

@@ -18,8 +18,8 @@ use super::{
     AssetRef, BorrowedPositionRef, LogicalPlan, PrepareRecipeRequest, PreparedRecipe,
     PreparedRecipeStep, RecipeAction, RecipeAssetTransition, RecipeBorrowPolicy, RecipeBorrowRule,
     RecipeCatalog, RecipeCompletedNode, RecipeDefinition, RecipeDiagnostic, RecipeDiagnosticCode,
-    RecipeDiagnosticLocation, RecipeNodePreview, RecipeNodeSelection, RecipeNodeState,
-    RecipeOptionSource, RecipePreview, RecipePreviewRequest, RecipePrimitiveKind,
+    RecipeDiagnosticLocation, RecipeEarnDepositPolicy, RecipeNodePreview, RecipeNodeSelection,
+    RecipeNodeState, RecipeOptionSource, RecipePreview, RecipePreviewRequest, RecipePrimitiveKind,
     RecipeRepayPolicy, RecipeRepayRule, RecipeSupplyPolicy, RecipeSupplyRule, RecipeTradePolicy,
     RecipeValidationReport, RecipeWithdrawalPolicy, RecipeWithdrawalRule,
     RecipeWithdrawalUnavailableReason, SCHEMA_VERSION, SuppliedPositionRef, compile,
@@ -33,8 +33,12 @@ use crate::{
     },
     bstock_market::{BstockMarketError, BstockMarketService, ListBstocksQuery, MAX_LIST_LIMIT},
     bstock_trade::{
-        ApprovalRequest, BstockTradeService, PrepareTradeRequest, TokenAmount, TradeError,
-        TradeQuoteRequest,
+        ApprovalRequest, BstockTradeService, PrepareTradeRequest, SettlementTokenMetadata,
+        TokenAmount, TradeError, TradeQuoteRequest,
+    },
+    carry::{
+        CarryOpportunityQuery, CarryQualification, CarryService, CarryServiceError,
+        CarryTransactionKind, PrepareCarryDepositRequest,
     },
     wallet_portfolio::WalletAddress,
 };
@@ -55,13 +59,17 @@ pub enum RecipeError {
     Trade(#[from] TradeError),
     #[error(transparent)]
     Borrowing(#[from] BorrowingServiceError),
+    #[error(transparent)]
+    Carry(#[from] CarryServiceError),
 }
 
 pub struct RecipeService {
     market: Arc<BstockMarketService>,
     trade: Arc<BstockTradeService>,
     borrowing: Arc<BorrowingService>,
+    carry: Arc<CarryService>,
     settlement_tokens: Vec<Address>,
+    settlement_decimals: HashMap<Address, u32>,
     withdrawal_policy: RecipeWithdrawalPolicy,
     borrow_policy: RecipeBorrowPolicy,
     repay_policy: RecipeRepayPolicy,
@@ -73,9 +81,18 @@ impl RecipeService {
         market: Arc<BstockMarketService>,
         trade: Arc<BstockTradeService>,
         borrowing: Arc<BorrowingService>,
-        settlement_tokens: Vec<Address>,
+        carry: Arc<CarryService>,
+        settlement_tokens: Vec<SettlementTokenMetadata>,
         withdrawal_pool: Address,
     ) -> Self {
+        let settlement_decimals = settlement_tokens
+            .iter()
+            .map(|token| (token.address, u32::from(token.decimals)))
+            .collect();
+        let settlement_tokens = settlement_tokens
+            .into_iter()
+            .map(|token| token.address)
+            .collect::<Vec<_>>();
         let borrowing_pool_rule = RecipeWithdrawalRule {
             venue: BorrowingVenue::Venus,
             pool: withdrawal_pool,
@@ -101,7 +118,9 @@ impl RecipeService {
             market,
             trade,
             borrowing,
+            carry,
             settlement_tokens,
+            settlement_decimals,
             withdrawal_policy: RecipeWithdrawalPolicy {
                 allowed_inputs: vec![borrowing_pool_rule],
             },
@@ -152,6 +171,13 @@ impl RecipeService {
             withdrawal_policy: self.withdrawal_policy.clone(),
             borrow_policy: self.borrow_policy.clone(),
             repay_policy: self.repay_policy.clone(),
+            earn_deposit_policy: RecipeEarnDepositPolicy {
+                allowed_inputs: vec![
+                    RecipePrimitiveKind::WalletAsset,
+                    RecipePrimitiveKind::Borrow,
+                ],
+                deposit_tokens: self.settlement_tokens.clone(),
+            },
         })
     }
 
@@ -229,6 +255,20 @@ impl RecipeService {
                 RecipeAction::Repay { debt } => {
                     self.preview_repayment(step.node_id, *debt, request.context.wallet)
                         .await?
+                }
+                RecipeAction::EarnDeposit {
+                    asset,
+                    collateral_token,
+                    investment_id,
+                } => {
+                    self.preview_earn_deposit(
+                        step,
+                        asset,
+                        *collateral_token,
+                        investment_id,
+                        &completed,
+                    )
+                    .await?
                 }
             };
             nodes.push(preview);
@@ -311,6 +351,58 @@ impl RecipeService {
             node_id: step.node_id,
             state,
             market,
+            waiting_for,
+        })
+    }
+
+    async fn preview_earn_deposit(
+        &self,
+        step: &super::LogicalStep,
+        asset: &AssetRef,
+        collateral_token: Address,
+        investment_id: &str,
+        completed: &HashMap<Uuid, &RecipeCompletedNode>,
+    ) -> Result<RecipeNodePreview, RecipeError> {
+        let (state, opportunity, waiting_for) = match resolve_asset(asset, completed) {
+            ResolvedAsset::Ready(asset) => {
+                let opportunity = self
+                    .carry
+                    .opportunities(CarryOpportunityQuery {
+                        collateral_token,
+                        debt_token: asset.token,
+                    })
+                    .await?
+                    .into_iter()
+                    .find(|opportunity| opportunity.investment_id == investment_id);
+                // An unqualified route is still returned so the editor can show
+                // why it cannot be used instead of silently clearing it.
+                let state =
+                    opportunity
+                        .as_ref()
+                        .map_or(RecipeNodeState::Unavailable, |opportunity| {
+                            if opportunity.qualification == CarryQualification::Eligible {
+                                RecipeNodeState::Ready
+                            } else {
+                                RecipeNodeState::Unavailable
+                            }
+                        });
+                (state, opportunity, Vec::new())
+            }
+            ResolvedAsset::Waiting => (
+                RecipeNodeState::WaitingForUpstream,
+                None,
+                step.dependencies.clone(),
+            ),
+            ResolvedAsset::Unavailable => (
+                RecipeNodeState::OutputUnavailable,
+                None,
+                step.dependencies.clone(),
+            ),
+        };
+        Ok(RecipeNodePreview::EarnDeposit {
+            node_id: step.node_id,
+            state,
+            opportunity,
             waiting_for,
         })
     }
@@ -419,18 +511,7 @@ impl RecipeService {
             return Err(RecipeError::StepNotReady);
         }
         let selections = selections_by_node(&request.selections)?;
-        let ready_trades = ready
-            .iter()
-            .filter(|(step, _)| matches!(step.action, RecipeAction::Trade { .. }))
-            .count();
-        if selections.len() != ready_trades
-            || ready.iter().any(|(step, _)| {
-                matches!(step.action, RecipeAction::Trade { .. })
-                    && !selections.contains_key(&step.node_id)
-            })
-        {
-            return Err(RecipeError::InvalidSelection);
-        }
+        ensure_every_ready_trade_is_selected(&ready, &selections)?;
 
         let mut prepared = Vec::with_capacity(ready.len() * 2);
         for (step, input) in ready {
@@ -488,6 +569,25 @@ impl RecipeService {
                         .await?,
                     );
                 }
+                (
+                    RecipeAction::EarnDeposit {
+                        collateral_token,
+                        investment_id,
+                        ..
+                    },
+                    ReadyInput::Asset(input),
+                ) => {
+                    prepared.push(
+                        self.prepare_earn_deposit_step(
+                            step.node_id,
+                            input,
+                            *collateral_token,
+                            investment_id.clone(),
+                            request.context.wallet,
+                        )
+                        .await?,
+                    );
+                }
                 _ => return Err(RecipeError::InvalidContext),
             }
         }
@@ -506,7 +606,9 @@ impl RecipeService {
                 continue;
             }
             match &step.action {
-                RecipeAction::Trade { sell, .. } | RecipeAction::Supply { asset: sell, .. } => {
+                RecipeAction::Trade { sell, .. }
+                | RecipeAction::Supply { asset: sell, .. }
+                | RecipeAction::EarnDeposit { asset: sell, .. } => {
                     if let ResolvedAsset::Ready(asset) = resolve_asset(sell, completed) {
                         ready.push((step, ReadyInput::Asset(asset)));
                     }
@@ -619,6 +721,47 @@ impl RecipeService {
             })
             .await?;
         Ok(PreparedRecipeStep::Supply { node_id, action })
+    }
+
+    async fn prepare_earn_deposit_step(
+        &self,
+        node_id: Uuid,
+        asset: TokenAmount,
+        collateral_token: Address,
+        investment_id: String,
+        wallet: WalletAddress,
+    ) -> Result<PreparedRecipeStep, RecipeError> {
+        let decimals = self
+            .settlement_decimals
+            .get(&asset.token)
+            .copied()
+            .ok_or_else(invalid_provider_data)?;
+        let amount = decimal_from_raw(asset.amount, decimals)?;
+        let action = self
+            .carry
+            .prepare_deposit(&PrepareCarryDepositRequest {
+                wallet,
+                collateral_token,
+                investment_id,
+                amount,
+            })
+            .await?;
+        let kinds = action
+            .transactions
+            .iter()
+            .map(|transaction| transaction.kind)
+            .collect::<Vec<_>>();
+        if !matches!(
+            kinds.as_slice(),
+            [CarryTransactionKind::Deposit]
+                | [CarryTransactionKind::Approve, CarryTransactionKind::Deposit]
+        ) {
+            return Err(invalid_provider_data());
+        }
+        Ok(PreparedRecipeStep::EarnDeposit {
+            node_id,
+            action: Box::new(action),
+        })
     }
 
     async fn prepare_borrow_step(
@@ -815,6 +958,12 @@ fn completed_preview(step: &super::LogicalStep) -> RecipeNodePreview {
             market: None,
             waiting_for: Vec::new(),
         },
+        RecipeAction::EarnDeposit { .. } => RecipeNodePreview::EarnDeposit {
+            node_id: step.node_id,
+            state: RecipeNodeState::Complete,
+            opportunity: None,
+            waiting_for: Vec::new(),
+        },
         RecipeAction::Withdraw { .. } => RecipeNodePreview::Withdraw {
             node_id: step.node_id,
             state: RecipeNodeState::Complete,
@@ -849,6 +998,89 @@ fn decimal_from_raw(raw: U256, decimals: u32) -> Result<Decimal, RecipeError> {
         format!("{}.{}", &digits[..decimal_at], &digits[decimal_at..])
     };
     value.parse().map_err(|_| invalid_provider_data())
+}
+
+fn ensure_every_ready_trade_is_selected(
+    ready: &[(&super::LogicalStep, ReadyInput)],
+    selections: &HashMap<Uuid, &RecipeNodeSelection>,
+) -> Result<(), RecipeError> {
+    let ready_trades = ready
+        .iter()
+        .filter(|(step, _)| matches!(step.action, RecipeAction::Trade { .. }))
+        .count();
+    if selections.len() != ready_trades
+        || ready.iter().any(|(step, _)| {
+            matches!(step.action, RecipeAction::Trade { .. })
+                && !selections.contains_key(&step.node_id)
+        })
+    {
+        return Err(RecipeError::InvalidSelection);
+    }
+    Ok(())
+}
+
+fn withdrawal_diagnostics(
+    node_id: Uuid,
+    position: &SuppliedPositionRef,
+    withdrawal_policy: &RecipeWithdrawalPolicy,
+    settlement_tokens: &[Address],
+) -> Vec<RecipeDiagnostic> {
+    let mut diagnostics = Vec::new();
+    if !withdrawal_policy
+        .allowed_inputs
+        .iter()
+        .any(|rule| rule.venue == position.venue && rule.pool == position.pool)
+    {
+        diagnostics.push(RecipeDiagnostic::error(
+            RecipeDiagnosticCode::UnsupportedWithdrawalPosition,
+            RecipeDiagnosticLocation::Field {
+                node_id,
+                field: "pool".to_owned(),
+            },
+            "withdraw supports only configured lending pools",
+        ));
+    }
+    if settlement_tokens.contains(&position.token) {
+        diagnostics.push(RecipeDiagnostic::error(
+            RecipeDiagnosticCode::UnsupportedWithdrawalPosition,
+            RecipeDiagnosticLocation::Field {
+                node_id,
+                field: "token".to_owned(),
+            },
+            "withdraw accepts supported supplied bStock positions",
+        ));
+    }
+    diagnostics
+}
+
+fn earn_deposit_diagnostics(
+    node_id: Uuid,
+    deposit_token: Address,
+    collateral_token: Address,
+    settlement_tokens: &[Address],
+) -> Vec<RecipeDiagnostic> {
+    let mut diagnostics = Vec::new();
+    if !settlement_tokens.contains(&deposit_token) {
+        diagnostics.push(RecipeDiagnostic::error(
+            RecipeDiagnosticCode::UnsupportedEarnDepositAsset,
+            RecipeDiagnosticLocation::Port {
+                node_id,
+                port: "asset".to_owned(),
+            },
+            "an earn deposit accepts supported settlement tokens",
+        ));
+    }
+    if settlement_tokens.contains(&collateral_token) {
+        diagnostics.push(RecipeDiagnostic::error(
+            RecipeDiagnosticCode::UnsupportedEarnCollateral,
+            RecipeDiagnosticLocation::Field {
+                node_id,
+                field: "collateralToken".to_owned(),
+            },
+            "the benchmark collateral must be a supported bStock",
+        ));
+    }
+    diagnostics
 }
 
 fn invalid_provider_data() -> RecipeError {
@@ -940,13 +1172,15 @@ fn validate_completed_context<'a>(
             RecipeAction::Supply { .. }
             | RecipeAction::Withdraw { .. }
             | RecipeAction::Repay { .. }
+            | RecipeAction::EarnDeposit { .. }
                 if !node.outputs.is_empty() =>
             {
                 return Err(RecipeError::InvalidContext);
             }
             RecipeAction::Supply { .. }
             | RecipeAction::Withdraw { .. }
-            | RecipeAction::Repay { .. } => {}
+            | RecipeAction::Repay { .. }
+            | RecipeAction::EarnDeposit { .. } => {}
             RecipeAction::Borrow {
                 debt_token,
                 raw_amount,
@@ -976,7 +1210,7 @@ fn validate_completed_context<'a>(
         }
         let input = match &step.action {
             RecipeAction::Trade { sell, .. } => sell,
-            RecipeAction::Supply { asset, .. } => asset,
+            RecipeAction::Supply { asset, .. } | RecipeAction::EarnDeposit { asset, .. } => asset,
             RecipeAction::Withdraw { .. }
             | RecipeAction::Borrow { .. }
             | RecipeAction::Repay { .. } => continue,
@@ -1062,31 +1296,23 @@ fn validate_action_policy(
                 ));
             }
             RecipeAction::Supply { .. } => {}
+            RecipeAction::EarnDeposit {
+                asset,
+                collateral_token,
+                ..
+            } => report.diagnostics.extend(earn_deposit_diagnostics(
+                step.node_id,
+                asset_token(asset),
+                *collateral_token,
+                settlement_tokens,
+            )),
             RecipeAction::Withdraw { position } => {
-                if !withdrawal_policy
-                    .allowed_inputs
-                    .iter()
-                    .any(|rule| rule.venue == position.venue && rule.pool == position.pool)
-                {
-                    report.diagnostics.push(RecipeDiagnostic::error(
-                        RecipeDiagnosticCode::UnsupportedWithdrawalPosition,
-                        RecipeDiagnosticLocation::Field {
-                            node_id: step.node_id,
-                            field: "pool".to_owned(),
-                        },
-                        "withdraw supports only configured lending pools",
-                    ));
-                }
-                if settlement_tokens.contains(&position.token) {
-                    report.diagnostics.push(RecipeDiagnostic::error(
-                        RecipeDiagnosticCode::UnsupportedWithdrawalPosition,
-                        RecipeDiagnosticLocation::Field {
-                            node_id: step.node_id,
-                            field: "token".to_owned(),
-                        },
-                        "withdraw accepts supported supplied bStock positions",
-                    ));
-                }
+                report.diagnostics.extend(withdrawal_diagnostics(
+                    step.node_id,
+                    position,
+                    withdrawal_policy,
+                    settlement_tokens,
+                ));
             }
             RecipeAction::Borrow {
                 collateral,
@@ -1181,6 +1407,11 @@ mod tests {
     use rust_decimal::Decimal;
 
     use super::*;
+    use crate::carry::{
+        CarryAccount, CarryActionPlan, CarryActionPreview, CarryPolicy, EarnActionGateway,
+        EarnDepositCommand, EarnOpportunity, EarnProviderError, EarnRateType, EarnReader,
+        EarnRedemptionClaimCommand, EarnWithdrawalCommand, PreparedCarryTransaction,
+    };
     use crate::{
         bstock_borrowing::{
             BorrowCapability, BorrowCapabilityRequest, BorrowStage, BorrowingAccount,
@@ -1222,6 +1453,8 @@ mod tests {
     const BSTOCK: Address = Address::with_last_byte(2);
     const WRONG_TOKEN: Address = Address::with_last_byte(3);
     const POOL: Address = Address::with_last_byte(8);
+    const INVESTMENT_ID: &str = "investment-1";
+    const EARN_ID: Uuid = Uuid::from_u128(13);
 
     #[derive(Clone, Copy, Debug, Eq, PartialEq)]
     struct RecordedTrade {
@@ -1445,10 +1678,17 @@ mod tests {
 
         async fn read_markets(
             &self,
-            _collateral_assets: &[BstockId],
-            _debt_tokens: &[Address],
+            collateral_assets: &[BstockId],
+            debt_tokens: &[Address],
         ) -> Result<Vec<crate::bstock_borrowing::BorrowingMarket>, BorrowingProviderError> {
-            Ok(Vec::new())
+            Ok(collateral_assets
+                .iter()
+                .flat_map(|collateral| {
+                    debt_tokens
+                        .iter()
+                        .map(|debt| borrowing_market(collateral.contract, *debt))
+                })
+                .collect())
         }
 
         async fn read_account(
@@ -2140,7 +2380,8 @@ mod tests {
             | PreparedRecipeStep::Withdraw { .. }
             | PreparedRecipeStep::EnableCollateral { .. }
             | PreparedRecipeStep::Borrow { .. }
-            | PreparedRecipeStep::Repay { .. } => false,
+            | PreparedRecipeStep::Repay { .. }
+            | PreparedRecipeStep::EarnDeposit { .. } => false,
         }));
         assert_eq!(
             gateway.prepared(),
@@ -2175,6 +2416,111 @@ mod tests {
                 sell_amount: U256::from(6),
             }]
         );
+    }
+
+    #[tokio::test]
+    async fn prepares_a_wallet_funded_earn_deposit_as_approval_then_deposit() {
+        let (service, _) = service();
+        let recipe = earn_deposit_recipe(
+            SETTLEMENT,
+            U256::from(1_000_000_000_000_000_000_u128),
+            BSTOCK,
+            INVESTMENT_ID,
+        );
+
+        let prepared = service
+            .prepare(&PrepareRecipeRequest {
+                recipe,
+                context: context(Vec::new()),
+                selections: Vec::new(),
+            })
+            .await
+            .unwrap_or_else(|error| panic!("preparation failed: {error}"));
+
+        let [PreparedRecipeStep::EarnDeposit { node_id, action }] = prepared.steps.as_slice()
+        else {
+            panic!("expected a single earn deposit step");
+        };
+        assert_eq!(*node_id, EARN_ID);
+        assert_eq!(
+            action
+                .transactions
+                .iter()
+                .map(|transaction| transaction.kind)
+                .collect::<Vec<_>>(),
+            vec![CarryTransactionKind::Approve, CarryTransactionKind::Deposit]
+        );
+        assert_eq!(action.opportunity.investment_id, INVESTMENT_ID);
+    }
+
+    #[tokio::test]
+    async fn rejects_an_earn_deposit_of_a_non_settlement_token() {
+        let (service, _) = service();
+        let recipe = earn_deposit_recipe(BSTOCK, U256::from(6), BSTOCK, INVESTMENT_ID);
+
+        let report = service.validate(&recipe);
+
+        assert!(!report.valid);
+        assert!(report.diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == RecipeDiagnosticCode::UnsupportedEarnDepositAsset
+        }));
+    }
+
+    #[tokio::test]
+    async fn rejects_an_earn_deposit_without_a_selected_investment() {
+        let (service, _) = service();
+        let recipe = earn_deposit_recipe(SETTLEMENT, U256::from(6), BSTOCK, "   ");
+
+        let report = service.validate(&recipe);
+
+        assert!(!report.valid);
+        assert!(
+            report
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == RecipeDiagnosticCode::MissingInvestmentId)
+        );
+    }
+
+    #[tokio::test]
+    async fn rejects_an_earn_deposit_benchmarked_against_unrelated_collateral() {
+        let (service, _) = service();
+        let recipe = borrowed_earn_deposit_recipe(WRONG_TOKEN);
+
+        let report = service.validate(&recipe);
+
+        assert!(!report.valid);
+        assert!(
+            report.diagnostics.iter().any(|diagnostic| {
+                diagnostic.code == RecipeDiagnosticCode::EarnCollateralMismatch
+            })
+        );
+    }
+
+    #[tokio::test]
+    async fn holds_a_borrow_funded_earn_deposit_until_the_borrow_settles() {
+        let (service, _) = service();
+        let recipe = borrowed_earn_deposit_recipe(BSTOCK);
+
+        let preview = service
+            .preview(&RecipePreviewRequest {
+                recipe,
+                context: context(Vec::new()),
+            })
+            .await
+            .unwrap_or_else(|error| panic!("preview failed: {error}"));
+
+        let deposit = preview
+            .nodes
+            .iter()
+            .find_map(|node| match node {
+                RecipeNodePreview::EarnDeposit { node_id, state, .. } if *node_id == EARN_ID => {
+                    Some(*state)
+                }
+                _ => None,
+            })
+            .unwrap_or_else(|| panic!("the earn deposit node is missing from the preview"));
+        assert_eq!(deposit, RecipeNodeState::WaitingForUpstream);
     }
 
     #[tokio::test]
@@ -2243,6 +2589,144 @@ mod tests {
         assert!(decimal_from_raw(U256::MAX, 0).is_err());
     }
 
+    fn borrowing_market(
+        collateral: Address,
+        debt: Address,
+    ) -> crate::bstock_borrowing::BorrowingMarket {
+        crate::bstock_borrowing::BorrowingMarket {
+            venue: BorrowingVenue::Venus,
+            chain_id: BNB_CHAIN_ID,
+            collateral: BorrowingToken {
+                contract: collateral,
+                symbol: "TSLAB".to_owned(),
+            },
+            collateral_market: POOL,
+            debt: BorrowingToken {
+                contract: debt,
+                symbol: "USDT".to_owned(),
+            },
+            debt_market: POOL,
+            collateral_factor: Decimal::new(6, 1),
+            liquidation_threshold: Decimal::new(7, 1),
+            remaining_supply_capacity: Decimal::new(1_000, 0),
+            available_borrow_liquidity: Decimal::new(1_000, 0),
+            borrow_apy_percent: Decimal::new(2, 0),
+            supply_available: true,
+            borrow_available: true,
+            oracle_valid: true,
+            unavailable_reasons: Vec::new(),
+            observed_at_ms: 1,
+        }
+    }
+
+    struct TestEarn;
+
+    impl TestEarn {
+        fn opportunity() -> EarnOpportunity {
+            EarnOpportunity {
+                investment_id: INVESTMENT_ID.to_owned(),
+                investment_name: "Lista USDT".to_owned(),
+                protocol_id: "lista".to_owned(),
+                protocol_name: "Lista".to_owned(),
+                protocol_logo_url: None,
+                asset: BorrowingToken {
+                    contract: SETTLEMENT,
+                    symbol: "USDT".to_owned(),
+                },
+                rate_type: EarnRateType::Apy,
+                base_rate_bps: 900,
+                base_rate_display: "9%".to_owned(),
+                reported_tvl_usd: None,
+                investable: true,
+                observed_at_ms: 1,
+            }
+        }
+
+        fn plan(kinds: &[CarryTransactionKind]) -> CarryActionPlan {
+            CarryActionPlan {
+                transactions: kinds
+                    .iter()
+                    .map(|kind| PreparedCarryTransaction {
+                        kind: *kind,
+                        to: POOL,
+                        data: Bytes::new(),
+                        value: U256::ZERO,
+                        gas_limit: None,
+                        gas_price: None,
+                        max_priority_fee_per_gas: None,
+                        max_fee_per_gas: None,
+                    })
+                    .collect(),
+                preview: CarryActionPreview::default(),
+            }
+        }
+    }
+
+    #[async_trait]
+    impl EarnReader for TestEarn {
+        async fn opportunities(
+            &self,
+            asset: Address,
+        ) -> Result<Vec<EarnOpportunity>, EarnProviderError> {
+            Ok(if asset == SETTLEMENT {
+                vec![Self::opportunity()]
+            } else {
+                Vec::new()
+            })
+        }
+
+        async fn opportunity(
+            &self,
+            investment_id: &str,
+        ) -> Result<Option<EarnOpportunity>, EarnProviderError> {
+            Ok((investment_id == INVESTMENT_ID).then(Self::opportunity))
+        }
+
+        async fn positions(
+            &self,
+            _wallet: WalletAddress,
+        ) -> Result<CarryAccount, EarnProviderError> {
+            Err(EarnProviderError::Unavailable)
+        }
+    }
+
+    #[async_trait]
+    impl EarnActionGateway for TestEarn {
+        async fn prepare_deposit(
+            &self,
+            _command: &EarnDepositCommand,
+        ) -> Result<CarryActionPlan, EarnProviderError> {
+            Ok(TestEarn::plan(&[
+                CarryTransactionKind::Approve,
+                CarryTransactionKind::Deposit,
+            ]))
+        }
+
+        async fn prepare_withdrawal(
+            &self,
+            _command: &EarnWithdrawalCommand,
+        ) -> Result<CarryActionPlan, EarnProviderError> {
+            Err(EarnProviderError::Unavailable)
+        }
+
+        async fn prepare_redemption_claim(
+            &self,
+            _command: &EarnRedemptionClaimCommand,
+        ) -> Result<CarryActionPlan, EarnProviderError> {
+            Err(EarnProviderError::Unavailable)
+        }
+    }
+
+    fn carry_service(borrowing: Arc<BorrowingService>) -> Arc<CarryService> {
+        let earn = Arc::new(TestEarn);
+        Arc::new(CarryService::new(
+            borrowing,
+            earn.clone(),
+            earn,
+            CarryPolicy::new(vec![INVESTMENT_ID.to_owned()], 100),
+        ))
+    }
+
     fn service() -> (RecipeService, Arc<RecordingGateway>) {
         let catalog = Arc::new(FixedCatalog(vec![summary()]));
         let gateway = Arc::new(RecordingGateway::default());
@@ -2263,7 +2747,14 @@ mod tests {
                 .unwrap_or_else(|error| panic!("test borrowing policy is invalid: {error}")),
         ));
         (
-            RecipeService::new(market, trade, borrowing, vec![SETTLEMENT], POOL),
+            RecipeService::new(
+                market,
+                trade,
+                borrowing.clone(),
+                carry_service(borrowing),
+                vec![settlement_metadata()],
+                POOL,
+            ),
             gateway,
         )
     }
@@ -2292,9 +2783,24 @@ mod tests {
                 .unwrap_or_else(|error| panic!("test borrowing policy is invalid: {error}")),
         ));
         (
-            RecipeService::new(market, trade, borrowing, vec![SETTLEMENT], withdrawal_pool),
+            RecipeService::new(
+                market,
+                trade,
+                borrowing.clone(),
+                carry_service(borrowing),
+                vec![settlement_metadata()],
+                withdrawal_pool,
+            ),
             gateway,
         )
+    }
+
+    fn settlement_metadata() -> SettlementTokenMetadata {
+        SettlementTokenMetadata {
+            address: SETTLEMENT,
+            symbol: "USDT".to_owned(),
+            decimals: 18,
+        }
     }
 
     fn preview_request(completed_nodes: Vec<RecipeCompletedNode>) -> RecipePreviewRequest {
@@ -2483,6 +2989,65 @@ mod tests {
         }
     }
 
+    fn earn_deposit_recipe(
+        token: Address,
+        raw_amount: U256,
+        collateral_token: Address,
+        investment_id: &str,
+    ) -> RecipeDefinition {
+        RecipeDefinition {
+            schema_version: SCHEMA_VERSION,
+            chain_id: BNB_CHAIN_ID,
+            nodes: vec![
+                RecipeNode {
+                    id: SOURCE_ID,
+                    primitive: RecipePrimitive::WalletAsset { token, raw_amount },
+                },
+                RecipeNode {
+                    id: EARN_ID,
+                    primitive: RecipePrimitive::EarnDeposit {
+                        collateral_token,
+                        investment_id: investment_id.to_owned(),
+                    },
+                },
+            ],
+            edges: vec![RecipeEdge {
+                id: Uuid::from_u128(14),
+                from: RecipePortRef {
+                    node_id: SOURCE_ID,
+                    port: "asset".to_owned(),
+                },
+                to: RecipePortRef {
+                    node_id: EARN_ID,
+                    port: "asset".to_owned(),
+                },
+            }],
+        }
+    }
+
+    fn borrowed_earn_deposit_recipe(collateral_token: Address) -> RecipeDefinition {
+        let mut recipe = borrow_recipe(U256::from(1_000_000_000_000_000_000_u128));
+        recipe.nodes.push(RecipeNode {
+            id: EARN_ID,
+            primitive: RecipePrimitive::EarnDeposit {
+                collateral_token,
+                investment_id: INVESTMENT_ID.to_owned(),
+            },
+        });
+        recipe.edges.push(RecipeEdge {
+            id: Uuid::from_u128(15),
+            from: RecipePortRef {
+                node_id: BORROW_ID,
+                port: "borrowed".to_owned(),
+            },
+            to: RecipePortRef {
+                node_id: EARN_ID,
+                port: "asset".to_owned(),
+            },
+        });
+        recipe
+    }
+
     fn repayment_recipe(pool: Address, token: Address) -> RecipeDefinition {
         RecipeDefinition {
             schema_version: SCHEMA_VERSION,
@@ -2555,7 +3120,8 @@ mod tests {
                 | RecipeNodePreview::Supply { state, .. }
                 | RecipeNodePreview::Withdraw { state, .. }
                 | RecipeNodePreview::Borrow { state, .. }
-                | RecipeNodePreview::Repay { state, .. } => *state,
+                | RecipeNodePreview::Repay { state, .. }
+                | RecipeNodePreview::EarnDeposit { state, .. } => *state,
             })
             .collect()
     }

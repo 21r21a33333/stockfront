@@ -564,6 +564,7 @@ function label(kind: RecipePrimitiveKind): string {
     SUPPLIED_POSITION: "Supplied stock",
     BORROWED_POSITION: "Debt",
     TRADE: "Trade",
+    EARN_DEPOSIT: "Earn deposit",
     SUPPLY: "Supply",
     BORROW: "Borrow",
     REPAY: "Repay",

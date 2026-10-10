@@ -132,6 +132,12 @@ function nodeData(node: RecipeNode, assets: AssetOption[]): RecipeNodeData {
       return { kind: node.kind, buyToken: node.buyToken };
     case "SUPPLY":
       return { kind: node.kind, venue: node.venue };
+    case "EARN_DEPOSIT":
+      return {
+        kind: node.kind,
+        collateralToken: node.collateralToken,
+        investmentId: node.investmentId,
+      };
     case "SUPPLIED_POSITION":
     case "BORROWED_POSITION":
       return {

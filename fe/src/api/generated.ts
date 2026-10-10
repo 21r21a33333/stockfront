@@ -148,10 +148,22 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
   schemas: {
+    ActionPreview: {
+      balanceChanges?: components["schemas"]["AssetBalanceChange"][];
+      estimatedNetworkFee?: null | components["schemas"]["NetworkFee"];
+      /** Format: evm-address */
+      interactWith?: `0x${string}`;
+      warnings?: components["schemas"]["ActionWarning"][];
+    };
     ActionWarning: {
       code: string;
       level: string;
       message: string;
+    };
+    AssetBalanceChange: {
+      amount: string;
+      token: components["schemas"]["BorrowingToken"];
+      valueUsd?: string | null;
     };
     /** @enum {string} */
     AssetKind: "stock" | "preIpo" | "etf" | "unknown";
@@ -256,6 +268,38 @@ export interface components {
       underlyingTicker: string;
       volume24hUsd?: string;
     };
+    CarryActionPreview: components["schemas"]["ActionPreview"] & {
+      redemptionDelay?: null | components["schemas"]["RedemptionDelay"];
+    };
+    CarryOpportunity: {
+      asset: components["schemas"]["BorrowingToken"];
+      availableBorrowLiquidity: string;
+      /** Format: int64 */
+      baseEarnRateBps: number;
+      baseEarnRateDisplay: string;
+      baseSpreadPercent?: string | null;
+      borrowApyPercent: string;
+      investmentId: string;
+      investmentName: string;
+      /** Format: int64 */
+      observedAtMs: number;
+      protocolId: string;
+      protocolLogoUrl?: string | null;
+      protocolName: string;
+      qualification: components["schemas"]["CarryQualification"];
+      rateType: components["schemas"]["EarnRateType"];
+      reasons: components["schemas"]["CarryOpportunityReason"][];
+      reportedTvlUsd?: string | null;
+    };
+    /** @enum {string} */
+    CarryOpportunityReason:
+      | "EARN_UNAVAILABLE"
+      | "BORROW_UNAVAILABLE"
+      | "UNSUPPORTED_RATE_TYPE"
+      | "INSUFFICIENT_BASE_SPREAD"
+      | "UNREVIEWED_INVESTMENT";
+    /** @enum {string} */
+    CarryQualification: "ELIGIBLE" | "REVIEW_REQUIRED" | "UNAVAILABLE";
     ComposeStrategyRequest: {
       previous?: null | components["schemas"]["StrategyIntent"];
       prompt: string;
@@ -270,6 +314,8 @@ export interface components {
       summary: string;
       validation?: null | components["schemas"]["RecipeValidationReport"];
     };
+    /** @enum {string} */
+    EarnRateType: "APY" | "APR";
     Error: {
       code: string;
       diagnostics?: components["schemas"]["RecipeDiagnostic"][];
@@ -328,6 +374,23 @@ export interface components {
       preview: components["schemas"]["BorrowingPreview"];
       transactions: components["schemas"]["PreparedActionTransaction"][];
     };
+    PreparedCarryDeposit: {
+      opportunity: components["schemas"]["CarryOpportunity"];
+      preview: components["schemas"]["CarryActionPreview"];
+      transactions: {
+        /** Format: hex */
+        data: `0x${string}`;
+        gasLimit?: string;
+        gasPrice?: string;
+        /** @enum {string} */
+        kind: "APPROVE" | "DEPOSIT" | "REDEEM" | "CLAIM";
+        maxFeePerGas?: string;
+        maxPriorityFeePerGas?: string;
+        /** Format: evm-address */
+        to: `0x${string}`;
+        value: string;
+      }[];
+    };
     PreparedRecipe: {
       steps: components["schemas"]["PreparedRecipeStep"][];
     };
@@ -381,6 +444,13 @@ export interface components {
           kind: "REPAY";
           /** Format: uuid */
           nodeId: string;
+        }
+      | {
+          action: components["schemas"]["PreparedCarryDeposit"];
+          /** @enum {string} */
+          kind: "EARN_DEPOSIT";
+          /** Format: uuid */
+          nodeId: string;
         };
     PreparedTrade:
       | {
@@ -426,6 +496,7 @@ export interface components {
     RecipeCatalog: {
       borrowPolicy: components["schemas"]["RecipeBorrowPolicy"];
       bstocks: components["schemas"]["BstockSummary"][];
+      earnDepositPolicy: components["schemas"]["RecipeEarnDepositPolicy"];
       primitives: components["schemas"]["RecipePrimitiveDescriptor"][];
       repayPolicy: components["schemas"]["RecipeRepayPolicy"];
       /** Format: int32 */
@@ -483,7 +554,12 @@ export interface components {
       | "UNSUPPORTED_WITHDRAWAL_POSITION"
       | "UNSUPPORTED_BORROW_POSITION"
       | "UNSUPPORTED_BORROW_ASSET"
-      | "UNSUPPORTED_REPAYMENT_POSITION";
+      | "UNSUPPORTED_REPAYMENT_POSITION"
+      | "UNSUPPORTED_EARN_DEPOSIT_INPUT"
+      | "UNSUPPORTED_EARN_DEPOSIT_ASSET"
+      | "UNSUPPORTED_EARN_COLLATERAL"
+      | "EARN_COLLATERAL_MISMATCH"
+      | "MISSING_INVESTMENT_ID";
     RecipeDiagnosticLocation:
       | {
           /** @enum {string} */
@@ -517,6 +593,16 @@ export interface components {
         };
     /** @enum {string} */
     RecipeDiagnosticSeverity: "ERROR" | "WARNING";
+    /**
+     * @description Structural policy for earn deposits.
+     *
+     *     Reviewed investment IDs and spread qualification stay backend-owned live
+     *     data. Only the graph shapes the editor may build are published here.
+     */
+    RecipeEarnDepositPolicy: {
+      allowedInputs: components["schemas"]["RecipePrimitiveKind"][];
+      depositTokens: `0x${string}`[];
+    };
     RecipeEdge: {
       from: components["schemas"]["RecipePortRef"];
       /** Format: uuid */
@@ -524,7 +610,8 @@ export interface components {
       to: components["schemas"]["RecipePortRef"];
     };
     /** @enum {string} */
-    RecipeFieldControl: "TOKEN" | "AMOUNT" | "VENUE" | "POSITION";
+    RecipeFieldControl:
+      "TOKEN" | "AMOUNT" | "VENUE" | "POSITION" | "INVESTMENT";
     RecipeFieldDescriptor: {
       control: components["schemas"]["RecipeFieldControl"];
       key: string;
@@ -587,6 +674,15 @@ export interface components {
           nodeId: string;
           state: components["schemas"]["RecipeNodeState"];
           waitingFor?: string[];
+        }
+      | {
+          /** @enum {string} */
+          kind: "EARN_DEPOSIT";
+          /** Format: uuid */
+          nodeId: string;
+          opportunity?: null | components["schemas"]["CarryOpportunity"];
+          state: components["schemas"]["RecipeNodeState"];
+          waitingFor?: string[];
         };
     RecipeNodeSelection: {
       /** @enum {string} */
@@ -608,7 +704,8 @@ export interface components {
       | "SETTLEMENT_TOKENS"
       | "BSTOCKS"
       | "SUPPLIED_POSITIONS"
-      | "BORROWED_POSITIONS";
+      | "BORROWED_POSITIONS"
+      | "EARN_OPPORTUNITIES";
     RecipePortDescriptor: {
       direction: components["schemas"]["RecipePortDirection"];
       flow: components["schemas"]["RecipePortFlow"];
@@ -689,6 +786,13 @@ export interface components {
       | {
           /** @enum {string} */
           kind: "REPAY";
+        }
+      | {
+          /** Format: evm-address */
+          collateralToken: `0x${string}`;
+          investmentId: string;
+          /** @enum {string} */
+          kind: "EARN_DEPOSIT";
         };
     RecipePrimitiveDescriptor: {
       description: string;
@@ -706,7 +810,8 @@ export interface components {
       | "SUPPLY"
       | "WITHDRAW"
       | "BORROW"
-      | "REPAY";
+      | "REPAY"
+      | "EARN_DEPOSIT";
     RecipeRepayPolicy: {
       allowedInputs: components["schemas"]["RecipeRepayRule"][];
       debtTokens: `0x${string}`[];
@@ -742,6 +847,10 @@ export interface components {
     /** @enum {string} */
     RecipeWithdrawalUnavailableReason:
       "POSITION_NOT_FOUND" | "UNSUPPORTED_POOL" | "OUTSTANDING_DEBT";
+    RedemptionDelay: {
+      maxDays: string;
+      minDays: string;
+    };
     /**
      * @description Current ability to repay one complete Venus debt position.
      *
@@ -815,6 +924,7 @@ export interface components {
       result?: {
         borrowPolicy: components["schemas"]["RecipeBorrowPolicy"];
         bstocks: components["schemas"]["BstockSummary"][];
+        earnDepositPolicy: components["schemas"]["RecipeEarnDepositPolicy"];
         primitives: components["schemas"]["RecipePrimitiveDescriptor"][];
         repayPolicy: components["schemas"]["RecipeRepayPolicy"];
         /** Format: int32 */
@@ -1035,7 +1145,9 @@ export interface components {
   headers: never;
   pathItems: never;
 }
+export type ActionPreview = components["schemas"]["ActionPreview"];
 export type ActionWarning = components["schemas"]["ActionWarning"];
+export type AssetBalanceChange = components["schemas"]["AssetBalanceChange"];
 export type AssetKind = components["schemas"]["AssetKind"];
 export type BorrowCapability = components["schemas"]["BorrowCapability"];
 export type BorrowCapabilityUnavailableReason =
@@ -1049,9 +1161,15 @@ export type BorrowingToken = components["schemas"]["BorrowingToken"];
 export type BorrowingVenue = components["schemas"]["BorrowingVenue"];
 export type BstockId = components["schemas"]["BstockId"];
 export type BstockSummary = components["schemas"]["BstockSummary"];
+export type CarryActionPreview = components["schemas"]["CarryActionPreview"];
+export type CarryOpportunity = components["schemas"]["CarryOpportunity"];
+export type CarryOpportunityReason =
+  components["schemas"]["CarryOpportunityReason"];
+export type CarryQualification = components["schemas"]["CarryQualification"];
 export type ComposeStrategyRequest =
   components["schemas"]["ComposeStrategyRequest"];
 export type ComposedStrategy = components["schemas"]["ComposedStrategy"];
+export type EarnRateType = components["schemas"]["EarnRateType"];
 export type Error = components["schemas"]["Error"];
 export type MarketStatus = components["schemas"]["MarketStatus"];
 export type NetworkFee = components["schemas"]["NetworkFee"];
@@ -1062,6 +1180,8 @@ export type PreparedActionTransaction =
 export type PreparedApproval = components["schemas"]["PreparedApproval"];
 export type PreparedBorrowingAction =
   components["schemas"]["PreparedBorrowingAction"];
+export type PreparedCarryDeposit =
+  components["schemas"]["PreparedCarryDeposit"];
 export type PreparedRecipe = components["schemas"]["PreparedRecipe"];
 export type PreparedRecipeStep = components["schemas"]["PreparedRecipeStep"];
 export type PreparedTrade = components["schemas"]["PreparedTrade"];
@@ -1081,6 +1201,8 @@ export type RecipeDiagnosticLocation =
   components["schemas"]["RecipeDiagnosticLocation"];
 export type RecipeDiagnosticSeverity =
   components["schemas"]["RecipeDiagnosticSeverity"];
+export type RecipeEarnDepositPolicy =
+  components["schemas"]["RecipeEarnDepositPolicy"];
 export type RecipeEdge = components["schemas"]["RecipeEdge"];
 export type RecipeFieldControl = components["schemas"]["RecipeFieldControl"];
 export type RecipeFieldDescriptor =
@@ -1117,6 +1239,7 @@ export type RecipeWithdrawalRule =
   components["schemas"]["RecipeWithdrawalRule"];
 export type RecipeWithdrawalUnavailableReason =
   components["schemas"]["RecipeWithdrawalUnavailableReason"];
+export type RedemptionDelay = components["schemas"]["RedemptionDelay"];
 export type RepaymentCapability = components["schemas"]["RepaymentCapability"];
 export type RepaymentCapabilityUnavailableReason =
   components["schemas"]["RepaymentCapabilityUnavailableReason"];

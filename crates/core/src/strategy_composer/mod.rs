@@ -11,8 +11,8 @@ mod service;
 
 pub use model::{
     ComposeContext, ComposeStrategyRequest, ComposedStrategy, ComposerAsset, ComposerAssetKind,
-    ComposerPosition, ComposerPositionKind, RejectedDraft, SettlementTokenMetadata, StrategyDraft,
-    StrategyIntent, StrategyStep,
+    ComposerPosition, ComposerPositionKind, RejectedDraft, StrategyDraft, StrategyIntent,
+    StrategyStep,
 };
 pub use ports::{StrategyModel, StrategyModelError};
 pub use service::{StrategyComposerError, StrategyComposerService};
