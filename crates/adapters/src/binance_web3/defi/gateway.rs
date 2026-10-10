@@ -1,7 +1,6 @@
 use alloy_primitives::{Address, B256};
 use binance_web3_rwa::{
     apis::{
-        de_fi_data_api::{ListDefiInvestmentsParams, list_defi_investments},
         de_fi_transaction_api::{
             BuildDefiClaimTransactionParams, BuildDefiDepositTransactionParams,
             BuildDefiRedeemTransactionParams, BuildLpAddTransactionParams,
@@ -15,10 +14,7 @@ use binance_web3_rwa::{
     models,
 };
 use stockfront_core::{
-    bstock_borrowing::{
-        BorrowingProviderError, BorrowingTransactionStatus, PrepareSupplyRequest,
-        PreparedBorrowingAction,
-    },
+    bstock_borrowing::{BorrowingProviderError, BorrowingTransactionStatus},
     bstock_market::BNB_CHAIN_ID,
     liquidity::{LiquidityWithdrawalCommand, PrepareLiquidityClaimRequest},
     wallet_portfolio::WalletAddress,
@@ -27,10 +23,8 @@ use stockfront_core::{
 use super::{
     super::client::BinanceWeb3Client,
     super::provider::{BinanceRequestError, ensure_business_success, map_request_error},
-    mapping::{ProviderPreparedAction, ProviderTransactionDetails},
+    mapping::ProviderTransactionDetails,
 };
-
-const VENUS_PROTOCOL_ID: &str = "venus";
 
 pub(super) struct LpEntryPlan {
     pub(super) token_amounts: Vec<models::DefiTokenAmount>,
@@ -38,23 +32,6 @@ pub(super) struct LpEntryPlan {
 }
 
 impl BinanceWeb3Client {
-    pub(crate) async fn prepare_venus_supply(
-        &self,
-        request: &PrepareSupplyRequest,
-    ) -> Result<PreparedBorrowingAction, BorrowingProviderError> {
-        let investment_id = self.venus_investment_id(request.collateral_token).await?;
-        let plan = self
-            .build_deposit_plan(
-                request.wallet,
-                investment_id,
-                request.collateral_token,
-                request.amount,
-            )
-            .await
-            .map_err(BorrowingProviderError::from)?;
-        PreparedBorrowingAction::try_from(ProviderPreparedAction(plan))
-    }
-
     pub(super) async fn build_deposit_plan(
         &self,
         wallet: WalletAddress,
@@ -249,35 +226,6 @@ impl BinanceWeb3Client {
             .filter(|details| !details.is_empty())
             .ok_or(BorrowingProviderError::TransactionNotFound)?;
         BorrowingTransactionStatus::try_from(ProviderTransactionDetails(details))
-    }
-    async fn venus_investment_id(&self, token: Address) -> Result<String, BorrowingProviderError> {
-        let mut body = models::ListDefiInvestmentsRequest::new(
-            models::list_defi_investments_request::InvestType::Earn,
-        );
-        body.defi_protocol_id = Some(VENUS_PROTOCOL_ID.to_owned());
-        body.token_address_list = Some(vec![token.to_string()]);
-        body.binance_chain_id = Some(BNB_CHAIN_ID.to_string());
-        body.page = Some(1);
-        body.size = Some(2);
-
-        let response = list_defi_investments(
-            &self.configuration,
-            ListDefiInvestmentsParams {
-                list_defi_investments_request: body,
-            },
-        )
-        .await
-        .map_err(map_request_error)?;
-        ensure_business_success(response.code, response.success)?;
-        let investments = response.data.and_then(|page| page.list).unwrap_or_default();
-        let investment = investments
-            .into_iter()
-            .next()
-            .ok_or(BorrowingProviderError::Rejected)?;
-        investment
-            .investment_id
-            .filter(|investment_id| !investment_id.is_empty())
-            .ok_or(BorrowingProviderError::InvalidData)
     }
 }
 

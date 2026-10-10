@@ -38,7 +38,7 @@ sol! {
 
 #[tokio::test]
 #[ignore = "requires live Binance Web3 credentials, STOCKFRONT_TEST_WALLET, and an active Venus bStock investment"]
-async fn prepares_live_bstock_supply_from_binance() -> Result<(), Box<dyn Error>> {
+async fn prepares_live_bstock_supply() -> Result<(), Box<dyn Error>> {
     let supply = live_venus_adapter(true)
         .await?
         .prepare_supply(&PrepareSupplyRequest {
@@ -74,16 +74,18 @@ async fn supplies_tesla_bstock_to_venus_on_bsc() -> Result<(), Box<dyn Error>> {
         .await?;
     let (approval, deposit) = validated_supply_transactions(&supply)?;
 
-    send_transaction(
-        &context.provider,
-        approval.to,
-        approval.data.clone(),
-        approval.value,
-    )
-    .await?;
-    let allowance =
-        token_allowance(&context.provider, TESLA_BSTOCK, wallet, VENUS_TESLA_MARKET).await?;
-    assert_eq!(allowance, amount);
+    if let Some(approval) = approval {
+        send_transaction(
+            &context.provider,
+            approval.to,
+            approval.data.clone(),
+            approval.value,
+        )
+        .await?;
+        let allowance =
+            token_allowance(&context.provider, TESLA_BSTOCK, wallet, VENUS_TESLA_MARKET).await?;
+        assert_eq!(allowance, amount);
+    }
 
     send_transaction(
         &context.provider,
@@ -100,52 +102,58 @@ async fn supplies_tesla_bstock_to_venus_on_bsc() -> Result<(), Box<dyn Error>> {
     assert_eq!(final_bstock, expected_bstock);
     let final_vtoken = token_balance(&context.provider, VENUS_TESLA_MARKET, wallet).await?;
     assert!(final_vtoken > starting_vtoken);
-    let remaining_allowance =
-        token_allowance(&context.provider, TESLA_BSTOCK, wallet, VENUS_TESLA_MARKET).await?;
-    assert_eq!(remaining_allowance, U256::ZERO);
+    if approval.is_some() {
+        let remaining_allowance =
+            token_allowance(&context.provider, TESLA_BSTOCK, wallet, VENUS_TESLA_MARKET).await?;
+        assert_eq!(remaining_allowance, U256::ZERO);
+    }
 
     wait_for_supplied_position(&adapter, context.wallet).await
 }
 
+type SupplyTransactions<'a> = (
+    Option<&'a PreparedBorrowingTransaction>,
+    &'a PreparedBorrowingTransaction,
+);
+
 fn validated_supply_transactions(
     supply: &PreparedBorrowingAction,
-) -> Result<(&PreparedBorrowingTransaction, &PreparedBorrowingTransaction), Box<dyn Error>> {
-    let [approval, deposit] = supply.transactions.as_slice() else {
-        return Err(io::Error::other("expected approval followed by deposit").into());
+) -> Result<SupplyTransactions<'_>, Box<dyn Error>> {
+    let (approval, deposit) = match supply.transactions.as_slice() {
+        [deposit] => (None, deposit),
+        [approval, deposit] => (Some(approval), deposit),
+        _ => {
+            return Err(
+                io::Error::other("expected a deposit optionally preceded by an approval").into(),
+            );
+        }
     };
-    assert_eq!(approval.kind, BorrowingTransactionKind::Approve);
-    assert_eq!(approval.to, TESLA_BSTOCK);
-    let approval_call = approveCall::abi_decode(&approval.data)?;
-    assert_eq!(approval_call.spender, VENUS_TESLA_MARKET);
-    assert_eq!(approval_call.amount, U256::from(SUPPLY_AMOUNT_RAW));
+    if let Some(approval) = approval {
+        assert_eq!(approval.kind, BorrowingTransactionKind::Approve);
+        assert_eq!(approval.to, TESLA_BSTOCK);
+        let approval_call = approveCall::abi_decode(&approval.data)?;
+        assert_eq!(approval_call.spender, VENUS_TESLA_MARKET);
+        assert_eq!(approval_call.amount, U256::from(SUPPLY_AMOUNT_RAW));
+    }
 
     assert_eq!(deposit.kind, BorrowingTransactionKind::Deposit);
     assert_eq!(deposit.to, VENUS_TESLA_MARKET);
     let deposit_call = mintCall::abi_decode(&deposit.data)?;
     assert_eq!(deposit_call.amount, U256::from(SUPPLY_AMOUNT_RAW));
 
+    // Binance prices only the leading transaction; a deposit that follows an
+    // approval cannot be simulated until that approval is mined.
+    let priced = approval.unwrap_or(deposit);
+    assert!(priced.gas_limit.is_some_and(|value| value > U256::ZERO));
+    assert!(priced.gas_price.is_some_and(|value| value > U256::ZERO));
+    if approval.is_some() {
+        assert_eq!(deposit.gas_limit, None);
+        assert_eq!(deposit.gas_price, None);
+    }
     for transaction in &supply.transactions {
         assert_eq!(transaction.value, U256::ZERO);
-        assert!(
-            transaction
-                .gas_limit
-                .is_some_and(|value| value > U256::ZERO)
-        );
-        assert!(
-            transaction
-                .gas_price
-                .is_some_and(|value| value > U256::ZERO)
-        );
-        assert!(
-            transaction
-                .max_priority_fee_per_gas
-                .is_some_and(|value| value > U256::ZERO)
-        );
-        assert!(
-            transaction
-                .max_fee_per_gas
-                .is_some_and(|value| value > U256::ZERO)
-        );
+        assert_eq!(transaction.max_priority_fee_per_gas, None);
+        assert_eq!(transaction.max_fee_per_gas, None);
     }
 
     let fee = supply
@@ -155,7 +163,7 @@ fn validated_supply_transactions(
         .ok_or_else(|| io::Error::other("network fee missing from supply preview"))?;
     assert!(fee.amount.is_sign_positive());
     assert_eq!(fee.token_symbol, "BNB");
-    assert!(fee.value_usd.is_some_and(|value| value.is_sign_positive()));
+    assert_eq!(fee.value_usd, None);
     assert_eq!(supply.preview.health_factor_before, None);
     assert_eq!(supply.preview.health_factor_after, None);
     assert!(supply.preview.warnings.is_empty());

@@ -5,7 +5,7 @@ use stockfront_core::bstock_borrowing::{
     BorrowingActionGateway, BorrowingPreview, BorrowingProviderError, BorrowingTransactionKind,
     BorrowingTransactionStatus, PositionAmount, PrepareBorrowRequest, PrepareCollateralRequest,
     PrepareRepaymentRequest, PrepareSupplyRequest, PrepareWithdrawalRequest,
-    PreparedBorrowingAction,
+    PreparedBorrowingAction, PreparedBorrowingTransaction,
 };
 
 use super::{
@@ -23,19 +23,56 @@ impl BorrowingActionGateway for VenusBorrowingAdapter {
     ) -> Result<PreparedBorrowingAction, BorrowingProviderError> {
         let market = self.market_state(request.collateral_token).await?;
         let amount = encode_units(request.amount, market.token_decimals)?;
-        let mut action = self.binance.prepare_venus_supply(request).await?;
-        if let Some(approval) = action
-            .transactions
-            .iter_mut()
-            .find(|transaction| transaction.kind == BorrowingTransactionKind::Approve)
-        {
-            approval.data = IERC20::approveCall {
-                spender: market.market,
-                amount,
-            }
-            .abi_encode()
-            .into();
+        let allowance = IERC20::new(request.collateral_token, &self.provider)
+            .allowance(request.wallet.as_address(), market.market)
+            .call()
+            .await
+            .map_err(|_| BorrowingProviderError::Unavailable)?;
+        let deposit_data = IVToken::mintCall { amount }.abi_encode().into();
+        if allowance >= amount {
+            return self
+                .binance
+                .prepare_evm_borrowing_action(
+                    request.wallet,
+                    BorrowingTransactionKind::Deposit,
+                    market.market,
+                    deposit_data,
+                )
+                .await;
         }
+
+        let approval_data = IERC20::approveCall {
+            spender: market.market,
+            amount,
+        }
+        .abi_encode()
+        .into();
+        let mut action = self
+            .binance
+            .prepare_evm_borrowing_action(
+                request.wallet,
+                BorrowingTransactionKind::Approve,
+                request.collateral_token,
+                approval_data,
+            )
+            .await?;
+        if action.transactions.len() != 1
+            || action.transactions[0].kind != BorrowingTransactionKind::Approve
+        {
+            return Err(BorrowingProviderError::InvalidData);
+        }
+        // The deposit cannot be simulated before the approval is mined, so the
+        // wallet submits both as one atomic batch.
+        action.transactions.push(PreparedBorrowingTransaction {
+            kind: BorrowingTransactionKind::Deposit,
+            to: market.market,
+            data: deposit_data,
+            value: U256::ZERO,
+            gas_limit: None,
+            gas_price: None,
+            max_priority_fee_per_gas: None,
+            max_fee_per_gas: None,
+        });
         Ok(action)
     }
 
@@ -254,6 +291,10 @@ mod tests {
     #[test]
     fn venus_actions_encode_the_official_calls() {
         let market = alloy_primitives::Address::with_last_byte(7);
+        let deposit = IVToken::mintCall {
+            amount: U256::from(1_000_000),
+        }
+        .abi_encode();
         let collateral = IVenusComptroller::enterMarketsCall {
             vTokens: vec![market],
         }
@@ -272,6 +313,7 @@ mod tests {
         }
         .abi_encode();
 
+        assert_eq!(&deposit[..4], &[0xa0, 0x71, 0x2d, 0x68]);
         assert_eq!(&collateral[..4], &[0xc2, 0x99, 0x82, 0x38]);
         assert_eq!(&borrow[..4], &[0xc5, 0xeb, 0xea, 0xec]);
         assert_eq!(&repay[..4], &[0x0e, 0x75, 0x27, 0x02]);
