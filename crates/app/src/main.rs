@@ -2,7 +2,7 @@ mod setting;
 
 use std::{error::Error, net::SocketAddr, sync::Arc, time::Duration};
 
-use setting::{GeminiSettings, Settings};
+use setting::{AiProvider, AiSettings, Settings};
 use stockfront_adapters::{
     binance_web3::BinanceWeb3Client,
     gemini::GeminiClient,
@@ -11,6 +11,7 @@ use stockfront_adapters::{
         basket_router, borrowing_router, bstock_router, carry_router, liquidity_router,
         managed_portfolio_router, recipe_router, strategy_router, trade_router, wallet_router,
     },
+    openai_compatible::OpenAiCompatibleClient,
     reserve::ReserveAdapter,
     venus::VenusBorrowingAdapter,
 };
@@ -23,7 +24,7 @@ use stockfront_core::{
     liquidity::{LiquidityPolicy, LiquidityService},
     managed_portfolios::ManagedPortfolioService,
     recipes::RecipeService,
-    strategy_composer::StrategyComposerService,
+    strategy_composer::{StrategyComposerService, StrategyModel},
     wallet_portfolio::WalletPortfolioService,
 };
 
@@ -52,7 +53,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         reserve_api_base_url,
         glider_api_key,
         glider_api_base_url,
-        gemini,
+        ai,
     } = Settings::from_env()?;
     let binance = BinanceWeb3Client::new(
         &binance_web3_base_url,
@@ -121,7 +122,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         borrowing.clone(),
         trade_settlement_tokens,
         venus_comptroller,
-        gemini,
+        ai,
     )
     .await?;
     let app = bstock_router(market)
@@ -145,16 +146,11 @@ async fn recipe_routes(
     borrowing: Arc<BorrowingService>,
     settlement_tokens: Vec<Address>,
     pool: Address,
-    gemini: GeminiSettings,
+    ai: AiSettings,
 ) -> Result<axum::Router, Box<dyn Error>> {
     let settlement_metadata = venus.settlement_token_metadata(&settlement_tokens).await?;
-    let model = GeminiClient::new(
-        &gemini.api_base_url,
-        &gemini.model,
-        &gemini.api_key,
-        Duration::from_secs(30),
-    )?;
-    drop(gemini);
+    let model = strategy_model(&ai)?;
+    drop(ai);
     let recipes = Arc::new(RecipeService::new(
         market,
         trades,
@@ -162,13 +158,30 @@ async fn recipe_routes(
         settlement_tokens,
         pool,
     ));
-    let composer = StrategyComposerService::new(
-        recipes.clone(),
-        borrowing,
-        Arc::new(model),
-        settlement_metadata,
-    );
+    let composer =
+        StrategyComposerService::new(recipes.clone(), borrowing, model, settlement_metadata);
     Ok(recipe_router(recipes).merge(strategy_router(Arc::new(composer))))
+}
+
+/// Builds the configured strategy model; only the selected provider's key is
+/// required, so the other may be left unset.
+fn strategy_model(ai: &AiSettings) -> Result<Arc<dyn StrategyModel>, Box<dyn Error>> {
+    let timeout = Duration::from_secs(ai.request_timeout_seconds);
+    Ok(match ai.provider {
+        AiProvider::OpenRouter => Arc::new(OpenAiCompatibleClient::new(
+            &ai.openrouter_base_url,
+            &ai.openrouter_model,
+            &ai.openrouter_api_key,
+            ai.openrouter_require_parameters,
+            timeout,
+        )?),
+        AiProvider::Gemini => Arc::new(GeminiClient::new(
+            &ai.gemini_api_base_url,
+            &ai.gemini_model,
+            &ai.gemini_api_key,
+            timeout,
+        )?),
+    })
 }
 
 async fn serve(bind_address: SocketAddr, app: axum::Router) -> Result<(), std::io::Error> {

@@ -4,3 +4,9 @@
 /fe/dist/
 /fe/playwright-report/
 /fe/test-results/
+.env
+.env.*
+!.env.example
+/fe/.env
+/fe/.env.*
+!/fe/.env.example

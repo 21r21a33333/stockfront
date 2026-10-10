@@ -1,7 +1,7 @@
 use serde::Deserialize;
-use stockfront_core::strategy_composer::{
-    StrategyDraft, StrategyIntent, StrategyModelError, StrategyStep,
-};
+use stockfront_core::strategy_composer::{StrategyDraft, StrategyModelError};
+
+use crate::strategy_prompt::draft_from_json;
 
 #[derive(Deserialize)]
 pub(super) struct GenerateContentResponse {
@@ -28,15 +28,6 @@ struct ResponsePart {
     thought: bool,
 }
 
-/// The JSON document constrained by the request's response schema.
-#[derive(Deserialize)]
-struct DraftPayload {
-    summary: String,
-    steps: Vec<StrategyStep>,
-    #[serde(default)]
-    assumptions: Vec<String>,
-}
-
 impl TryFrom<GenerateContentResponse> for StrategyDraft {
     type Error = StrategyModelError;
 
@@ -54,23 +45,15 @@ impl TryFrom<GenerateContentResponse> for StrategyDraft {
                     .filter_map(|part| part.text)
                     .collect::<String>()
             })
-            .filter(|text| !text.trim().is_empty())
             .ok_or(StrategyModelError::InvalidResponse)?;
-        let payload = serde_json::from_str::<DraftPayload>(&text)
-            .map_err(|_| StrategyModelError::InvalidResponse)?;
-        Ok(Self {
-            summary: payload.summary,
-            intent: StrategyIntent {
-                steps: payload.steps,
-            },
-            assumptions: payload.assumptions,
-        })
+        draft_from_json(&text)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use rust_decimal::Decimal;
+    use stockfront_core::strategy_composer::StrategyStep;
 
     use super::*;
 

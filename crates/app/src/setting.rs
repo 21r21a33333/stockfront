@@ -11,6 +11,7 @@ const BINANCE_WEB3_API_KEY: &str = "#ENV:BINANCE_WEB3_API_KEY";
 const BINANCE_WEB3_API_SECRET: &str = "#ENV:BINANCE_WEB3_API_SECRET";
 const GLIDER_API_KEY: &str = "#ENV:GLIDER_API_KEY";
 const GEMINI_API_KEY: &str = "#ENV:GEMINI_API_KEY";
+const OPENROUTER_API_KEY: &str = "#ENV:OPENROUTER_API_KEY";
 const DEFAULT_BINANCE_WEB3_BASE_URL: &str = "https://web3.binance.com/build";
 const DEFAULT_BIND_ADDRESS: &str = "127.0.0.1:3000";
 const DEFAULT_TRADE_SETTLEMENT_TOKENS: &str =
@@ -29,6 +30,11 @@ const DEFAULT_RESERVE_API_BASE_URL: &str = "https://api.reserve.org";
 const DEFAULT_GLIDER_API_BASE_URL: &str = "https://api.glider.fi/v2";
 const DEFAULT_GEMINI_API_BASE_URL: &str = "https://generativelanguage.googleapis.com/v1beta";
 const DEFAULT_GEMINI_MODEL: &str = "gemini-flash-latest";
+const DEFAULT_AI_PROVIDER: &str = "openrouter";
+const DEFAULT_OPENROUTER_BASE_URL: &str = "https://openrouter.ai/api/v1";
+const DEFAULT_OPENROUTER_MODEL: &str = "google/gemini-2.5-flash";
+const DEFAULT_OPENROUTER_REQUIRE_PARAMETERS: &str = "false";
+const DEFAULT_AI_REQUEST_TIMEOUT_SECONDS: &str = "60";
 
 #[derive(Deserialize)]
 pub(super) struct Settings {
@@ -63,21 +69,58 @@ pub(super) struct Settings {
     pub(super) glider_api_key: String,
     pub(super) glider_api_base_url: String,
     #[serde(flatten)]
-    pub(super) gemini: GeminiSettings,
+    pub(super) ai: AiSettings,
 }
 
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub(super) enum AiProvider {
+    #[serde(rename = "openrouter")]
+    OpenRouter,
+    Gemini,
+}
+
+/// Both providers are configured so either can be selected without a restart
+/// of the deployment's configuration, but only the chosen one needs a key.
 #[derive(Deserialize)]
-pub(super) struct GeminiSettings {
-    #[serde(rename = "gemini_api_key", deserialize_with = "deserialize_env_field")]
-    pub(super) api_key: String,
+pub(super) struct AiSettings {
+    #[serde(rename = "ai_provider")]
+    pub(super) provider: AiProvider,
+    #[serde(
+        rename = "ai_request_timeout_seconds",
+        deserialize_with = "deserialize_from_str"
+    )]
+    pub(super) request_timeout_seconds: u64,
+    #[serde(
+        rename = "gemini_api_key",
+        deserialize_with = "deserialize_optional_env_field"
+    )]
+    pub(super) gemini_api_key: String,
     #[serde(rename = "gemini_api_base_url")]
-    pub(super) api_base_url: String,
+    pub(super) gemini_api_base_url: String,
     #[serde(rename = "gemini_model")]
-    pub(super) model: String,
+    pub(super) gemini_model: String,
+    #[serde(
+        rename = "openrouter_api_key",
+        deserialize_with = "deserialize_optional_env_field"
+    )]
+    pub(super) openrouter_api_key: String,
+    #[serde(rename = "openrouter_base_url")]
+    pub(super) openrouter_base_url: String,
+    #[serde(rename = "openrouter_model")]
+    pub(super) openrouter_model: String,
+    #[serde(
+        rename = "openrouter_require_parameters",
+        deserialize_with = "deserialize_from_str"
+    )]
+    pub(super) openrouter_require_parameters: bool,
 }
 
 impl Settings {
     pub(super) fn from_env() -> Result<Self, SettingsError> {
+        // A local `.env` seeds the process environment; variables already
+        // exported by the shell or the deployment win over the file.
+        dotenvy::dotenv().ok();
         let binance_web3_base_url = env::var("BINANCE_WEB3_BASE_URL")
             .unwrap_or_else(|_| DEFAULT_BINANCE_WEB3_BASE_URL.to_owned());
         let bind_address =
@@ -112,6 +155,16 @@ impl Settings {
             .unwrap_or_else(|_| DEFAULT_GEMINI_API_BASE_URL.to_owned());
         let gemini_model =
             env::var("GEMINI_MODEL").unwrap_or_else(|_| DEFAULT_GEMINI_MODEL.to_owned());
+        let ai_provider =
+            env::var("AI_PROVIDER").unwrap_or_else(|_| DEFAULT_AI_PROVIDER.to_owned());
+        let ai_request_timeout_seconds = env::var("AI_REQUEST_TIMEOUT_SECONDS")
+            .unwrap_or_else(|_| DEFAULT_AI_REQUEST_TIMEOUT_SECONDS.to_owned());
+        let openrouter_base_url = env::var("OPENROUTER_BASE_URL")
+            .unwrap_or_else(|_| DEFAULT_OPENROUTER_BASE_URL.to_owned());
+        let openrouter_model =
+            env::var("OPENROUTER_MODEL").unwrap_or_else(|_| DEFAULT_OPENROUTER_MODEL.to_owned());
+        let openrouter_require_parameters = env::var("OPENROUTER_REQUIRE_PARAMETERS")
+            .unwrap_or_else(|_| DEFAULT_OPENROUTER_REQUIRE_PARAMETERS.to_owned());
         let fields = [
             ("binance_web3_api_key", BINANCE_WEB3_API_KEY),
             ("binance_web3_api_secret", BINANCE_WEB3_API_SECRET),
@@ -140,6 +193,18 @@ impl Settings {
             ("gemini_api_key", GEMINI_API_KEY),
             ("gemini_api_base_url", gemini_api_base_url.as_str()),
             ("gemini_model", gemini_model.as_str()),
+            ("ai_provider", ai_provider.as_str()),
+            (
+                "ai_request_timeout_seconds",
+                ai_request_timeout_seconds.as_str(),
+            ),
+            ("openrouter_api_key", OPENROUTER_API_KEY),
+            ("openrouter_base_url", openrouter_base_url.as_str()),
+            ("openrouter_model", openrouter_model.as_str()),
+            (
+                "openrouter_require_parameters",
+                openrouter_require_parameters.as_str(),
+            ),
         ];
         let values = fields
             .into_iter()
@@ -205,6 +270,35 @@ pub(super) enum SettingsError {
 }
 
 /// Resolves strings beginning with `#ENV:` from the process environment.
+/// Like [`deserialize_env_field`] but yields an empty string when the variable
+/// is unset, so an unused provider's key is not required to boot.
+fn deserialize_optional_env_field<'de, D>(deserializer: D) -> Result<String, D::Error>
+where
+    D: de::Deserializer<'de>,
+{
+    struct OptionalEnvironmentVisitor;
+
+    impl Visitor<'_> for OptionalEnvironmentVisitor {
+        type Value = String;
+
+        fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+            formatter.write_str("a string or an environment reference beginning with #ENV:")
+        }
+
+        fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
+        where
+            E: de::Error,
+        {
+            Ok(match value.strip_prefix("#ENV:") {
+                Some(environment_name) => env::var(environment_name).unwrap_or_default(),
+                None => value.to_owned(),
+            })
+        }
+    }
+
+    deserializer.deserialize_str(OptionalEnvironmentVisitor)
+}
+
 fn deserialize_env_field<'de, D>(deserializer: D) -> Result<String, D::Error>
 where
     D: de::Deserializer<'de>,

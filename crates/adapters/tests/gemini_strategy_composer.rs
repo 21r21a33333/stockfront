@@ -16,7 +16,7 @@ async fn drafts_a_buy_and_supply_chain_from_plain_english() {
         "https://generativelanguage.googleapis.com/v1beta",
         &model,
         &api_key,
-        Duration::from_secs(60),
+        Duration::from_mins(1),
     )
     .unwrap_or_else(|error| panic!("Gemini client was not configured: {error}"));
     let context = ComposeContext {
