@@ -11,7 +11,7 @@ use super::{
 use crate::{
     bstock_borrowing::{BorrowingService, BorrowingServiceError},
     bstock_trade::SettlementTokenMetadata,
-    carry::{CarryOpportunityQuery, CarryQualification, CarryService, CarryServiceError},
+    carry::{CarryOpportunityQuery, CarryQualification, CarryService},
     recipes::{
         RecipeDefinition, RecipeDiagnostic, RecipeDiagnosticLocation, RecipeDiagnosticSeverity,
         RecipeError, RecipePrimitive, RecipeService,
@@ -30,8 +30,6 @@ pub enum StrategyComposerError {
     Recipe(#[from] RecipeError),
     #[error(transparent)]
     Borrowing(#[from] BorrowingServiceError),
-    #[error(transparent)]
-    Carry(#[from] CarryServiceError),
     #[error(transparent)]
     Model(#[from] StrategyModelError),
 }
@@ -110,13 +108,23 @@ impl StrategyComposerService {
                     .push("Which stablecoin should the earn deposit use?".to_owned());
                 continue;
             };
-            let best = self
+            // The draft is worth keeping when the catalog is briefly unreadable:
+            // the recipe could not be signed either way, so ask rather than fail.
+            let Ok(opportunities) = self
                 .carry
                 .opportunities(CarryOpportunityQuery {
                     collateral_token: *collateral_token,
                     debt_token,
                 })
-                .await?
+                .await
+            else {
+                selection.missing.push(
+                    "Earn opportunities are temporarily unavailable. Pick one in the builder."
+                        .to_owned(),
+                );
+                continue;
+            };
+            let best = opportunities
                 .into_iter()
                 .filter(|opportunity| opportunity.qualification == CarryQualification::Eligible)
                 .max_by_key(|opportunity| opportunity.base_earn_rate_bps);

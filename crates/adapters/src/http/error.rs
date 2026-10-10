@@ -409,7 +409,6 @@ impl From<StrategyComposerError> for ApiError {
             StrategyComposerError::InvalidPrompt => Self::INVALID_STRATEGY_PROMPT,
             StrategyComposerError::Recipe(error) => error.into(),
             StrategyComposerError::Borrowing(error) => error.into(),
-            StrategyComposerError::Carry(error) => error.into(),
             StrategyComposerError::Model(StrategyModelError::RateLimited) => Self::AI_RATE_LIMITED,
             StrategyComposerError::Model(StrategyModelError::Unavailable) => Self::AI_UNAVAILABLE,
             StrategyComposerError::Model(StrategyModelError::InvalidResponse) => {

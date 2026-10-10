@@ -365,13 +365,16 @@ impl RecipeService {
     ) -> Result<RecipeNodePreview, RecipeError> {
         let (state, opportunity, waiting_for) = match resolve_asset(asset, completed) {
             ResolvedAsset::Ready(asset) => {
+                // One flaky provider call should not fail the whole preview, so a
+                // route that cannot be read reads the same as one that is gone.
                 let opportunity = self
                     .carry
                     .opportunities(CarryOpportunityQuery {
                         collateral_token,
                         debt_token: asset.token,
                     })
-                    .await?
+                    .await
+                    .unwrap_or_default()
                     .into_iter()
                     .find(|opportunity| opportunity.investment_id == investment_id);
                 // An unqualified route is still returned so the editor can show
