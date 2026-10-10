@@ -156,12 +156,17 @@ fn recipe_routes(
         market,
         trades,
         borrowing.clone(),
-        carry,
+        carry.clone(),
         settlement_metadata.clone(),
         pool,
     ));
-    let composer =
-        StrategyComposerService::new(recipes.clone(), borrowing, model, settlement_metadata);
+    let composer = StrategyComposerService::new(
+        recipes.clone(),
+        borrowing,
+        carry,
+        model,
+        settlement_metadata,
+    );
     Ok(recipe_router(recipes).merge(strategy_router(Arc::new(composer))))
 }
 

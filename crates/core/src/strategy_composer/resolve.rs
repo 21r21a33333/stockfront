@@ -282,6 +282,21 @@ impl Resolver {
                 })
             }
             StrategyStep::Repay => Ok(RecipePrimitive::Repay),
+            StrategyStep::EarnDeposit { symbol } => {
+                let token = self.token(symbol, label)?;
+                if token.kind != ComposerAssetKind::Stock {
+                    return Err(StepProblem::Invalid(format!(
+                        "{label}: the earn benchmark must be a stock, not {}",
+                        token.symbol
+                    )));
+                }
+                // Which reviewed opportunity to use is live policy, so the
+                // composer fills it once the deposit token is known.
+                Ok(RecipePrimitive::EarnDeposit {
+                    collateral_token: token.address,
+                    investment_id: String::new(),
+                })
+            }
         }
     }
 
@@ -381,14 +396,17 @@ const fn output_port(step: &StrategyStep) -> Option<&'static str> {
         StrategyStep::BorrowedPosition { .. } => Some("debt"),
         StrategyStep::Trade { .. } => Some("buy"),
         StrategyStep::Borrow { .. } => Some("borrowed"),
-        StrategyStep::Supply | StrategyStep::Withdraw | StrategyStep::Repay => None,
+        StrategyStep::Supply
+        | StrategyStep::Withdraw
+        | StrategyStep::Repay
+        | StrategyStep::EarnDeposit { .. } => None,
     }
 }
 
 const fn input_port(step: &StrategyStep) -> Option<&'static str> {
     match step {
         StrategyStep::Trade { .. } => Some("sell"),
-        StrategyStep::Supply => Some("asset"),
+        StrategyStep::Supply | StrategyStep::EarnDeposit { .. } => Some("asset"),
         StrategyStep::Withdraw => Some("position"),
         StrategyStep::Borrow { .. } => Some("collateral"),
         StrategyStep::Repay => Some("debt"),

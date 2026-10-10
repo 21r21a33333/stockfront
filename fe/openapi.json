@@ -2093,6 +2093,14 @@
             "type": "object",
             "required": ["kind"],
             "properties": { "kind": { "type": "string", "enum": ["REPAY"] } }
+          },
+          {
+            "type": "object",
+            "required": ["symbol", "kind"],
+            "properties": {
+              "kind": { "type": "string", "enum": ["EARN_DEPOSIT"] },
+              "symbol": { "type": "string" }
+            }
           }
         ]
       },

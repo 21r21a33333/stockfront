@@ -62,6 +62,9 @@ pub enum StrategyStep {
         amount: Option<Decimal>,
     },
     Repay,
+    EarnDeposit {
+        symbol: String,
+    },
 }
 
 /// A language model's proposal before Stockfront resolves and validates it.

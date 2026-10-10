@@ -1,5 +1,6 @@
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 
+use alloy_primitives::Address;
 use thiserror::Error;
 
 use super::{
@@ -10,9 +11,10 @@ use super::{
 use crate::{
     bstock_borrowing::{BorrowingService, BorrowingServiceError},
     bstock_trade::SettlementTokenMetadata,
+    carry::{CarryOpportunityQuery, CarryQualification, CarryService, CarryServiceError},
     recipes::{
-        RecipeDiagnostic, RecipeDiagnosticLocation, RecipeDiagnosticSeverity, RecipeError,
-        RecipeService,
+        RecipeDefinition, RecipeDiagnostic, RecipeDiagnosticLocation, RecipeDiagnosticSeverity,
+        RecipeError, RecipePrimitive, RecipeService,
     },
 };
 
@@ -29,14 +31,23 @@ pub enum StrategyComposerError {
     #[error(transparent)]
     Borrowing(#[from] BorrowingServiceError),
     #[error(transparent)]
+    Carry(#[from] CarryServiceError),
+    #[error(transparent)]
     Model(#[from] StrategyModelError),
 }
 
 pub struct StrategyComposerService {
     recipes: Arc<RecipeService>,
     borrowing: Arc<BorrowingService>,
+    carry: Arc<CarryService>,
     model: Arc<dyn StrategyModel>,
     settlement_tokens: Vec<SettlementTokenMetadata>,
+}
+
+/// What filling in the earn opportunities told the user.
+struct EarnSelection {
+    assumptions: Vec<String>,
+    missing: Vec<String>,
 }
 
 impl StrategyComposerService {
@@ -44,15 +55,88 @@ impl StrategyComposerService {
     pub fn new(
         recipes: Arc<RecipeService>,
         borrowing: Arc<BorrowingService>,
+        carry: Arc<CarryService>,
         model: Arc<dyn StrategyModel>,
         settlement_tokens: Vec<SettlementTokenMetadata>,
     ) -> Self {
         Self {
             recipes,
             borrowing,
+            carry,
             model,
             settlement_tokens,
         }
+    }
+
+    /// Chooses the reviewed earn product behind every earn deposit.
+    ///
+    /// Which products are depositable is live policy the model cannot know, so
+    /// the chosen route is reported as an assumption rather than left implicit.
+    async fn select_earn_opportunities(
+        &self,
+        recipe: &mut RecipeDefinition,
+    ) -> Result<EarnSelection, StrategyComposerError> {
+        let mut selection = EarnSelection {
+            assumptions: Vec::new(),
+            missing: Vec::new(),
+        };
+        let sources = recipe
+            .edges
+            .iter()
+            .map(|edge| (edge.to.node_id, edge.from.node_id))
+            .collect::<HashMap<_, _>>();
+        let deposited = recipe
+            .nodes
+            .iter()
+            .map(|node| (node.id, deposit_token(&node.primitive)))
+            .collect::<HashMap<_, _>>();
+        for node in &mut recipe.nodes {
+            let RecipePrimitive::EarnDeposit {
+                collateral_token,
+                investment_id,
+            } = &mut node.primitive
+            else {
+                continue;
+            };
+            if !investment_id.is_empty() {
+                continue;
+            }
+            let Some(debt_token) = sources
+                .get(&node.id)
+                .and_then(|source| deposited.get(source).copied().flatten())
+            else {
+                selection
+                    .missing
+                    .push("Which stablecoin should the earn deposit use?".to_owned());
+                continue;
+            };
+            let best = self
+                .carry
+                .opportunities(CarryOpportunityQuery {
+                    collateral_token: *collateral_token,
+                    debt_token,
+                })
+                .await?
+                .into_iter()
+                .filter(|opportunity| opportunity.qualification == CarryQualification::Eligible)
+                .max_by_key(|opportunity| opportunity.base_earn_rate_bps);
+            match best {
+                Some(opportunity) => {
+                    selection.assumptions.push(format!(
+                        "Deposits into {} on {}, earning {} against a {}% borrow rate.",
+                        opportunity.investment_name,
+                        opportunity.protocol_name,
+                        opportunity.base_earn_rate_display,
+                        opportunity.borrow_apy_percent
+                    ));
+                    *investment_id = opportunity.investment_id;
+                }
+                None => selection
+                    .missing
+                    .push("No reviewed earn product currently clears the borrow rate.".to_owned()),
+            }
+        }
+        Ok(selection)
     }
 
     /// Drafts a strategy with the model, then resolves and validates it as a recipe.
@@ -100,7 +184,7 @@ impl StrategyComposerService {
         loop {
             calls += 1;
             let final_call = calls == MAX_MODEL_CALLS;
-            let draft = match self.model.draft(&context).await {
+            let mut draft = match self.model.draft(&context).await {
                 Ok(draft) => draft,
                 Err(StrategyModelError::InvalidResponse) if !final_call => continue,
                 Err(error) => return Err(error.into()),
@@ -111,7 +195,12 @@ impl StrategyComposerService {
             let issues = match resolver.resolve(&draft.intent) {
                 Resolution::NeedsInput(questions) => return Ok(without_recipe(draft, questions)),
                 Resolution::Rejected(issues) => issues,
-                Resolution::Recipe(recipe) => {
+                Resolution::Recipe(mut recipe) => {
+                    let selection = self.select_earn_opportunities(&mut recipe).await?;
+                    if !selection.missing.is_empty() {
+                        return Ok(without_recipe(draft, selection.missing));
+                    }
+                    draft.assumptions.extend(selection.assumptions);
                     let validation = self.recipes.validate(&recipe);
                     if validation.valid {
                         return Ok(ComposedStrategy {
@@ -144,6 +233,16 @@ impl StrategyComposerService {
                 issues,
             });
         }
+    }
+}
+
+/// The token a node leaves for the next step, when it leaves one.
+const fn deposit_token(primitive: &RecipePrimitive) -> Option<Address> {
+    match primitive {
+        RecipePrimitive::WalletAsset { token, .. } => Some(*token),
+        RecipePrimitive::Borrow { debt_token, .. } => Some(*debt_token),
+        RecipePrimitive::Trade { buy_token } => Some(*buy_token),
+        _ => None,
     }
 }
 
@@ -184,7 +283,7 @@ mod tests {
         bstock_borrowing::{
             BorrowCapability, BorrowCapabilityRequest, BorrowingAccount, BorrowingActionGateway,
             BorrowingMarket, BorrowingPolicy, BorrowingProviderError, BorrowingReader,
-            BorrowingTransactionStatus, BorrowingVenue, PrepareBorrowRequest,
+            BorrowingToken, BorrowingTransactionStatus, BorrowingVenue, PrepareBorrowRequest,
             PrepareCollateralRequest, PrepareRepaymentRequest, PrepareSupplyRequest,
             PrepareWithdrawalRequest, PreparedBorrowingAction, RepaymentCapability,
             RepaymentCapabilityRequest, SupplyMarket,
@@ -200,7 +299,7 @@ mod tests {
         },
         carry::{
             CarryAccount, CarryActionPlan, CarryPolicy, CarryService, EarnActionGateway,
-            EarnDepositCommand, EarnOpportunity, EarnProviderError, EarnReader,
+            EarnDepositCommand, EarnOpportunity, EarnProviderError, EarnRateType, EarnReader,
             EarnRedemptionClaimCommand, EarnWithdrawalCommand,
         },
         strategy_composer::{StrategyIntent, StrategyStep},
@@ -210,6 +309,7 @@ mod tests {
     const USDT: Address = Address::with_last_byte(1);
     const TSLAB: Address = Address::with_last_byte(2);
     const POOL: Address = Address::with_last_byte(9);
+    const BEST_INVESTMENT: &str = "best";
 
     #[tokio::test]
     async fn invalid_drafts_are_repaired_with_feedback_until_valid() {
@@ -234,6 +334,41 @@ mod tests {
         assert_eq!(contexts.len(), 2);
         assert!(contexts[0].rejected.is_none());
         assert!(contexts[1].rejected.is_some());
+    }
+
+    #[tokio::test]
+    async fn an_earn_deposit_takes_the_best_reviewed_product_and_says_which() {
+        let model = Arc::new(ScriptedModel::new(vec![Ok(draft(vec![
+            wallet_usdt("10"),
+            StrategyStep::EarnDeposit {
+                symbol: "TSLAB".to_owned(),
+            },
+        ]))]));
+
+        let composed = composer(model)
+            .compose(&request("earn on 10 usdt against my tesla"))
+            .await
+            .unwrap_or_else(|error| panic!("composition failed: {error}"));
+
+        let recipe = composed.recipe.unwrap_or_else(|| {
+            panic!(
+                "earn deposit did not resolve: {:?}",
+                composed.missing_inputs
+            )
+        });
+        let investment = recipe.nodes.iter().find_map(|node| match &node.primitive {
+            RecipePrimitive::EarnDeposit { investment_id, .. } => Some(investment_id.clone()),
+            _ => None,
+        });
+        assert_eq!(investment.as_deref(), Some(BEST_INVESTMENT));
+        assert!(
+            composed
+                .assumptions
+                .iter()
+                .any(|assumption| assumption.contains("best vault")),
+            "the chosen product is not stated: {:?}",
+            composed.assumptions
+        );
     }
 
     #[tokio::test]
@@ -355,13 +490,13 @@ mod tests {
             borrowing.clone(),
             Arc::new(Unused),
             Arc::new(Unused),
-            CarryPolicy::new(Vec::new(), 100),
+            CarryPolicy::new(vec![BEST_INVESTMENT.to_owned(), "lesser".to_owned()], 100),
         ));
         let recipes = Arc::new(RecipeService::new(
             market,
             trade,
             borrowing.clone(),
-            carry,
+            carry.clone(),
             vec![SettlementTokenMetadata {
                 address: USDT,
                 symbol: "USDT".to_owned(),
@@ -372,6 +507,7 @@ mod tests {
         StrategyComposerService::new(
             recipes,
             borrowing,
+            carry,
             model,
             vec![SettlementTokenMetadata {
                 address: USDT,
@@ -405,6 +541,26 @@ mod tests {
                     .parse::<Decimal>()
                     .unwrap_or_else(|error| panic!("test amount is invalid: {error}")),
             ),
+        }
+    }
+
+    fn earn(investment_id: &str, base_rate_bps: i64) -> EarnOpportunity {
+        EarnOpportunity {
+            investment_id: investment_id.to_owned(),
+            investment_name: format!("{investment_id} vault"),
+            protocol_id: "lista".to_owned(),
+            protocol_name: "Lista".to_owned(),
+            protocol_logo_url: None,
+            asset: BorrowingToken {
+                contract: USDT,
+                symbol: "USDT".to_owned(),
+            },
+            rate_type: EarnRateType::Apy,
+            base_rate_bps,
+            base_rate_display: format!("{}.00%", base_rate_bps / 100),
+            reported_tvl_usd: None,
+            investable: true,
+            observed_at_ms: 1,
         }
     }
 
@@ -487,7 +643,7 @@ mod tests {
             &self,
             _asset: Address,
         ) -> Result<Vec<EarnOpportunity>, EarnProviderError> {
-            unreachable!("the composer never reads earn opportunities")
+            Ok(vec![earn("lesser", 600), earn(BEST_INVESTMENT, 900)])
         }
 
         async fn opportunity(
@@ -554,7 +710,30 @@ mod tests {
             _: &[BstockId],
             _: &[Address],
         ) -> Result<Vec<BorrowingMarket>, BorrowingProviderError> {
-            Err(BorrowingProviderError::Unavailable)
+            Ok(vec![BorrowingMarket {
+                venue: BorrowingVenue::Venus,
+                chain_id: BNB_CHAIN_ID,
+                collateral: BorrowingToken {
+                    contract: TSLAB,
+                    symbol: "TSLAB".to_owned(),
+                },
+                collateral_market: POOL,
+                debt: BorrowingToken {
+                    contract: USDT,
+                    symbol: "USDT".to_owned(),
+                },
+                debt_market: POOL,
+                collateral_factor: Decimal::new(6, 1),
+                liquidation_threshold: Decimal::new(7, 1),
+                remaining_supply_capacity: Decimal::from(1_000),
+                available_borrow_liquidity: Decimal::from(1_000),
+                borrow_apy_percent: Decimal::from(5),
+                supply_available: true,
+                borrow_available: true,
+                oracle_valid: true,
+                unavailable_reasons: Vec::new(),
+                observed_at_ms: 1,
+            }])
         }
         async fn read_account(
             &self,

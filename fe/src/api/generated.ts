@@ -1089,6 +1089,11 @@ export interface components {
       | {
           /** @enum {string} */
           kind: "REPAY";
+        }
+      | {
+          /** @enum {string} */
+          kind: "EARN_DEPOSIT";
+          symbol: string;
         };
     SubmitOrderRequest: {
       routeQuoteId: string;

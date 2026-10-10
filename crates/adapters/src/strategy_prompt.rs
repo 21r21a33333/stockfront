@@ -24,6 +24,7 @@ Sources:
 Actions:
 - TRADE {buySymbol}: swaps the incoming tokens. The input must be tokens, from a WALLET_ASSET or a BORROW; a supplied or borrowed position can never feed a TRADE. Only stablecoin to stock, or stock to stablecoin. Outputs the bought tokens.
 - SUPPLY: supplies the incoming stock to Venus as collateral. Only stocks. Ends the chain.
+- EARN_DEPOSIT {symbol}: deposits the incoming stablecoin into a reviewed earn product. symbol is the stock the earn rate is compared against, so use the collateral behind the loan that funded it. Stockfront picks the product. Only stablecoins. Ends the chain.
 - BORROW {symbol, amount}: input must be a supplied position; borrows a borrowable stablecoin. Outputs the borrowed tokens.
 - REPAY: input must be a borrowed position; repays the whole debt. Ends the chain.
 - WITHDRAW: input must be a supplied position; withdraws all of it, only possible with no debt. Ends the chain.
@@ -32,6 +33,7 @@ Valid examples:
 - WALLET_ASSET(USDT, 20) -> TRADE(TSLAB) -> SUPPLY
 - SUPPLIED_POSITION(TSLAB) -> BORROW(USDT, 10) -> TRADE(NVDAB)
 - SUPPLIED_POSITION(TSLAB) -> BORROW(USDT, 10) -> TRADE(TSLAB) -> SUPPLY
+- SUPPLIED_POSITION(TSLAB) -> BORROW(USDT, 10) -> EARN_DEPOSIT(TSLAB)
 - BORROWED_POSITION(USDT) -> REPAY
 - SUPPLIED_POSITION(TSLAB) -> WITHDRAW
 
@@ -44,7 +46,7 @@ Rules:
 - BORROW needs a position that is already supplied, so one chain cannot SUPPLY a stock and then BORROW against that same new supply. \
 Steps after a BORROW are fine: BORROW may be followed by TRADE, and that TRADE by SUPPLY. \
 Only when a supply must happen first, produce the first chain and explain the follow-up in assumptions.
-- Earning yield, liquidity provision, repeated or automated leverage loops, perpetuals, other chains and unlisted assets are not supported yet: \
+- Earning yield on a stablecoin means EARN_DEPOSIT. Liquidity provision, repeated or automated leverage loops, perpetuals, other chains and unlisted assets are not supported yet: \
 return no steps and explain why in assumptions.
 - summary is one plain-English sentence. assumptions are short sentences.";
 
@@ -115,6 +117,7 @@ pub(crate) fn response_schema() -> Value {
                     step("BORROW", json!({ "symbol": symbol, "amount": amount })),
                     step("REPAY", json!({})),
                     step("WITHDRAW", json!({})),
+                    step("EARN_DEPOSIT", json!({ "symbol": symbol })),
                 ]}
             },
             "assumptions": { "type": "array", "items": { "type": "string" } }

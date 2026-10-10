@@ -48,6 +48,12 @@ export function planBlocks(
           name: "Supply to Venus",
           detail: "Becomes collateral",
         };
+      case "EARN_DEPOSIT":
+        return {
+          kind: "earn",
+          name: "Earn deposit",
+          detail: `Benchmarked against ${step.symbol}`,
+        };
       case "BORROW":
         return {
           kind: "borrow",
