@@ -3,8 +3,8 @@ use std::sync::Arc;
 use super::{BasketAccount, BasketProviderError, BasketReader, BasketSummary, ListBasketsQuery};
 use crate::bstock_trade::{
     ApprovalRequest, PrepareTradeRequest, PreparedApproval, PreparedTrade, SubmitOrderRequest,
-    SubmittedOrder, TradeCatalogError, TradeError, TradeGateway, TradeOrderStatus, TradePolicy,
-    TradeQuote, TradeQuoteRequest, select_quotes,
+    SubmittedOrder, TradeCatalogError, TradeError, TradeGateway, TradeOrderStatus, TradePair,
+    TradePolicy, TradeQuote, TradeQuoteRequest, select_quotes,
 };
 use crate::wallet_portfolio::WalletAddress;
 
@@ -124,10 +124,15 @@ impl BasketService {
         if request.sell_amount.is_zero() {
             return Err(TradeError::InvalidAmount);
         }
-        let contract = self
+        // A basket trade always has a basket on one side; settlement pairs are
+        // a trade concern and never reach this reader.
+        let TradePair::Bstock(contract) = self
             .policy
-            .asset_for_pair(request.sell_token, request.buy_token)
-            .ok_or(TradeError::UnsupportedTradePair)?;
+            .classify_pair(request.sell_token, request.buy_token)
+            .ok_or(TradeError::UnsupportedTradePair)?
+        else {
+            return Err(TradeError::UnsupportedTradePair);
+        };
         let supported = self
             .reader
             .list_baskets()

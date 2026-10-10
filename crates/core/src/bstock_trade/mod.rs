@@ -9,7 +9,8 @@ pub use model::{
     TokenAmount, TradeExecutionMode, TradeOrderState, TradeOrderStatus, TradeQuote,
     TradeQuoteRequest, TradeTransactionState, TradeTransactionStatus,
 };
-pub use policy::{TradePolicy, TradePolicyError};
+pub(crate) use policy::TradePair;
+pub use policy::{SettlementPairs, TradePolicy, TradePolicyError};
 pub use ports::{TradeGateway, TradeGatewayError};
 pub(crate) use service::select_quotes;
 pub use service::{BstockTradeService, TradeCatalogError, TradeError};

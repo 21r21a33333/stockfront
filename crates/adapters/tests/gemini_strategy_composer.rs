@@ -20,6 +20,7 @@ async fn drafts_a_buy_and_supply_chain_from_plain_english() {
     )
     .unwrap_or_else(|error| panic!("Gemini client was not configured: {error}"));
     let context = ComposeContext {
+        settlement_pairs: false,
         prompt: "Swap 6 USDT for Nvidia stock and use it as collateral on Venus".to_owned(),
         assets: vec![
             asset(

@@ -79,6 +79,9 @@ pub struct StrategyDraft {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ComposeContext {
     pub prompt: String,
+    /// Whether one stablecoin may be traded for another, which the deployment
+    /// decides; the grammar the model is given has to match it.
+    pub settlement_pairs: bool,
     pub assets: Vec<ComposerAsset>,
     pub positions: Vec<ComposerPosition>,
     pub previous: Option<StrategyIntent>,

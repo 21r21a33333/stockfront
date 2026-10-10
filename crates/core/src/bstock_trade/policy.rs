@@ -16,11 +16,32 @@ pub enum TradePolicyError {
     InvalidSettlementToken,
 }
 
+/// Whether a trade between two settlement tokens may be offered.
+///
+/// The venue behind a trade is a generic swap aggregator and quotes such a pair
+/// happily, but offering it widens the product's vocabulary, so it is a
+/// deployment decision rather than a provider capability.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SettlementPairs {
+    Rejected,
+    Allowed,
+}
+
+/// What a sell/buy pair is, once the policy recognises it.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum TradePair {
+    /// The bStock side, which still has to exist in the catalog.
+    Bstock(Address),
+    /// Two settlement tokens, which no catalog covers.
+    Settlement,
+}
+
 #[derive(Clone)]
 pub struct TradePolicy {
     pub(super) settlement_tokens: HashSet<Address>,
     max_price_impact_percent: Decimal,
     pub(super) slippage_percent: Decimal,
+    settlement_pairs: SettlementPairs,
 }
 
 impl TradePolicy {
@@ -33,6 +54,7 @@ impl TradePolicy {
         settlement_tokens: impl IntoIterator<Item = Address>,
         max_price_impact_bps: u32,
         slippage_bps: u32,
+        settlement_pairs: SettlementPairs,
     ) -> Result<Self, TradePolicyError> {
         let settlement_tokens = settlement_tokens.into_iter().collect::<HashSet<_>>();
         if settlement_tokens.is_empty() {
@@ -52,6 +74,7 @@ impl TradePolicy {
             settlement_tokens,
             max_price_impact_percent: Decimal::new(i64::from(max_price_impact_bps), 2),
             slippage_percent: Decimal::new(i64::from(slippage_bps), 2),
+            settlement_pairs,
         })
     }
 
@@ -63,16 +86,25 @@ impl TradePolicy {
         self.slippage_percent
     }
 
-    pub(crate) fn asset_for_pair(
+    pub(crate) const fn offers_settlement_pairs(&self) -> bool {
+        matches!(self.settlement_pairs, SettlementPairs::Allowed)
+    }
+
+    pub(crate) fn classify_pair(
         &self,
         sell_token: Address,
         buy_token: Address,
-    ) -> Option<Address> {
+    ) -> Option<TradePair> {
+        // Selling a token for itself is a no-op the venue would price anyway.
+        if sell_token == buy_token {
+            return None;
+        }
         let sell_is_settlement = self.settlement_tokens.contains(&sell_token);
         let buy_is_settlement = self.settlement_tokens.contains(&buy_token);
         match (sell_is_settlement, buy_is_settlement) {
-            (true, false) => Some(buy_token),
-            (false, true) => Some(sell_token),
+            (true, false) => Some(TradePair::Bstock(buy_token)),
+            (false, true) => Some(TradePair::Bstock(sell_token)),
+            (true, true) if self.offers_settlement_pairs() => Some(TradePair::Settlement),
             _ => None,
         }
     }
@@ -84,8 +116,7 @@ mod tests {
 
     #[test]
     fn price_impact_limit_uses_the_magnitude_of_binances_signed_value() {
-        let policy = TradePolicy::new([Address::with_last_byte(1)], 100, 50)
-            .unwrap_or_else(|error| panic!("valid policy rejected: {error}"));
+        let policy = policy(SettlementPairs::Rejected);
 
         assert!(policy.accepts_price_impact(Decimal::new(-100, 2)));
         assert!(policy.accepts_price_impact(Decimal::new(100, 2)));
@@ -94,26 +125,47 @@ mod tests {
 
     #[test]
     fn supported_pair_allows_both_trade_directions() {
-        let settlement_token = Address::with_last_byte(1);
-        let bstock = Address::with_last_byte(2);
-        let other_settlement_token = Address::with_last_byte(3);
-        let other_asset = Address::with_last_byte(4);
-        let policy = TradePolicy::new([settlement_token, other_settlement_token], 100, 50)
-            .unwrap_or_else(|error| panic!("valid policy rejected: {error}"));
+        let policy = policy(SettlementPairs::Rejected);
 
         assert_eq!(
-            policy.asset_for_pair(settlement_token, bstock),
-            Some(bstock)
+            policy.classify_pair(SETTLEMENT, BSTOCK),
+            Some(TradePair::Bstock(BSTOCK))
         );
         assert_eq!(
-            policy.asset_for_pair(bstock, settlement_token),
-            Some(bstock)
+            policy.classify_pair(BSTOCK, SETTLEMENT),
+            Some(TradePair::Bstock(BSTOCK))
+        );
+        assert_eq!(policy.classify_pair(SETTLEMENT, OTHER_SETTLEMENT), None);
+        assert_eq!(policy.classify_pair(BSTOCK, OTHER_ASSET), None);
+        assert_eq!(policy.classify_pair(BSTOCK, BSTOCK), None);
+    }
+
+    #[test]
+    fn settlement_pairs_are_offered_only_when_the_deployment_allows_them() {
+        let allowed = policy(SettlementPairs::Allowed);
+
+        // No bStock sits in the pair, so nothing is checked against the catalog.
+        assert_eq!(
+            allowed.classify_pair(SETTLEMENT, OTHER_SETTLEMENT),
+            Some(TradePair::Settlement)
         );
         assert_eq!(
-            policy.asset_for_pair(settlement_token, other_settlement_token),
-            None
+            allowed.classify_pair(SETTLEMENT, BSTOCK),
+            Some(TradePair::Bstock(BSTOCK))
         );
-        assert_eq!(policy.asset_for_pair(bstock, other_asset), None);
-        assert_eq!(policy.asset_for_pair(bstock, bstock), None);
+        // Widening the pairs must not turn a no-op into a trade, nor admit an
+        // asset the catalog has never heard of.
+        assert_eq!(allowed.classify_pair(SETTLEMENT, SETTLEMENT), None);
+        assert_eq!(allowed.classify_pair(BSTOCK, OTHER_ASSET), None);
+    }
+
+    const SETTLEMENT: Address = Address::with_last_byte(1);
+    const BSTOCK: Address = Address::with_last_byte(2);
+    const OTHER_SETTLEMENT: Address = Address::with_last_byte(3);
+    const OTHER_ASSET: Address = Address::with_last_byte(4);
+
+    fn policy(settlement_pairs: SettlementPairs) -> TradePolicy {
+        TradePolicy::new([SETTLEMENT, OTHER_SETTLEMENT], 100, 50, settlement_pairs)
+            .unwrap_or_else(|error| panic!("valid policy rejected: {error}"))
     }
 }

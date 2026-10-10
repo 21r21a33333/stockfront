@@ -99,6 +99,7 @@ mod tests {
 
     fn context() -> ComposeContext {
         ComposeContext {
+            settlement_pairs: false,
             prompt: "buy tesla".to_owned(),
             assets: vec![ComposerAsset {
                 symbol: "TSLAB".to_owned(),

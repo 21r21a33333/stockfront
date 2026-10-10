@@ -19,7 +19,7 @@ use stockfront_core::{
     baskets::BasketService,
     bstock_borrowing::{BorrowingPolicy, BorrowingService},
     bstock_market::{Address, BstockMarketService},
-    bstock_trade::{BstockTradeService, SettlementTokenMetadata, TradePolicy},
+    bstock_trade::{BstockTradeService, SettlementPairs, SettlementTokenMetadata, TradePolicy},
     carry::{CarryPolicy, CarryService},
     liquidity::{LiquidityPolicy, LiquidityService},
     managed_portfolios::ManagedPortfolioService,
@@ -48,6 +48,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         trade_settlement_tokens,
         max_trade_price_impact_bps,
         trade_slippage_bps,
+        trade_settlement_pairs,
         venus_api_base_url,
         bsc_rpc_url,
         venus_comptroller,
@@ -75,6 +76,11 @@ async fn main() -> Result<(), Box<dyn Error>> {
         trade_settlement_tokens.clone(),
         max_trade_price_impact_bps,
         trade_slippage_bps,
+        if trade_settlement_pairs {
+            SettlementPairs::Allowed
+        } else {
+            SettlementPairs::Rejected
+        },
     )?;
     let trades = Arc::new(BstockTradeService::new(
         client.clone(),

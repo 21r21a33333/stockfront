@@ -1,7 +1,7 @@
 use std::{error::Error, sync::Arc};
 
 use alloy_primitives::{Address, address};
-use stockfront_core::bstock_trade::{BstockTradeService, TradePolicy};
+use stockfront_core::bstock_trade::{BstockTradeService, SettlementPairs, TradePolicy};
 
 use crate::support::live_client;
 
@@ -13,6 +13,11 @@ pub fn live_trade_service(
     slippage_bps: u32,
 ) -> Result<BstockTradeService, Box<dyn Error>> {
     let client = Arc::new(live_client()?);
-    let policy = TradePolicy::new([settlement_token], 100, slippage_bps)?;
+    let policy = TradePolicy::new(
+        [settlement_token],
+        100,
+        slippage_bps,
+        SettlementPairs::Rejected,
+    )?;
     Ok(BstockTradeService::new(client.clone(), client, policy))
 }

@@ -18,6 +18,9 @@ const DEFAULT_TRADE_SETTLEMENT_TOKENS: &str =
     "0x55d398326f99059ff775485246999027b3197955,0x8ac76a51cc950d9822d68b83fe1ad97b32cd580d";
 const DEFAULT_MAX_TRADE_PRICE_IMPACT_BPS: &str = "100";
 const DEFAULT_TRADE_SLIPPAGE_BPS: &str = "50";
+/// Off by default: trading one stablecoin for another is a wider product than
+/// the tokenized-stock one, so a deployment opts into it.
+const DEFAULT_TRADE_SETTLEMENT_PAIRS: &str = "false";
 const DEFAULT_VENUS_API_BASE_URL: &str = "https://api.venus.io";
 const DEFAULT_BSC_RPC_URL: &str = "https://bsc-dataseed.bnbchain.org";
 const DEFAULT_VENUS_COMPTROLLER: &str = "0xfD36E2c2a6789Db23113685031d7F16329158384";
@@ -50,6 +53,8 @@ pub(super) struct Settings {
     pub(super) max_trade_price_impact_bps: u32,
     #[serde(deserialize_with = "deserialize_from_str")]
     pub(super) trade_slippage_bps: u32,
+    #[serde(deserialize_with = "deserialize_bool")]
+    pub(super) trade_settlement_pairs: bool,
     pub(super) venus_api_base_url: String,
     pub(super) bsc_rpc_url: String,
     #[serde(deserialize_with = "deserialize_address")]
@@ -131,6 +136,8 @@ impl Settings {
             .unwrap_or_else(|_| DEFAULT_MAX_TRADE_PRICE_IMPACT_BPS.to_owned());
         let trade_slippage_bps = env::var("STOCKFRONT_TRADE_SLIPPAGE_BPS")
             .unwrap_or_else(|_| DEFAULT_TRADE_SLIPPAGE_BPS.to_owned());
+        let trade_settlement_pairs = env::var("STOCKFRONT_TRADE_SETTLEMENT_PAIRS")
+            .unwrap_or_else(|_| DEFAULT_TRADE_SETTLEMENT_PAIRS.to_owned());
         let venus_api_base_url = env::var("VENUS_API_BASE_URL")
             .unwrap_or_else(|_| DEFAULT_VENUS_API_BASE_URL.to_owned());
         let bsc_rpc_url =
@@ -176,6 +183,7 @@ impl Settings {
                 max_trade_price_impact_bps.as_str(),
             ),
             ("trade_slippage_bps", trade_slippage_bps.as_str()),
+            ("trade_settlement_pairs", trade_settlement_pairs.as_str()),
             ("venus_api_base_url", venus_api_base_url.as_str()),
             ("bsc_rpc_url", bsc_rpc_url.as_str()),
             ("venus_comptroller", venus_comptroller.as_str()),
@@ -225,6 +233,25 @@ where
         .filter(|value| !value.is_empty())
         .map(str::to_owned)
         .collect())
+}
+
+/// Settings arrive as strings, so a flag is spelled out rather than coerced:
+/// anything but a clear "true" leaves the feature off.
+fn deserialize_bool<'de, D>(deserializer: D) -> Result<bool, D::Error>
+where
+    D: de::Deserializer<'de>,
+{
+    match String::deserialize(deserializer)?
+        .trim()
+        .to_ascii_lowercase()
+        .as_str()
+    {
+        "true" => Ok(true),
+        "false" => Ok(false),
+        other => Err(de::Error::custom(format_args!(
+            "expected true or false, found {other}"
+        ))),
+    }
 }
 
 fn deserialize_address<'de, D>(deserializer: D) -> Result<Address, D::Error>

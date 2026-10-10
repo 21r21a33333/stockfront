@@ -13,7 +13,7 @@ use stockfront_core::{
     },
     bstock_market::{BNB_CHAIN_ID, BstockMarketService},
     bstock_trade::{
-        BstockTradeService, PreparedTrade, SettlementTokenMetadata, TokenAmount,
+        BstockTradeService, PreparedTrade, SettlementPairs, SettlementTokenMetadata, TokenAmount,
         TradeExecutionMode, TradePolicy,
     },
     carry::{CarryPolicy, CarryService},
@@ -123,7 +123,7 @@ async fn live_recipe_service() -> Result<RecipeService, Box<dyn Error>> {
     let trades = Arc::new(BstockTradeService::new(
         client.clone(),
         client.clone(),
-        TradePolicy::new([USDT], 100, 50)?,
+        TradePolicy::new([USDT], 100, 50, SettlementPairs::Rejected)?,
     ));
     let venus = Arc::new(live_venus_adapter(true).await?);
     let borrowing = Arc::new(BorrowingService::new(

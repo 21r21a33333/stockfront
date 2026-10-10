@@ -8,6 +8,7 @@ use super::{
         ApprovalRequest, PrepareTradeRequest, PreparedApproval, PreparedTrade, SubmitOrderRequest,
         SubmittedOrder, TradeOrderStatus, TradeQuote, TradeQuoteRequest, TradeTransactionStatus,
     },
+    policy::TradePair,
     policy::TradePolicy,
     ports::{TradeGateway, TradeGatewayError},
 };
@@ -139,19 +140,30 @@ impl BstockTradeService {
             .map_err(Into::into)
     }
 
+    /// Whether a trade between two settlement tokens may be offered.
+    #[must_use]
+    pub fn offers_settlement_pairs(&self) -> bool {
+        self.policy.offers_settlement_pairs()
+    }
+
     #[must_use]
     pub fn supports_pair_shape(&self, sell_token: Address, buy_token: Address) -> bool {
-        self.policy.asset_for_pair(sell_token, buy_token).is_some()
+        self.policy.classify_pair(sell_token, buy_token).is_some()
     }
 
     async fn validate_trade(&self, request: &TradeQuoteRequest) -> Result<(), TradeError> {
         if request.sell_amount.is_zero() {
             return Err(TradeError::InvalidAmount);
         }
-        let contract = self
+        // Two settlement tokens have no bStock, so there is no catalog entry to
+        // confirm; the pair being offered at all is the policy's decision.
+        let TradePair::Bstock(contract) = self
             .policy
-            .asset_for_pair(request.sell_token, request.buy_token)
-            .ok_or(TradeError::UnsupportedTradePair)?;
+            .classify_pair(request.sell_token, request.buy_token)
+            .ok_or(TradeError::UnsupportedTradePair)?
+        else {
+            return Ok(());
+        };
         let bstock = BstockId {
             chain_id: BNB_CHAIN_ID,
             contract,

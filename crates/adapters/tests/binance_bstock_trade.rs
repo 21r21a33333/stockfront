@@ -10,9 +10,9 @@ use alloy_primitives::{Address, B256, U256, address};
 use rust_decimal::Decimal;
 use stockfront_adapters::binance_web3::BinanceWeb3Client;
 use stockfront_core::bstock_trade::{
-    ApprovalRequest, BstockTradeService, PrepareTradeRequest, PreparedTrade, TradeError,
-    TradeExecutionMode, TradeGateway, TradeGatewayError, TradePolicy, TradeQuoteRequest,
-    TradeTransactionState,
+    ApprovalRequest, BstockTradeService, PrepareTradeRequest, PreparedTrade, SettlementPairs,
+    TradeError, TradeExecutionMode, TradeGateway, TradeGatewayError, TradePolicy,
+    TradeQuoteRequest, TradeTransactionState,
 };
 
 use support::live_client;
@@ -35,7 +35,7 @@ fn offline_service(settlement_token: Address) -> Result<BstockTradeService, Box<
         "unused",
         Duration::from_millis(1),
     )?);
-    let policy = TradePolicy::new([settlement_token], 100, 50)?;
+    let policy = TradePolicy::new([settlement_token], 100, 50, SettlementPairs::Rejected)?;
     Ok(BstockTradeService::new(client.clone(), client, policy))
 }
 

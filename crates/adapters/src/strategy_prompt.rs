@@ -22,7 +22,7 @@ Sources:
 - SUPPLIED_POSITION {symbol}: a stock the user already supplied to Venus. Use only positions listed below. Outputs the position.
 - BORROWED_POSITION {symbol}: an existing Venus debt listed below. Outputs the debt.
 Actions:
-- TRADE {buySymbol}: swaps the incoming tokens. The input must be tokens, from a WALLET_ASSET or a BORROW; a supplied or borrowed position can never feed a TRADE. Only stablecoin to stock, or stock to stablecoin. Outputs the bought tokens.
+- TRADE {buySymbol}: swaps the incoming tokens. The input must be tokens, from a WALLET_ASSET or a BORROW; a supplied or borrowed position can never feed a TRADE. Outputs the bought tokens.
 - SUPPLY: supplies the incoming stock to Venus as collateral. Only stocks. Ends the chain.
 - EARN_DEPOSIT {symbol}: deposits the incoming stablecoin into a reviewed earn product. symbol is the stock the earn rate is compared against, so use the collateral behind the loan that funded it. Stockfront picks the product. Only stablecoins. Ends the chain.
 - BORROW {symbol, amount}: input must be a supplied position; borrows a borrowable stablecoin. Outputs the borrowed tokens.
@@ -50,8 +50,20 @@ Only when a supply must happen first, produce the first chain and explain the fo
 return no steps and explain why in assumptions.
 - summary is one plain-English sentence. assumptions are short sentences.";
 
+/// What a TRADE may move between, which the deployment can widen.
+const STOCK_PAIRS_ONLY: &str =
+    "A TRADE goes stablecoin to stock, or stock to stablecoin. Never stablecoin to stablecoin.";
+const SETTLEMENT_PAIRS: &str = "A TRADE goes stablecoin to stock, stock to stablecoin, or one \
+stablecoin to another. Use a stablecoin-to-stablecoin TRADE to convert between stablecoins \
+directly; never route one through a stock to do it.";
+
 pub(crate) fn instructions(context: &ComposeContext) -> String {
-    let mut text = format!("{INSTRUCTIONS}\n\nAssets:\n");
+    let pairs = if context.settlement_pairs {
+        SETTLEMENT_PAIRS
+    } else {
+        STOCK_PAIRS_ONLY
+    };
+    let mut text = format!("{INSTRUCTIONS}\n{pairs}\n\nAssets:\n");
     for asset in &context.assets {
         let kind = match asset.kind {
             ComposerAssetKind::Stock => "stock",

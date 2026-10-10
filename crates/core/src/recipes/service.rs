@@ -130,6 +130,28 @@ impl RecipeService {
         }
     }
 
+    /// The asset moves a trade may make, which the builder turns into its token
+    /// pickers and the model is told about when it drafts a recipe.
+    fn trade_transitions(&self) -> Vec<RecipeAssetTransition> {
+        let mut transitions = vec![
+            RecipeAssetTransition {
+                sell: RecipeOptionSource::SettlementTokens,
+                buy: RecipeOptionSource::Bstocks,
+            },
+            RecipeAssetTransition {
+                sell: RecipeOptionSource::Bstocks,
+                buy: RecipeOptionSource::SettlementTokens,
+            },
+        ];
+        if self.trade.offers_settlement_pairs() {
+            transitions.push(RecipeAssetTransition {
+                sell: RecipeOptionSource::SettlementTokens,
+                buy: RecipeOptionSource::SettlementTokens,
+            });
+        }
+        transitions
+    }
+
     /// Returns the language schema and asset choices needed to render nodes.
     ///
     /// # Errors
@@ -152,16 +174,7 @@ impl RecipeService {
             settlement_tokens: self.settlement_tokens.clone(),
             bstocks,
             trade_policy: RecipeTradePolicy {
-                allowed_transitions: vec![
-                    RecipeAssetTransition {
-                        sell: RecipeOptionSource::SettlementTokens,
-                        buy: RecipeOptionSource::Bstocks,
-                    },
-                    RecipeAssetTransition {
-                        sell: RecipeOptionSource::Bstocks,
-                        buy: RecipeOptionSource::SettlementTokens,
-                    },
-                ],
+                allowed_transitions: self.trade_transitions(),
             },
             supply_policy: RecipeSupplyPolicy {
                 allowed_inputs: vec![RecipeSupplyRule {
@@ -2032,6 +2045,39 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn settlement_pairs_reach_the_catalog_only_when_the_deployment_allows_them() {
+        // The builder's token pickers and the model's grammar both read this, so
+        // the gate has to show up here rather than only inside the trade policy.
+        let settlement_to_settlement = RecipeAssetTransition {
+            sell: RecipeOptionSource::SettlementTokens,
+            buy: RecipeOptionSource::SettlementTokens,
+        };
+
+        let (closed, _) = gated_service(SettlementPairs::Rejected);
+        let closed = closed
+            .catalog()
+            .await
+            .unwrap_or_else(|error| panic!("catalog failed: {error}"));
+        let (open, _) = gated_service(SettlementPairs::Allowed);
+        let open = open
+            .catalog()
+            .await
+            .unwrap_or_else(|error| panic!("catalog failed: {error}"));
+
+        assert!(
+            !closed
+                .trade_policy
+                .allowed_transitions
+                .contains(&settlement_to_settlement)
+        );
+        assert!(
+            open.trade_policy
+                .allowed_transitions
+                .contains(&settlement_to_settlement)
+        );
+    }
+
+    #[tokio::test]
     async fn catalog_describes_trade_compatibility_with_asset_groups() {
         let (service, _) = service();
 
@@ -2830,7 +2876,7 @@ mod tests {
     fn gated_service(settlement_pairs: SettlementPairs) -> (RecipeService, Arc<RecordingGateway>) {
         let catalog = Arc::new(FixedCatalog(vec![summary()]));
         let gateway = Arc::new(RecordingGateway::default());
-        let policy = TradePolicy::new([SETTLEMENT], 100, 50, SettlementPairs::Rejected)
+        let policy = TradePolicy::new([SETTLEMENT], 100, 50, settlement_pairs)
             .unwrap_or_else(|error| panic!("test policy is invalid: {error}"));
         let trade = Arc::new(BstockTradeService::new(
             gateway.clone(),

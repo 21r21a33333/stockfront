@@ -83,6 +83,7 @@ mod tests {
     #[test]
     fn repair_requests_carry_the_rejected_draft_and_its_issues() {
         let context = ComposeContext {
+            settlement_pairs: false,
             prompt: "buy tesla".to_owned(),
             assets: vec![ComposerAsset {
                 symbol: "TSLAB".to_owned(),

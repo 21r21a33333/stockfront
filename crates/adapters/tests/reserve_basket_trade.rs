@@ -16,9 +16,9 @@ use stockfront_adapters::reserve::ReserveAdapter;
 use stockfront_core::{
     baskets::BasketService,
     bstock_trade::{
-        ApprovalRequest, PrepareTradeRequest, PreparedTrade, RfqVenue, SubmitOrderRequest,
-        TradeError, TradeExecutionMode, TradeGateway, TradeGatewayError, TradeOrderState,
-        TradeOrderStatus, TradePolicy, TradeQuote, TradeQuoteRequest,
+        ApprovalRequest, PrepareTradeRequest, PreparedTrade, RfqVenue, SettlementPairs,
+        SubmitOrderRequest, TradeError, TradeExecutionMode, TradeGateway, TradeGatewayError,
+        TradeOrderState, TradeOrderStatus, TradePolicy, TradeQuote, TradeQuoteRequest,
     },
     wallet_portfolio::WalletAddress,
 };
@@ -109,7 +109,7 @@ async fn live_basket_context() -> Result<LiveBasketContext, Box<dyn Error>> {
     let service = BasketService::new(
         adapter.clone(),
         adapter,
-        TradePolicy::new([USDT], 10_000, 50)?,
+        TradePolicy::new([USDT], 10_000, 50, SettlementPairs::Rejected)?,
     );
     Ok(LiveBasketContext {
         evm,
@@ -384,7 +384,7 @@ async fn quotes_and_prepares_live_bnb_basket_trades() -> Result<(), Box<dyn Erro
     let service = BasketService::new(
         adapter.clone(),
         adapter,
-        TradePolicy::new([USDT], 10_000, 50)?,
+        TradePolicy::new([USDT], 10_000, 50, SettlementPairs::Rejected)?,
     );
     let buy_amount = U256::from(1_000_000_000_000_000_000_u128);
     let quote = fusion_quote(&service, wallet, USDT, PHOTON, buy_amount).await?;

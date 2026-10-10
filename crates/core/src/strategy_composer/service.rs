@@ -14,7 +14,7 @@ use crate::{
     carry::{CarryOpportunityQuery, CarryQualification, CarryService, CarryServiceError},
     recipes::{
         RecipeDefinition, RecipeDiagnostic, RecipeDiagnosticLocation, RecipeDiagnosticSeverity,
-        RecipeError, RecipePrimitive, RecipeService,
+        RecipeError, RecipeOptionSource, RecipePrimitive, RecipeService,
     },
 };
 
@@ -185,8 +185,19 @@ impl StrategyComposerService {
                 .map(|rule| rule.pool),
             account.as_ref(),
         );
+        // The catalog already states what a trade may move between, so the model
+        // is told the same grammar the compiler will hold it to.
+        let settlement_pairs = catalog
+            .trade_policy
+            .allowed_transitions
+            .iter()
+            .any(|transition| {
+                transition.sell == RecipeOptionSource::SettlementTokens
+                    && transition.buy == RecipeOptionSource::SettlementTokens
+            });
         let mut context = ComposeContext {
             prompt: prompt.to_owned(),
+            settlement_pairs,
             assets: resolver.assets(),
             positions: resolver.positions(),
             previous: request.previous.clone(),
@@ -305,6 +316,7 @@ mod tests {
             AssetKind, BNB_CHAIN_ID, BstockCatalog, BstockDetails, BstockId, BstockMarketService,
             BstockSummary, CatalogError,
         },
+        bstock_trade::SettlementPairs,
         bstock_trade::{
             ApprovalRequest, BstockTradeService, PrepareTradeRequest, PreparedApproval,
             PreparedTrade, SubmitOrderRequest, SubmittedOrder, TradeGateway, TradeGatewayError,
@@ -538,7 +550,7 @@ mod tests {
     ) -> StrategyComposerService {
         let catalog = Arc::new(FixedCatalog);
         let market = Arc::new(BstockMarketService::new(catalog.clone()));
-        let policy = TradePolicy::new([USDT], 100, 50)
+        let policy = TradePolicy::new([USDT], 100, 50, SettlementPairs::Rejected)
             .unwrap_or_else(|error| panic!("valid trade policy rejected: {error}"));
         let trade = Arc::new(BstockTradeService::new(
             Arc::new(Unused),
