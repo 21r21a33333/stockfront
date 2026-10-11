@@ -79,7 +79,17 @@ impl BinanceWeb3Client {
         )
         .await
         .map_err(map_request_error)?;
-        ensure_business_success(response.code, response.success)?;
+        if let Err(error) = ensure_business_success(response.code, response.success) {
+            // Binance explains a refusal in `msg`. Without it every refusal
+            // looks the same at the port, and the user is told only that the
+            // provider said no.
+            tracing::warn!(
+                code = response.code,
+                message = response.msg.as_deref().unwrap_or("none"),
+                "the earn provider refused to build a redeem transaction"
+            );
+            return Err(error.into());
+        }
         response
             .data
             .map(|plan| *plan)

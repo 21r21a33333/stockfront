@@ -580,11 +580,19 @@ export function RunPage() {
                   </dl>
                 </details>
               </>
-            ) : (
+            ) : phase === "preparing" ? (
               <div className={styles.placeholder}>
                 <span className={`spinner ${styles.placeholderSpin}`} />
                 <span className="mono">
                   Getting a fresh quote and preparing the transaction…
+                </span>
+              </div>
+            ) : (
+              // Preparation finished without a card, so it failed. The reason
+              // prints below; a spinner here would claim work is still running.
+              <div className={styles.placeholder}>
+                <span className="mono">
+                  This step could not be prepared. The reason is below.
                 </span>
               </div>
             )}
