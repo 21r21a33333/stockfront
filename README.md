@@ -4,12 +4,12 @@
 
 Users simply specify their financial intent, and Stockfront automatically recommends and executes optimal strategies that unlock yield, leverage, and liquidity from their stock portfolio.
 
-- **An AI that does the work.** State an outcome — *"the safest way to earn yield"*, *"sell all my Tesla and buy an AI index"*, *"the best APY, I can take risk"* — and Stockfront chooses the strategy, the assets and the amounts from what the wallet actually holds, explains what it assumed, and says what it will not do.
-- **Prime brokerage strategies underneath it.** Carry, leverage and index exposure are shapes institutions have run for decades, each shipping with its **live rate on the card** so the return is known before anything is signed.
-- **Risk measured, not buried.** Health factor before and after every borrow, distance to liquidation, and the specific thing that can cost money named on every strategy.
-- **Checked before it is signed.** Every strategy goes through the same compiler and is prepared against live chain state. Every transaction is signed by the user, and nothing runs on its own.
+- **Intent-Based Execution.** Users specify a goal and risk tolerance — *"the safest way to earn yield"* — and Stockfront recommends and prepares the optimal strategy, sized to their holdings.
+- **Institutional Strategies, Onchain.** Carry, leverage, and index exposure, each with its live rate displayed before execution.
+- **Transparent Risk.** Health factor before and after every borrow, liquidation distance, and named risk per strategy.
+- **Verified Execution.** Every strategy is compiled, validated against live chain state, and user-signed.
 
-*Live readings throughout are from the running deployment on BNB Chain, 2026-10-11. Rates move; the engine re-reads them on every composition.*
+*All figures are live readings from the BNB Chain deployment, 2026-10-11. Rates are re-read on every composition.*
 
 ---
 
