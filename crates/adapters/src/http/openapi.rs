@@ -23,6 +23,7 @@ use utoipa::OpenApi;
         super::handlers::recipes::prepare,
         super::handlers::strategies::compose,
         super::handlers::borrowing::account,
+        super::handlers::borrowing::markets,
         super::handlers::carry::opportunities,
         super::handlers::carry::positions,
         super::handlers::baskets::list_baskets,

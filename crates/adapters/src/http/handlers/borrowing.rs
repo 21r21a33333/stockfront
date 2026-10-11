@@ -22,6 +22,17 @@ use super::super::{
 };
 use super::parse_wallet;
 
+#[utoipa::path(
+    get, path = "/v1/borrowing/markets",
+    params(
+        ("collateralToken" = Option<String>, Query),
+        ("debtToken" = Option<String>, Query)
+    ),
+    responses(
+        (status = 200, body = Response<List<BorrowingMarket>>),
+        (status = "default", body = ErrorResponse)
+    )
+)]
 pub(in crate::http) async fn markets(
     State(service): State<Arc<BorrowingService>>,
     Query(request): Query<BorrowingMarketsRequest>,

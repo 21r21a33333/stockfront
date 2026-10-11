@@ -35,6 +35,7 @@ export const recipesApi = {
         params: { path: { address } },
       }),
     ),
+  borrowingMarkets: () => apiResult(api.GET("/v1/borrowing/markets", {})),
   submitBasketOrder: (body: SubmitOrderRequest) =>
     apiResult(api.POST("/v1/baskets/trades/orders", { body })),
   basketOrderStatus: (orderId: string, signal?: AbortSignal) =>

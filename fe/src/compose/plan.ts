@@ -89,6 +89,15 @@ export function planTitle(
     if (actions.some((step) => step.kind === "BORROW"))
       return `Borrow against ${source.symbol}`;
   }
+  const supplies = actions.filter((step) => step.kind === "SUPPLY").length;
+  if (trade?.kind === "TRADE" && supplies > 1)
+    return `Leveraged ${trade.buySymbol}`;
+  if (
+    trade?.kind === "TRADE" &&
+    supplies > 0 &&
+    actions.some((step) => step.kind === "EARN_DEPOSIT")
+  )
+    return `Borrow against ${trade.buySymbol} & earn`;
   if (trade?.kind === "TRADE") {
     const selling = stablecoins.has(trade.buySymbol.toUpperCase());
     const verb = selling ? "Sell for" : "Buy";

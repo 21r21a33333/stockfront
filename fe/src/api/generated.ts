@@ -48,6 +48,22 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/borrowing/markets": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: operations["markets"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/bstock-trades/orders": {
     parameters: {
       query?: never;
@@ -368,6 +384,37 @@ export interface components {
       token: components["schemas"]["BorrowingToken"];
       valueUsd: string;
     };
+    BorrowingMarket: {
+      availableBorrowLiquidity: string;
+      borrowApyPercent: string;
+      borrowAvailable: boolean;
+      /** Format: int64 */
+      chainId: number;
+      collateral: components["schemas"]["BorrowingToken"];
+      collateralFactor: string;
+      /** Format: evm-address */
+      collateralMarket: `0x${string}`;
+      debt: components["schemas"]["BorrowingToken"];
+      /** Format: evm-address */
+      debtMarket: `0x${string}`;
+      liquidationThreshold: string;
+      /** Format: int64 */
+      observedAtMs: number;
+      oracleValid: boolean;
+      remainingSupplyCapacity: string;
+      supplyAvailable: boolean;
+      unavailableReasons: components["schemas"]["BorrowingMarketUnavailableReason"][];
+      venue: components["schemas"]["BorrowingVenue"];
+    };
+    /** @enum {string} */
+    BorrowingMarketUnavailableReason:
+      | "marketUnlisted"
+      | "supplyPaused"
+      | "supplyCapReached"
+      | "borrowPaused"
+      | "borrowCapReached"
+      | "insufficientBorrowLiquidity"
+      | "invalidOraclePrice";
     BorrowingPosition: {
       borrowed: components["schemas"]["BorrowingAsset"][];
       /** Format: evm-address */
@@ -1174,6 +1221,34 @@ export interface components {
       };
       status: components["schemas"]["Status"];
     };
+    Response_List_BorrowingMarket: {
+      error?: components["schemas"]["Error"];
+      result?: {
+        items: {
+          availableBorrowLiquidity: string;
+          borrowApyPercent: string;
+          borrowAvailable: boolean;
+          /** Format: int64 */
+          chainId: number;
+          collateral: components["schemas"]["BorrowingToken"];
+          collateralFactor: string;
+          /** Format: evm-address */
+          collateralMarket: `0x${string}`;
+          debt: components["schemas"]["BorrowingToken"];
+          /** Format: evm-address */
+          debtMarket: `0x${string}`;
+          liquidationThreshold: string;
+          /** Format: int64 */
+          observedAtMs: number;
+          oracleValid: boolean;
+          remainingSupplyCapacity: string;
+          supplyAvailable: boolean;
+          unavailableReasons: components["schemas"]["BorrowingMarketUnavailableReason"][];
+          venue: components["schemas"]["BorrowingVenue"];
+        }[];
+      };
+      status: components["schemas"]["Status"];
+    };
     Response_List_CarryOpportunity: {
       error?: components["schemas"]["Error"];
       result?: {
@@ -1456,6 +1531,9 @@ export type BorrowCapabilityUnavailableReason =
 export type BorrowStage = components["schemas"]["BorrowStage"];
 export type BorrowingAccount = components["schemas"]["BorrowingAccount"];
 export type BorrowingAsset = components["schemas"]["BorrowingAsset"];
+export type BorrowingMarket = components["schemas"]["BorrowingMarket"];
+export type BorrowingMarketUnavailableReason =
+  components["schemas"]["BorrowingMarketUnavailableReason"];
 export type BorrowingPosition = components["schemas"]["BorrowingPosition"];
 export type BorrowingPreview = components["schemas"]["BorrowingPreview"];
 export type BorrowingToken = components["schemas"]["BorrowingToken"];
@@ -1558,6 +1636,8 @@ export type Response_ComposedStrategy =
   components["schemas"]["Response_ComposedStrategy"];
 export type Response_List_BasketSummary =
   components["schemas"]["Response_List_BasketSummary"];
+export type Response_List_BorrowingMarket =
+  components["schemas"]["Response_List_BorrowingMarket"];
 export type Response_List_CarryOpportunity =
   components["schemas"]["Response_List_CarryOpportunity"];
 export type Response_PreparedRecipe =
@@ -1675,6 +1755,36 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["Response_TradeOrderStatus"];
+        };
+      };
+      default: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Response"];
+        };
+      };
+    };
+  };
+  markets: {
+    parameters: {
+      query?: {
+        collateralToken?: string;
+        debtToken?: string;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Response_List_BorrowingMarket"];
         };
       };
       default: {

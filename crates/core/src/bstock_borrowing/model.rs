@@ -72,16 +72,18 @@ pub struct SupplyMarket {
     pub observed_at_ms: i64,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[derive(utoipa::ToSchema, Clone, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BorrowingMarket {
     pub venue: BorrowingVenue,
     pub chain_id: u64,
     pub collateral: BorrowingToken,
     #[serde(serialize_with = "serialize_as_string")]
+    #[schema(value_type = String, format = "evm-address")]
     pub collateral_market: Address,
     pub debt: BorrowingToken,
     #[serde(serialize_with = "serialize_as_string")]
+    #[schema(value_type = String, format = "evm-address")]
     pub debt_market: Address,
     pub collateral_factor: Decimal,
     pub liquidation_threshold: Decimal,

@@ -121,6 +121,46 @@
         }
       }
     },
+    "/v1/borrowing/markets": {
+      "get": {
+        "tags": ["super::handlers::borrowing"],
+        "operationId": "markets",
+        "parameters": [
+          {
+            "name": "collateralToken",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "debtToken",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Response_List_BorrowingMarket"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Response" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/bstock-trades/orders": {
       "post": {
         "tags": ["super::handlers::trades"],
@@ -770,6 +810,62 @@
           "token": { "$ref": "#/components/schemas/BorrowingToken" },
           "valueUsd": { "type": "string" }
         }
+      },
+      "BorrowingMarket": {
+        "type": "object",
+        "required": [
+          "venue",
+          "chainId",
+          "collateral",
+          "collateralMarket",
+          "debt",
+          "debtMarket",
+          "collateralFactor",
+          "liquidationThreshold",
+          "remainingSupplyCapacity",
+          "availableBorrowLiquidity",
+          "borrowApyPercent",
+          "supplyAvailable",
+          "borrowAvailable",
+          "oracleValid",
+          "unavailableReasons",
+          "observedAtMs"
+        ],
+        "properties": {
+          "availableBorrowLiquidity": { "type": "string" },
+          "borrowApyPercent": { "type": "string" },
+          "borrowAvailable": { "type": "boolean" },
+          "chainId": { "type": "integer", "format": "int64", "minimum": 0 },
+          "collateral": { "$ref": "#/components/schemas/BorrowingToken" },
+          "collateralFactor": { "type": "string" },
+          "collateralMarket": { "type": "string", "format": "evm-address" },
+          "debt": { "$ref": "#/components/schemas/BorrowingToken" },
+          "debtMarket": { "type": "string", "format": "evm-address" },
+          "liquidationThreshold": { "type": "string" },
+          "observedAtMs": { "type": "integer", "format": "int64" },
+          "oracleValid": { "type": "boolean" },
+          "remainingSupplyCapacity": { "type": "string" },
+          "supplyAvailable": { "type": "boolean" },
+          "unavailableReasons": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BorrowingMarketUnavailableReason"
+            }
+          },
+          "venue": { "$ref": "#/components/schemas/BorrowingVenue" }
+        }
+      },
+      "BorrowingMarketUnavailableReason": {
+        "type": "string",
+        "enum": [
+          "marketUnlisted",
+          "supplyPaused",
+          "supplyCapReached",
+          "borrowPaused",
+          "borrowCapReached",
+          "insufficientBorrowLiquidity",
+          "invalidOraclePrice"
+        ]
       },
       "BorrowingPosition": {
         "type": "object",
@@ -2290,6 +2386,76 @@
                       }
                     }
                   ]
+                }
+              }
+            }
+          },
+          "status": { "$ref": "#/components/schemas/Status" }
+        }
+      },
+      "Response_List_BorrowingMarket": {
+        "type": "object",
+        "required": ["status"],
+        "properties": {
+          "error": { "$ref": "#/components/schemas/Error" },
+          "result": {
+            "type": "object",
+            "required": ["items"],
+            "properties": {
+              "items": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "venue",
+                    "chainId",
+                    "collateral",
+                    "collateralMarket",
+                    "debt",
+                    "debtMarket",
+                    "collateralFactor",
+                    "liquidationThreshold",
+                    "remainingSupplyCapacity",
+                    "availableBorrowLiquidity",
+                    "borrowApyPercent",
+                    "supplyAvailable",
+                    "borrowAvailable",
+                    "oracleValid",
+                    "unavailableReasons",
+                    "observedAtMs"
+                  ],
+                  "properties": {
+                    "availableBorrowLiquidity": { "type": "string" },
+                    "borrowApyPercent": { "type": "string" },
+                    "borrowAvailable": { "type": "boolean" },
+                    "chainId": {
+                      "type": "integer",
+                      "format": "int64",
+                      "minimum": 0
+                    },
+                    "collateral": {
+                      "$ref": "#/components/schemas/BorrowingToken"
+                    },
+                    "collateralFactor": { "type": "string" },
+                    "collateralMarket": {
+                      "type": "string",
+                      "format": "evm-address"
+                    },
+                    "debt": { "$ref": "#/components/schemas/BorrowingToken" },
+                    "debtMarket": { "type": "string", "format": "evm-address" },
+                    "liquidationThreshold": { "type": "string" },
+                    "observedAtMs": { "type": "integer", "format": "int64" },
+                    "oracleValid": { "type": "boolean" },
+                    "remainingSupplyCapacity": { "type": "string" },
+                    "supplyAvailable": { "type": "boolean" },
+                    "unavailableReasons": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/BorrowingMarketUnavailableReason"
+                      }
+                    },
+                    "venue": { "$ref": "#/components/schemas/BorrowingVenue" }
+                  }
                 }
               }
             }

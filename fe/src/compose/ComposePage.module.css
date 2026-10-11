@@ -845,3 +845,118 @@
     background-position: -200% 0;
   }
 }
+
+/* Curated earning strategies */
+
+.group {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.strategies {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(280px, 100%), 1fr));
+  gap: 12px;
+}
+
+.strategy {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 18px;
+  border-radius: 22px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+}
+
+.strategyHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.strategyName {
+  margin: 0;
+  font-size: 21px;
+  font-weight: 600;
+}
+
+.risk {
+  flex: none;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  padding: 4px 8px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.riskLower {
+  background: var(--good-soft);
+  color: var(--good-ink);
+}
+
+.riskHigh {
+  background: var(--bad-soft);
+  color: var(--bad);
+}
+
+.strategySummary {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--muted);
+}
+
+/* The one figure the card leads with. */
+.headline {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 16px 18px;
+  border-radius: 16px;
+  background: var(--bg-soft);
+}
+
+.headlineValue {
+  font-size: 40px;
+  font-weight: 600;
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+}
+
+.headlineLabel {
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--muted-2);
+}
+
+/* The tier badge compares the three cards; this names what can actually
+   go wrong, so neither reads as a safety guarantee on its own. */
+.riskNote {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--muted-2);
+  padding-left: 12px;
+  border-left: 2px solid var(--line-2);
+}
+
+.strategyRun {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 12px;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  background: var(--bg-soft);
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.strategyRun:hover {
+  background: var(--chip);
+}

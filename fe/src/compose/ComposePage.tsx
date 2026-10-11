@@ -1,4 +1,4 @@
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { Fragment, useEffect, useMemo, useState, type FormEvent } from "react";
 import { formatUnits } from "viem";
 import type {
@@ -20,6 +20,11 @@ import { marketNote } from "@/ui/market";
 import { TokenDot } from "@/ui/TokenDot";
 import { useComposeStore } from "./composeStore";
 import { planBlocks, planTitle } from "./plan";
+import {
+  curatedStrategies,
+  popularity,
+  type StrategyMarket,
+} from "./strategies";
 import styles from "./ComposePage.module.css";
 
 const examples = [
@@ -59,12 +64,6 @@ const templates: {
     chain: ["wallet", "liquidity"],
     prompt: "Invest 5 USDT in the CoinMarketCap 20 index",
   },
-  {
-    name: "Repay & reclaim",
-    flow: "Debt → Repay, then Withdraw",
-    chain: ["debt", "repay", "withdraw"],
-    prompt: "Repay my loan and get my stock back",
-  },
 ];
 
 const thinkingLines = [
@@ -91,6 +90,64 @@ export function ComposePage() {
           .map((asset) => asset.symbol.toUpperCase()),
       ),
     [session.assets],
+  );
+
+  // Each borrow strategy names one stock, and it has to be one Venus will
+  // actually take as collateral today, so the choice comes from the live
+  // markets rather than from the bStock catalog. Household names rank first,
+  // and the two strategies take different stocks so the row is not repetitive.
+  const markets = useQuery({
+    queryKey: ["borrowing-markets"],
+    queryFn: recipesApi.borrowingMarkets,
+    staleTime: 5 * 60_000,
+  });
+  const ranked = useMemo(() => {
+    const assetAt = (address: string) =>
+      session.assets.find(
+        (asset) => asset.address.toLowerCase() === address.toLowerCase(),
+      );
+    return (markets.data?.items ?? [])
+      .filter(
+        (item) =>
+          item.supplyAvailable &&
+          item.borrowAvailable &&
+          item.oracleValid &&
+          item.unavailableReasons.length === 0,
+      )
+      .sort(
+        (left, right) =>
+          popularity(left.collateral.symbol) -
+          popularity(right.collateral.symbol),
+      )
+      .flatMap((item): StrategyMarket[] => {
+        const stock = assetAt(item.collateral.contract);
+        const stable = assetAt(item.debt.contract);
+        return stock && stable
+          ? [{ stock, stable, collateralFactor: item.collateralFactor }]
+          : [];
+      });
+  }, [markets.data, session.assets]);
+  const earn = ranked[0];
+  const leverage = ranked[1] ?? ranked[0];
+  const basket = session.catalog?.baskets[0];
+  const carry = useQuery({
+    queryKey: ["carry-rates", earn?.stock.address, earn?.stable.address],
+    queryFn: () =>
+      recipesApi.carryOpportunities(earn!.stock.address, earn!.stable.address),
+    enabled: Boolean(earn),
+    // Rates move slowly and only label the cards here; the builder re-reads
+    // them when a recipe actually picks an earn product.
+    staleTime: 5 * 60_000,
+  });
+  const strategies = useMemo(
+    () =>
+      curatedStrategies({
+        earn,
+        leverage,
+        basket,
+        carry: carry.data?.items[0],
+      }),
+    [earn, leverage, basket, carry.data],
   );
 
   const compose = useMutation({
@@ -247,46 +304,110 @@ export function ComposePage() {
         ) : null}
 
         {phase === "idle" && !compose.error ? (
-          <section className={styles.idle} aria-labelledby="templates">
-            <div className={styles.sectionHead}>
-              <h2 id="templates" className="eyebrow">
-                Start from a template
-              </h2>
-              <span className={`mono ${styles.count}`}>[04]</span>
-            </div>
-            <div className={styles.templates}>
-              {templates.map((template) => (
-                <button
-                  type="button"
-                  key={template.name}
-                  className={styles.template}
-                  disabled={!template.prompt}
-                  onClick={() => template.prompt && run(template.prompt)}
-                >
-                  <span className={styles.miniChain}>
-                    {template.chain.map((kind, index) => (
-                      <Fragment key={kind}>
-                        <BlockIcon kind={kind} size={34} radius={10} />
-                        {index < template.chain.length - 1 ? (
-                          <span className={styles.miniLink} />
+          <div className={styles.idle}>
+            {strategies.length > 0 ? (
+              <section className={styles.group} aria-labelledby="curated">
+                <div className={styles.sectionHead}>
+                  <h2 id="curated" className="eyebrow">
+                    Popular earning strategies
+                  </h2>
+                  <span className={`mono ${styles.count}`}>
+                    [{String(strategies.length).padStart(2, "0")}]
+                  </span>
+                </div>
+                <div className={styles.strategies}>
+                  {strategies.map((strategy) => (
+                    <article key={strategy.key} className={styles.strategy}>
+                      <span className={styles.miniChain}>
+                        {strategy.chain.map((kind, index) => (
+                          <Fragment key={`${kind}-${index}`}>
+                            <BlockIcon kind={kind} size={28} radius={9} />
+                            {index < strategy.chain.length - 1 ? (
+                              <span className={styles.miniLink} />
+                            ) : null}
+                          </Fragment>
+                        ))}
+                      </span>
+                      <div className={styles.strategyHead}>
+                        <h3 className={`disp ${styles.strategyName}`}>
+                          {strategy.name}
+                        </h3>
+                        <span
+                          className={`mono ${styles.risk} ${
+                            strategy.tier === "high"
+                              ? styles.riskHigh
+                              : styles.riskLower
+                          }`}
+                        >
+                          {strategy.riskLabel}
+                        </span>
+                      </div>
+                      <p className={styles.strategySummary}>
+                        {strategy.summary}
+                      </p>
+                      <div className={styles.headline}>
+                        <span className={`disp ${styles.headlineValue}`}>
+                          {strategy.headline.value}
+                        </span>
+                        <span className={`mono ${styles.headlineLabel}`}>
+                          {strategy.headline.label}
+                        </span>
+                      </div>
+                      <p className={styles.riskNote}>{strategy.risk}</p>
+                      <button
+                        type="button"
+                        className={`lift ${styles.strategyRun}`}
+                        onClick={() => run(strategy.prompt)}
+                      >
+                        Compose this
+                        <ArrowUpRight size={14} />
+                      </button>
+                    </article>
+                  ))}
+                </div>
+              </section>
+            ) : null}
+            <section className={styles.group} aria-labelledby="templates">
+              <div className={styles.sectionHead}>
+                <h2 id="templates" className="eyebrow">
+                  Start from a template
+                </h2>
+                <span className={`mono ${styles.count}`}>[04]</span>
+              </div>
+              <div className={styles.templates}>
+                {templates.map((template) => (
+                  <button
+                    type="button"
+                    key={template.name}
+                    className={styles.template}
+                    disabled={!template.prompt}
+                    onClick={() => template.prompt && run(template.prompt)}
+                  >
+                    <span className={styles.miniChain}>
+                      {template.chain.map((kind, index) => (
+                        <Fragment key={kind}>
+                          <BlockIcon kind={kind} size={34} radius={10} />
+                          {index < template.chain.length - 1 ? (
+                            <span className={styles.miniLink} />
+                          ) : null}
+                        </Fragment>
+                      ))}
+                    </span>
+                    <span className={styles.templateText}>
+                      <span className={`disp ${styles.templateName}`}>
+                        {template.name}
+                        {!template.prompt ? (
+                          <span className={`mono ${styles.soon}`}>Soon</span>
                         ) : null}
-                      </Fragment>
-                    ))}
-                  </span>
-                  <span className={styles.templateText}>
-                    <span className={`disp ${styles.templateName}`}>
-                      {template.name}
-                      {!template.prompt ? (
-                        <span className={`mono ${styles.soon}`}>Soon</span>
-                      ) : null}
+                      </span>
+                      <span className={`mono ${styles.templateFlow}`}>
+                        {template.flow}
+                      </span>
                     </span>
-                    <span className={`mono ${styles.templateFlow}`}>
-                      {template.flow}
-                    </span>
-                  </span>
-                </button>
-              ))}
-            </div>
+                  </button>
+                ))}
+              </div>
+            </section>
             {hasDraft ? (
               <div className={styles.recent}>
                 <h2 className="eyebrow">Recent strategies</h2>
@@ -308,7 +429,7 @@ export function ComposePage() {
                 </a>
               </div>
             ) : null}
-          </section>
+          </div>
         ) : null}
 
         {phase === "thinking" ? (
