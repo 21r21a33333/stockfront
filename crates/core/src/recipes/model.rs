@@ -72,6 +72,7 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::{
+    baskets::BasketSummary,
     bstock_borrowing::{
         BorrowCapability, BorrowingAsset, BorrowingVenue, PreparedBorrowingAction,
         RepaymentCapability, SupplyMarket,
@@ -134,6 +135,7 @@ pub enum RecipeOptionSource {
     BorrowedPositions,
     EarnOpportunities,
     EarnPositions,
+    Baskets,
 }
 
 #[derive(utoipa::ToSchema, Clone, Copy, Debug, Eq, PartialEq, Serialize)]
@@ -715,6 +717,7 @@ pub struct RecipeCatalog {
     #[schema(value_type = Vec<String>, format = "evm-address")]
     pub settlement_tokens: Vec<Address>,
     pub bstocks: Vec<BstockSummary>,
+    pub baskets: Vec<BasketSummary>,
     pub trade_policy: RecipeTradePolicy,
     pub supply_policy: RecipeSupplyPolicy,
     pub withdrawal_policy: RecipeWithdrawalPolicy,
@@ -863,6 +866,11 @@ pub enum PreparedRecipeStep {
         action: PreparedApproval,
     },
     Trade {
+        #[serde(rename = "nodeId")]
+        node_id: Uuid,
+        action: PreparedTrade,
+    },
+    BasketTrade {
         #[serde(rename = "nodeId")]
         node_id: Uuid,
         action: PreparedTrade,

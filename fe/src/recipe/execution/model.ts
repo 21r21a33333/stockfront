@@ -28,6 +28,9 @@ export type ExecutionReference =
       submissionId: string;
       orderId?: string;
       transactionHash?: Hash;
+      /// Which venue quoted the order, because that is where it is submitted
+      /// and polled; a DTF and a bStock answer at different endpoints.
+      market?: OrderMarket;
     }
   | { kind: "LEGACY_TRANSACTION"; transactionHash: Hash };
 
@@ -47,6 +50,8 @@ export interface ExecutionAttempt {
   expectedOutput?: RecipeNodeOutput;
   error?: string;
 }
+
+export type OrderMarket = "BSTOCK" | "BASKET";
 
 export type ExecutionMode =
   | "SWAP"

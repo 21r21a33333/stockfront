@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { Address } from "viem";
 import { useAccount } from "wagmi";
 import type {
+  BasketPosition,
   CarryPosition,
   RecipeDefinition,
   RecipePreviewRequest,
@@ -54,6 +55,12 @@ export function RecipeSessionProvider({
   const borrowing = useQuery({
     queryKey: ["borrowing-account", account.address?.toLowerCase()],
     queryFn: () => recipesApi.borrowingAccount(account.address!),
+    enabled: walletReady,
+    refetchInterval: 15_000,
+  });
+  const basketHoldings = useQuery({
+    queryKey: ["basket-positions", account.address?.toLowerCase()],
+    queryFn: () => recipesApi.basketPositions(account.address!),
     enabled: walletReady,
     refetchInterval: 15_000,
   });
@@ -304,6 +311,24 @@ export function RecipeSessionProvider({
     );
   }
 
+  function startBasketSale(position: BasketPosition): void {
+    const settlement = catalog.data?.settlementTokens[0];
+    if (!settlement) return;
+    editor.loadGraph(
+      linearGraph([
+        {
+          data: {
+            kind: "WALLET_ASSET",
+            token: position.contract,
+            amount: position.tokenAmount,
+          },
+        },
+        { data: { kind: "TRADE", buyToken: settlement } },
+      ]),
+      `Sell ${position.symbol}`,
+    );
+  }
+
   function startEarnWithdrawal(position: CarryPosition): void {
     const investmentId = position.investmentIds[0];
     if (!investmentId) return;
@@ -348,6 +373,8 @@ export function RecipeSessionProvider({
     execution,
     loadDefinition,
     startFromPosition,
+    basketPositions: basketHoldings.data?.positions ?? [],
+    startBasketSale,
     earnPositions: earn.data?.positions ?? [],
     refetchEarnPositions: () => void earn.refetch(),
     startEarnWithdrawal,

@@ -8,11 +8,12 @@ use crate::{bstock_market::BNB_CHAIN_ID, serialization::serialize_as_string};
 const DEFAULT_LIST_LIMIT: usize = 50;
 const MAX_LIST_LIMIT: usize = 100;
 
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq, Serialize)]
+#[derive(utoipa::ToSchema, Clone, Copy, Debug, Eq, Hash, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BasketId {
     pub chain_id: u64,
     #[serde(serialize_with = "serialize_as_string")]
+    #[schema(value_type = String, format = "evm-address")]
     pub contract: Address,
 }
 
@@ -26,24 +27,25 @@ impl BasketId {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[derive(utoipa::ToSchema, Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum BasketKind {
     IndexToken,
     ManagedPortfolio,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[derive(utoipa::ToSchema, Clone, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BasketAssetAllocation {
     #[serde(serialize_with = "serialize_as_string")]
+    #[schema(value_type = String, format = "evm-address")]
     pub contract: Address,
     pub symbol: String,
     pub name: String,
     pub weight_percent: Decimal,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[derive(utoipa::ToSchema, Clone, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BasketSummary {
     #[serde(flatten)]
@@ -67,7 +69,7 @@ pub struct BasketSummary {
     pub image_url: Option<String>,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[derive(utoipa::ToSchema, Clone, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BasketPosition {
     #[serde(flatten)]
@@ -81,7 +83,7 @@ pub struct BasketPosition {
     pub value_usd: Decimal,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[derive(utoipa::ToSchema, Clone, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BasketAccount {
     pub chain_id: u64,

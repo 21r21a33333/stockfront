@@ -262,32 +262,70 @@ export function PositionsSheet() {
             </section>
 
             <section className={styles.section}>
-              <h3 className="mono">Earning</h3>
-              {session.earnPositions.map((position) => (
-                <div key={position.positionId} className={styles.row}>
+              <h3 className="mono">Baskets</h3>
+              {session.basketPositions.map((position) => (
+                <div key={position.contract} className={styles.row}>
                   <BlockIcon
-                    kind="earn"
+                    kind="liquidity"
                     size={36}
                     radius={10}
                     tint="var(--sky)"
                   />
                   <span className={styles.rowText}>
-                    <strong>{position.protocolName}</strong>
-                    <small>{formatUsd(position.valueUsd)}</small>
+                    <strong>{position.symbol}</strong>
+                    <small>
+                      {formatPositionAmount(position.tokenAmount)} ·{" "}
+                      {formatUsd(position.valueUsd)}
+                    </small>
                   </span>
                   <span className={styles.rowActions}>
                     <button
                       type="button"
                       onClick={() =>
-                        use(() => session.startEarnWithdrawal(position))
+                        use(() => session.startBasketSale(position))
                       }
                     >
-                      Withdraw
+                      Sell
                     </button>
                   </span>
                 </div>
               ))}
-              {session.earnPositions.length === 0 ? (
+              {session.basketPositions.length === 0 ? (
+                <p className={styles.muted}>No index baskets.</p>
+              ) : null}
+            </section>
+
+            <section className={styles.section}>
+              <h3 className="mono">Earning</h3>
+              {session.earnPositions
+                .filter((position) => Number(position.valueUsd) > 0)
+                .map((position) => (
+                  <div key={position.positionId} className={styles.row}>
+                    <BlockIcon
+                      kind="earn"
+                      size={36}
+                      radius={10}
+                      tint="var(--sky)"
+                    />
+                    <span className={styles.rowText}>
+                      <strong>{position.protocolName}</strong>
+                      <small>{formatUsd(position.valueUsd)}</small>
+                    </span>
+                    <span className={styles.rowActions}>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          use(() => session.startEarnWithdrawal(position))
+                        }
+                      >
+                        Withdraw
+                      </button>
+                    </span>
+                  </div>
+                ))}
+              {session.earnPositions.every(
+                (position) => !(Number(position.valueUsd) > 0),
+              ) ? (
                 <p className={styles.muted}>No earn positions.</p>
               ) : null}
             </section>

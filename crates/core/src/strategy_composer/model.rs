@@ -105,6 +105,7 @@ pub struct ComposerAsset {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ComposerAssetKind {
     Stock,
+    Basket,
     Stablecoin { borrowable: bool },
 }
 

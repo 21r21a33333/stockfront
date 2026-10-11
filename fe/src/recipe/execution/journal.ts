@@ -11,6 +11,7 @@ import type {
   ExecutionPhase,
   ExecutionReference,
   ExecutionRun,
+  OrderMarket,
 } from "./model";
 
 export * from "./model";
@@ -23,6 +24,7 @@ export * from "./model";
 const KINDS: Record<PreparedRecipeStep["kind"], true> = {
   APPROVAL: true,
   TRADE: true,
+  BASKET_TRADE: true,
   SUPPLY: true,
   EARN_DEPOSIT: true,
   EARN_WITHDRAW: true,
@@ -55,6 +57,8 @@ const NODES: Record<
   EARN_POSITION: (node) => typeof node.investmentId === "string",
   EARN_WITHDRAW: () => true,
 };
+
+const MARKETS: Record<OrderMarket, true> = { BSTOCK: true, BASKET: true };
 
 const MODES: Record<ExecutionMode, true> = {
   SWAP: true,
@@ -253,7 +257,8 @@ function validReference(value: unknown): boolean {
     return (
       nonEmpty(value.submissionId) &&
       optionalString(value.orderId) &&
-      optionalHash(value.transactionHash)
+      optionalHash(value.transactionHash) &&
+      (value.market === undefined || known(MARKETS, value.market))
     );
   return value.kind === "LEGACY_TRANSACTION" && hash(value.transactionHash);
 }

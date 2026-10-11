@@ -20,6 +20,7 @@ import { useComposeStore } from "@/compose/composeStore";
 import { shortAddress } from "@/recipe/assets";
 import { useRecipeEditor } from "@/recipe/editor/store";
 import type { AssetOption } from "@/recipe/editor/types";
+import type { ExecutionAttempt } from "@/recipe/execution/model";
 import {
   formatDisplayAmount,
   formatPositionAmount,
@@ -252,6 +253,14 @@ export function RunPage() {
     attempt?.reference && "transactionHash" in attempt.reference
       ? attempt.reference.transactionHash
       : undefined;
+  // A signed order is filled by a market maker, so nothing of the user's is
+  // being mined and there is no hash to watch until it fills.
+  const awaitingFill =
+    attempt?.reference?.kind === "RFQ_ORDER" && !attempt.reference.orderId
+      ? "Submitting your signed order…"
+      : attempt?.reference?.kind === "RFQ_ORDER"
+        ? "Order placed. Waiting for a market maker to fill it…"
+        : undefined;
   const card = current
     ? reviewCard(
         current,
@@ -259,6 +268,7 @@ export function RunPage() {
         nodes,
         session.assets,
         session.runtimeContext?.completedNodes ?? [],
+        attempt,
       )
     : undefined;
   const waiting = phase === "signing" || current?.state === "waiting";
@@ -582,7 +592,7 @@ export function RunPage() {
             {current?.state === "confirming" && !execution.paused ? (
               <div className={styles.confirmBar}>
                 <div className={styles.confirmHead}>
-                  <span>Confirming on-chain…</span>
+                  <span>{awaitingFill ?? "Confirming on-chain…"}</span>
                   {txHash ? (
                     <a
                       className="mono"
@@ -749,7 +759,34 @@ function Finished({
   const health = session.borrowing?.healthFactor
     ? Number(session.borrowing.healthFactor)
     : undefined;
+  // Everything the wallet holds, not only what this strategy happened to touch.
+  const settlements = session.assets.filter(
+    (asset) => asset.kind === "settlement" && (asset.balanceRaw ?? 0n) > 0n,
+  );
   const owned = [
+    ...settlements.map((asset) => ({
+      kind: "wallet" as const,
+      label: `${asset.symbol} in wallet`,
+      sub: asset.name,
+      value: `${formatDisplayAmount(formatUnits(asset.balanceRaw ?? 0n, asset.decimals))} ${asset.symbol}`,
+      note: "",
+    })),
+    ...session.basketPositions.map((position) => ({
+      kind: "liquidity" as const,
+      label: `${position.symbol} basket`,
+      sub: position.name,
+      value: `${formatPositionAmount(position.tokenAmount)} ${position.symbol}`,
+      note: formatUsd(position.valueUsd),
+    })),
+    ...session.earnPositions
+      .filter((position) => Number(position.valueUsd) > 0)
+      .map((position) => ({
+        kind: "earn" as const,
+        label: "Earning",
+        sub: position.protocolName,
+        value: formatUsd(position.valueUsd),
+        note: "",
+      })),
     ...stocks.slice(0, 3).map((asset) => ({
       kind: "wallet" as const,
       label: `${asset.symbol} in wallet`,
@@ -881,6 +918,7 @@ function reviewCard(
     nodeId: string;
     outputs: { asset: { token: string; amount: string } }[];
   }[],
+  attempt?: ExecutionAttempt,
 ): ReviewCard | undefined {
   const prepared =
     fresh?.prepared.steps.filter((item) => item.nodeId === step.node.id) ?? [];
@@ -907,14 +945,32 @@ function reviewCard(
     const route = fresh?.routes[node.id];
     const sell = assetFor(assets, route?.sell.token);
     const buy = assetFor(assets, route?.buy.token ?? node.buyToken);
-    const trade = prepared.find((item) => item.kind === "TRADE");
+    const trade = prepared.find(
+      (item) => item.kind === "TRADE" || item.kind === "BASKET_TRADE",
+    );
     const minimum =
-      trade?.kind === "TRADE" && trade.action.executionMode === "SWAP"
+      (trade?.kind === "TRADE" || trade?.kind === "BASKET_TRADE") &&
+      trade.action.executionMode === "SWAP"
         ? trade.action.transaction.minReceiveAmount
         : undefined;
-    const rfq = trade?.kind === "TRADE" && trade.action.executionMode === "RFQ";
+    const rfq =
+      (trade?.kind === "TRADE" || trade?.kind === "BASKET_TRADE") &&
+      trade.action.executionMode === "RFQ";
+    // A signed order cannot share a batch with an on-chain approval, so such a
+    // trade is signed twice and an attempt covers only one half of it.
+    const approvalOnly =
+      attempt?.steps.length === 1 && attempt.steps[0] === "APPROVAL";
+    const buyLabel =
+      buy?.kind === "settlement"
+        ? `Sell for ${buy.symbol}`
+        : `Buy ${buy?.symbol ?? "stock"}`;
     return {
-      title: `${approve ? "Approve + " : ""}${buy?.kind === "settlement" ? `Sell for ${buy.symbol}` : `Buy ${buy?.symbol ?? "stock"}`}`,
+      title: approvalOnly
+        ? `Approve ${sell?.symbol ?? "token"}`
+        : `${approve && !rfq ? "Approve + " : ""}${buyLabel}`,
+      allow: approvalOnly
+        ? `Lets the venue take ${sell?.symbol ?? "your token"} when the order fills. You sign the order itself next.`
+        : undefined,
       pay: route
         ? {
             amount: amountText(route.sell.amount, sell),
@@ -1103,7 +1159,10 @@ function transactionsOf(step: PreparedRecipeStep): {
           gasPrice: step.action.gasPrice,
         },
       ];
+    // A DTF trade carries the same prepared shape as a bStock one; only the
+    // venue that submits the order differs.
     case "TRADE":
+    case "BASKET_TRADE":
       return step.action.executionMode === "SWAP"
         ? [
             {
@@ -1214,7 +1273,7 @@ function statusText(
   if (phase === "price") return "Price changed · needs you";
   switch (step.state) {
     case "confirming":
-      return "Confirming on-chain";
+      return step.awaitingFill ? "Waiting for a fill" : "Confirming on-chain";
     case "cancelled":
       return "Cancelled · nothing sent";
     case "unknown":

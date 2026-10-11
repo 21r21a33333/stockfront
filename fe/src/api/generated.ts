@@ -1,5 +1,53 @@
 // Generated from Rust. Run pnpm codegen; do not edit.
 export interface paths {
+  "/v1/baskets": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: operations["listBaskets"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/baskets/trades/orders": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post: operations["submitBasketOrder"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/baskets/trades/orders/{order_id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: operations["basketOrderStatus"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/bstock-trades/orders": {
     parameters: {
       query?: never;
@@ -144,6 +192,22 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/wallets/{address}/basket-positions": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: operations["basketPositions"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/wallets/{address}/carry-positions": {
     parameters: {
       query?: never;
@@ -199,6 +263,52 @@ export interface components {
     };
     /** @enum {string} */
     AssetKind: "stock" | "preIpo" | "etf" | "unknown";
+    BasketAccount: {
+      /** Format: int64 */
+      chainId: number;
+      /** Format: int64 */
+      observedAtMs: number;
+      positions: components["schemas"]["BasketPosition"][];
+      totalValueUsd: string;
+    };
+    BasketAssetAllocation: {
+      /** Format: evm-address */
+      contract: `0x${string}`;
+      name: string;
+      symbol: string;
+      weightPercent: string;
+    };
+    BasketId: {
+      /** Format: int64 */
+      chainId: number;
+      /** Format: evm-address */
+      contract: `0x${string}`;
+    };
+    /** @enum {string} */
+    BasketKind: "INDEX_TOKEN" | "MANAGED_PORTFOLIO";
+    BasketPosition: components["schemas"]["BasketId"] & {
+      kind: components["schemas"]["BasketKind"];
+      name: string;
+      providerId: string;
+      providerName: string;
+      symbol: string;
+      tokenAmount: string;
+      valueUsd: string;
+    };
+    BasketSummary: components["schemas"]["BasketId"] & {
+      annualFeePercent?: string | null;
+      assets: components["schemas"]["BasketAssetAllocation"][];
+      categories: string[];
+      description?: string | null;
+      imageUrl?: string | null;
+      kind: components["schemas"]["BasketKind"];
+      marketCapUsd?: string | null;
+      name: string;
+      priceUsd?: string | null;
+      providerId: string;
+      providerName: string;
+      symbol: string;
+    };
     /**
      * @description Live safety and liquidity information for one exact Venus borrow.
      *
@@ -463,6 +573,13 @@ export interface components {
           nodeId: string;
         }
       | {
+          action: components["schemas"]["PreparedTrade"];
+          /** @enum {string} */
+          kind: "BASKET_TRADE";
+          /** Format: uuid */
+          nodeId: string;
+        }
+      | {
           action: components["schemas"]["PreparedBorrowingAction"];
           /** @enum {string} */
           kind: "SUPPLY";
@@ -569,6 +686,7 @@ export interface components {
       venue: components["schemas"]["BorrowingVenue"];
     };
     RecipeCatalog: {
+      baskets: components["schemas"]["BasketSummary"][];
       borrowPolicy: components["schemas"]["RecipeBorrowPolicy"];
       bstocks: components["schemas"]["BstockSummary"][];
       earnDepositPolicy: components["schemas"]["RecipeEarnDepositPolicy"];
@@ -790,7 +908,8 @@ export interface components {
       | "SUPPLIED_POSITIONS"
       | "BORROWED_POSITIONS"
       | "EARN_OPPORTUNITIES"
-      | "EARN_POSITIONS";
+      | "EARN_POSITIONS"
+      | "BASKETS";
     RecipePortDescriptor: {
       direction: components["schemas"]["RecipePortDirection"];
       flow: components["schemas"]["RecipePortFlow"];
@@ -984,6 +1103,18 @@ export interface components {
       result?: components["schemas"]["TupleUnit"];
       status: components["schemas"]["Status"];
     };
+    Response_BasketAccount: {
+      error?: components["schemas"]["Error"];
+      result?: {
+        /** Format: int64 */
+        chainId: number;
+        /** Format: int64 */
+        observedAtMs: number;
+        positions: components["schemas"]["BasketPosition"][];
+        totalValueUsd: string;
+      };
+      status: components["schemas"]["Status"];
+    };
     Response_BorrowingAccount: {
       error?: components["schemas"]["Error"];
       result?: {
@@ -1023,6 +1154,26 @@ export interface components {
       };
       status: components["schemas"]["Status"];
     };
+    Response_List_BasketSummary: {
+      error?: components["schemas"]["Error"];
+      result?: {
+        items: (components["schemas"]["BasketId"] & {
+          annualFeePercent?: string | null;
+          assets: components["schemas"]["BasketAssetAllocation"][];
+          categories: string[];
+          description?: string | null;
+          imageUrl?: string | null;
+          kind: components["schemas"]["BasketKind"];
+          marketCapUsd?: string | null;
+          name: string;
+          priceUsd?: string | null;
+          providerId: string;
+          providerName: string;
+          symbol: string;
+        })[];
+      };
+      status: components["schemas"]["Status"];
+    };
     Response_List_CarryOpportunity: {
       error?: components["schemas"]["Error"];
       result?: {
@@ -1059,6 +1210,7 @@ export interface components {
     Response_RecipeCatalog: {
       error?: components["schemas"]["Error"];
       result?: {
+        baskets: components["schemas"]["BasketSummary"][];
         borrowPolicy: components["schemas"]["RecipeBorrowPolicy"];
         bstocks: components["schemas"]["BstockSummary"][];
         earnDepositPolicy: components["schemas"]["RecipeEarnDepositPolicy"];
@@ -1291,6 +1443,13 @@ export type ActionPreview = components["schemas"]["ActionPreview"];
 export type ActionWarning = components["schemas"]["ActionWarning"];
 export type AssetBalanceChange = components["schemas"]["AssetBalanceChange"];
 export type AssetKind = components["schemas"]["AssetKind"];
+export type BasketAccount = components["schemas"]["BasketAccount"];
+export type BasketAssetAllocation =
+  components["schemas"]["BasketAssetAllocation"];
+export type BasketId = components["schemas"]["BasketId"];
+export type BasketKind = components["schemas"]["BasketKind"];
+export type BasketPosition = components["schemas"]["BasketPosition"];
+export type BasketSummary = components["schemas"]["BasketSummary"];
 export type BorrowCapability = components["schemas"]["BorrowCapability"];
 export type BorrowCapabilityUnavailableReason =
   components["schemas"]["BorrowCapabilityUnavailableReason"];
@@ -1389,12 +1548,16 @@ export type RepaymentCapability = components["schemas"]["RepaymentCapability"];
 export type RepaymentCapabilityUnavailableReason =
   components["schemas"]["RepaymentCapabilityUnavailableReason"];
 export type Response = components["schemas"]["Response"];
+export type Response_BasketAccount =
+  components["schemas"]["Response_BasketAccount"];
 export type Response_BorrowingAccount =
   components["schemas"]["Response_BorrowingAccount"];
 export type Response_CarryAccount =
   components["schemas"]["Response_CarryAccount"];
 export type Response_ComposedStrategy =
   components["schemas"]["Response_ComposedStrategy"];
+export type Response_List_BasketSummary =
+  components["schemas"]["Response_List_BasketSummary"];
 export type Response_List_CarryOpportunity =
   components["schemas"]["Response_List_CarryOpportunity"];
 export type Response_PreparedRecipe =
@@ -1433,6 +1596,97 @@ export type TradeTransactionStatus =
 export type TupleUnit = components["schemas"]["TupleUnit"];
 export type $defs = Record<string, never>;
 export interface operations {
+  listBaskets: {
+    parameters: {
+      query?: {
+        search?: string;
+        category?: string;
+        limit?: number;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Response_List_BasketSummary"];
+        };
+      };
+      default: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Response"];
+        };
+      };
+    };
+  };
+  submitBasketOrder: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["SubmitOrderRequest"];
+      };
+    };
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Response_SubmittedOrder"];
+        };
+      };
+      default: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Response"];
+        };
+      };
+    };
+  };
+  basketOrderStatus: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        order_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Response_TradeOrderStatus"];
+        };
+      };
+      default: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Response"];
+        };
+      };
+    };
+  };
   submit_order: {
     parameters: {
       query?: never;
@@ -1691,6 +1945,35 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["Response_ComposedStrategy"];
+        };
+      };
+      default: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Response"];
+        };
+      };
+    };
+  };
+  basketPositions: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        address: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Response_BasketAccount"];
         };
       };
       default: {

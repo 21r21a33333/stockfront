@@ -25,6 +25,7 @@ use super::{
     RecipeWithdrawalUnavailableReason, SCHEMA_VERSION, SuppliedPositionRef, compile,
 };
 use crate::{
+    baskets::{BasketService, ListBasketsQuery},
     bstock_borrowing::{
         BorrowCapability, BorrowStage, BorrowingAsset, BorrowingProviderError, BorrowingService,
         BorrowingServiceError, BorrowingTransactionKind, BorrowingVenue, PositionAmount,
@@ -67,6 +68,7 @@ pub enum RecipeError {
 pub struct RecipeService {
     market: Arc<BstockMarketService>,
     trade: Arc<BstockTradeService>,
+    baskets: Arc<BasketService>,
     borrowing: Arc<BorrowingService>,
     carry: Arc<CarryService>,
     settlement_tokens: Vec<Address>,
@@ -81,6 +83,7 @@ impl RecipeService {
     pub fn new(
         market: Arc<BstockMarketService>,
         trade: Arc<BstockTradeService>,
+        baskets: Arc<BasketService>,
         borrowing: Arc<BorrowingService>,
         carry: Arc<CarryService>,
         settlement_tokens: Vec<SettlementTokenMetadata>,
@@ -118,6 +121,7 @@ impl RecipeService {
         Self {
             market,
             trade,
+            baskets,
             borrowing,
             carry,
             settlement_tokens,
@@ -149,6 +153,15 @@ impl RecipeService {
                 buy: RecipeOptionSource::SettlementTokens,
             });
         }
+        // A DTF is a third thing a stablecoin buys, traded at its own venue.
+        transitions.push(RecipeAssetTransition {
+            sell: RecipeOptionSource::SettlementTokens,
+            buy: RecipeOptionSource::Baskets,
+        });
+        transitions.push(RecipeAssetTransition {
+            sell: RecipeOptionSource::Baskets,
+            buy: RecipeOptionSource::SettlementTokens,
+        });
         transitions
     }
 
@@ -165,6 +178,15 @@ impl RecipeService {
                 limit: MAX_LIST_LIMIT,
             })
             .await?;
+        let baskets = self
+            .baskets
+            .list(&ListBasketsQuery {
+                search: None,
+                category: None,
+                limit: MAX_LIST_LIMIT,
+            })
+            .await
+            .unwrap_or_default();
         Ok(RecipeCatalog {
             schema_version: SCHEMA_VERSION,
             primitives: RecipePrimitiveKind::ALL
@@ -173,6 +195,7 @@ impl RecipeService {
                 .collect(),
             settlement_tokens: self.settlement_tokens.clone(),
             bstocks,
+            baskets,
             trade_policy: RecipeTradePolicy {
                 allowed_transitions: self.trade_transitions(),
             },
@@ -298,6 +321,27 @@ impl RecipeService {
         Ok(RecipePreview { nodes })
     }
 
+    /// Whether a trade's non-settlement side is a DTF rather than a bStock.
+    ///
+    /// The two venues answer the same questions with the same types, so the
+    /// only thing that differs is which catalog the asset came from.
+    async fn is_basket_trade(&self, sell_token: Address, buy_token: Address) -> bool {
+        let Ok(baskets) = self
+            .baskets
+            .list(&ListBasketsQuery {
+                search: None,
+                category: None,
+                limit: MAX_LIST_LIMIT,
+            })
+            .await
+        else {
+            return false;
+        };
+        baskets
+            .iter()
+            .any(|basket| basket.id.contract == buy_token || basket.id.contract == sell_token)
+    }
+
     async fn preview_trade(
         &self,
         step: &super::LogicalStep,
@@ -308,15 +352,17 @@ impl RecipeService {
     ) -> Result<RecipeNodePreview, RecipeError> {
         let (state, routes, waiting_for) = match resolve_asset(sell_asset, completed) {
             ResolvedAsset::Ready(asset) => {
-                let routes = self
-                    .trade
-                    .quotes(&TradeQuoteRequest {
-                        wallet,
-                        sell_token: asset.token,
-                        buy_token,
-                        sell_amount: asset.amount,
-                    })
-                    .await?;
+                let request = TradeQuoteRequest {
+                    wallet,
+                    sell_token: asset.token,
+                    buy_token,
+                    sell_amount: asset.amount,
+                };
+                let routes = if self.is_basket_trade(asset.token, buy_token).await {
+                    self.baskets.quotes(&request).await?
+                } else {
+                    self.trade.quotes(&request).await?
+                };
                 (RecipeNodeState::Ready, routes, Vec::new())
             }
             ResolvedAsset::Waiting => (
@@ -713,29 +759,44 @@ impl RecipeService {
             buy_token,
             sell_amount: input.amount,
         };
-        let approval = self
-            .trade
-            .prepare_approval(&ApprovalRequest {
-                token: input.token,
-                amount: input.amount,
-                venue: venue.clone(),
-            })
-            .await?;
-        let trade = self
-            .trade
-            .prepare_trade(&PrepareTradeRequest {
-                trade,
-                route_quote_id: route_quote_id.clone(),
-            })
-            .await?;
+        let approval_request = ApprovalRequest {
+            token: input.token,
+            amount: input.amount,
+            venue: venue.clone(),
+        };
+        let trade_request = PrepareTradeRequest {
+            trade,
+            route_quote_id: route_quote_id.clone(),
+        };
+        // An RFQ order is submitted and polled where it was quoted, so the
+        // prepared step names the venue family that will carry it.
+        let basket = self.is_basket_trade(input.token, buy_token).await;
+        let (approval, trade) = if basket {
+            (
+                self.baskets.prepare_approval(&approval_request).await?,
+                self.baskets.prepare_trade(&trade_request).await?,
+            )
+        } else {
+            (
+                self.trade.prepare_approval(&approval_request).await?,
+                self.trade.prepare_trade(&trade_request).await?,
+            )
+        };
         Ok([
             PreparedRecipeStep::Approval {
                 node_id,
                 action: approval,
             },
-            PreparedRecipeStep::Trade {
-                node_id,
-                action: trade,
+            if basket {
+                PreparedRecipeStep::BasketTrade {
+                    node_id,
+                    action: trade,
+                }
+            } else {
+                PreparedRecipeStep::Trade {
+                    node_id,
+                    action: trade,
+                }
             },
         ])
     }
@@ -945,7 +1006,10 @@ impl RecipeService {
                     .investment_ids
                     .iter()
                     .any(|held| held == investment_id)
-            }))
+            })
+            // A withdrawn position leaves dust behind, and dust is not something
+            // the provider will move; offering it is offering a failure.
+            .filter(|position| position.value_usd > Decimal::ZERO))
     }
 
     async fn preview_earn_withdrawal(
@@ -2097,6 +2161,14 @@ mod tests {
                     sell: RecipeOptionSource::Bstocks,
                     buy: RecipeOptionSource::SettlementTokens,
                 },
+                RecipeAssetTransition {
+                    sell: RecipeOptionSource::SettlementTokens,
+                    buy: RecipeOptionSource::Baskets,
+                },
+                RecipeAssetTransition {
+                    sell: RecipeOptionSource::Baskets,
+                    buy: RecipeOptionSource::SettlementTokens,
+                },
             ]
         );
         assert_eq!(
@@ -2516,7 +2588,8 @@ mod tests {
         assert_eq!(prepared.steps.len(), 2);
         assert!(prepared.steps.iter().all(|step| match step {
             PreparedRecipeStep::Approval { node_id, .. }
-            | PreparedRecipeStep::Trade { node_id, .. } => *node_id == SECOND_TRADE_ID,
+            | PreparedRecipeStep::Trade { node_id, .. }
+            | PreparedRecipeStep::BasketTrade { node_id, .. } => *node_id == SECOND_TRADE_ID,
             PreparedRecipeStep::Supply { .. }
             | PreparedRecipeStep::Withdraw { .. }
             | PreparedRecipeStep::EnableCollateral { .. }
@@ -2869,6 +2942,15 @@ mod tests {
         ))
     }
 
+    fn test_baskets() -> Arc<BasketService> {
+        Arc::new(BasketService::new(
+            crate::baskets::test_support::no_baskets(),
+            Arc::new(RecordingGateway::default()),
+            TradePolicy::new([SETTLEMENT], 100, 50, SettlementPairs::Rejected)
+                .unwrap_or_else(|error| panic!("test policy is invalid: {error}")),
+        ))
+    }
+
     fn service() -> (RecipeService, Arc<RecordingGateway>) {
         gated_service(SettlementPairs::Rejected)
     }
@@ -2896,6 +2978,7 @@ mod tests {
             RecipeService::new(
                 market,
                 trade,
+                test_baskets(),
                 borrowing.clone(),
                 carry_service(borrowing),
                 vec![settlement_metadata()],
@@ -2932,6 +3015,7 @@ mod tests {
             RecipeService::new(
                 market,
                 trade,
+                test_baskets(),
                 borrowing.clone(),
                 carry_service(borrowing),
                 vec![settlement_metadata()],

@@ -12,6 +12,7 @@ use super::{
     StrategyStep,
 };
 use crate::{
+    baskets::BasketSummary,
     bstock_borrowing::{BorrowingAccount, BorrowingVenue},
     bstock_market::{BNB_CHAIN_ID, BstockSummary},
     bstock_trade::SettlementTokenMetadata,
@@ -62,6 +63,7 @@ pub(super) struct Resolver {
 impl Resolver {
     pub(super) fn new(
         bstocks: &[BstockSummary],
+        baskets: &[BasketSummary],
         settlement_tokens: &[SettlementTokenMetadata],
         debt_tokens: &[Address],
         pool: Option<Address>,
@@ -95,6 +97,20 @@ impl Resolver {
                 .map(|alias| alias.to_lowercase())
                 .collect(),
                 kind: ComposerAssetKind::Stock,
+            }
+        }));
+        // An index basket is named by its symbol or its title, never a ticker.
+        tokens.extend(baskets.iter().map(|basket| {
+            KnownToken {
+                address: basket.id.contract,
+                symbol: basket.symbol.clone(),
+                name: basket.name.clone(),
+                decimals: 18,
+                aliases: [&basket.symbol, &basket.name]
+                    .iter()
+                    .map(|alias| alias.to_lowercase())
+                    .collect(),
+                kind: ComposerAssetKind::Basket,
             }
         }));
 
@@ -575,6 +591,7 @@ mod tests {
     fn resolver(account: Option<&BorrowingAccount>) -> Resolver {
         Resolver::new(
             &[tesla()],
+            &[],
             &[SettlementTokenMetadata {
                 address: USDT,
                 symbol: "USDT".to_owned(),

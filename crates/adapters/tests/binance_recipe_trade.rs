@@ -8,6 +8,7 @@ use std::{error::Error, io, sync::Arc};
 
 use alloy_primitives::{Address, U256, address};
 use stockfront_core::{
+    baskets::{BasketAccount, BasketProviderError, BasketReader, BasketService, BasketSummary},
     bstock_borrowing::{
         BorrowingPolicy, BorrowingService, BorrowingTransactionKind, BorrowingVenue,
     },
@@ -117,8 +118,25 @@ async fn previews_and_prepares_live_bstock_recipe() -> Result<(), Box<dyn Error>
     Ok(())
 }
 
+struct NoBaskets;
+
+#[async_trait::async_trait]
+impl BasketReader for NoBaskets {
+    async fn list_baskets(&self) -> Result<Vec<BasketSummary>, BasketProviderError> {
+        Ok(Vec::new())
+    }
+
+    async fn positions(
+        &self,
+        _wallet: WalletAddress,
+    ) -> Result<BasketAccount, BasketProviderError> {
+        Err(BasketProviderError::Unavailable)
+    }
+}
+
 async fn live_recipe_service() -> Result<RecipeService, Box<dyn Error>> {
     let client = Arc::new(live_client()?);
+    let client_for_baskets = client.clone();
     let market = Arc::new(BstockMarketService::new(client.clone()));
     let trades = Arc::new(BstockTradeService::new(
         client.clone(),
@@ -138,9 +156,17 @@ async fn live_recipe_service() -> Result<RecipeService, Box<dyn Error>> {
         client,
         CarryPolicy::new(Vec::new(), 100),
     ));
+    // This test exercises the bStock venue; an empty basket catalog is what
+    // routes a trade there.
+    let baskets = Arc::new(BasketService::new(
+        Arc::new(NoBaskets),
+        client_for_baskets,
+        TradePolicy::new([USDT], 100, 50, SettlementPairs::Rejected)?,
+    ));
     Ok(RecipeService::new(
         market,
         trades,
+        baskets,
         borrowing,
         carry,
         vec![SettlementTokenMetadata {

@@ -13,11 +13,20 @@ use stockfront_core::{
 };
 
 use super::super::{
-    primitives::{ApiResult, List, Response},
+    primitives::{ApiResult, ErrorResponse, List, Response},
     request::ListBasketsRequest,
 };
 use super::parse_wallet;
 
+#[utoipa::path(
+    get, path = "/v1/baskets",
+    operation_id = "listBaskets",
+    params(("search" = Option<String>, Query), ("category" = Option<String>, Query), ("limit" = Option<usize>, Query)),
+    responses(
+        (status = 200, body = Response<List<BasketSummary>>),
+        (status = "default", body = ErrorResponse)
+    )
+)]
 pub(in crate::http) async fn list_baskets(
     State(service): State<Arc<BasketService>>,
     Query(request): Query<ListBasketsRequest>,
@@ -27,6 +36,15 @@ pub(in crate::http) async fn list_baskets(
     Ok(Response::ok(List::all(baskets)))
 }
 
+#[utoipa::path(
+    get, path = "/v1/wallets/{address}/basket-positions",
+    operation_id = "basketPositions",
+    params(("address" = String, Path)),
+    responses(
+        (status = 200, body = Response<BasketAccount>),
+        (status = "default", body = ErrorResponse)
+    )
+)]
 pub(in crate::http) async fn positions(
     State(service): State<Arc<BasketService>>,
     Path(address): Path<String>,
@@ -60,6 +78,15 @@ pub(in crate::http) async fn prepare_trade(
     Ok(Response::ok(service.prepare_trade(&request).await?))
 }
 
+#[utoipa::path(
+    post, path = "/v1/baskets/trades/orders",
+    operation_id = "submitBasketOrder",
+    request_body = SubmitOrderRequest,
+    responses(
+        (status = 200, body = Response<SubmittedOrder>),
+        (status = "default", body = ErrorResponse)
+    )
+)]
 pub(in crate::http) async fn submit_order(
     State(service): State<Arc<BasketService>>,
     request: Result<Json<SubmitOrderRequest>, JsonRejection>,
@@ -68,6 +95,15 @@ pub(in crate::http) async fn submit_order(
     Ok(Response::ok(service.submit_order(&request).await?))
 }
 
+#[utoipa::path(
+    get, path = "/v1/baskets/trades/orders/{order_id}",
+    operation_id = "basketOrderStatus",
+    params(("order_id" = String, Path)),
+    responses(
+        (status = 200, body = Response<TradeOrderStatus>),
+        (status = "default", body = ErrorResponse)
+    )
+)]
 pub(in crate::http) async fn order_status(
     State(service): State<Arc<BasketService>>,
     Path(order_id): Path<String>,

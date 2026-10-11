@@ -9,13 +9,14 @@ use super::{
     resolve::{Resolution, Resolver, step_index},
 };
 use crate::{
-    bstock_borrowing::{BorrowingService, BorrowingServiceError},
+    bstock_borrowing::{BorrowingAccount, BorrowingService, BorrowingServiceError},
     bstock_trade::SettlementTokenMetadata,
     carry::{CarryOpportunityQuery, CarryQualification, CarryService, CarryServiceError},
     recipes::{
-        RecipeDefinition, RecipeDiagnostic, RecipeDiagnosticLocation, RecipeDiagnosticSeverity,
-        RecipeError, RecipeOptionSource, RecipePrimitive, RecipeService,
+        RecipeCatalog, RecipeDefinition, RecipeDiagnostic, RecipeDiagnosticLocation,
+        RecipeDiagnosticSeverity, RecipeError, RecipeOptionSource, RecipePrimitive, RecipeService,
     },
+    wallet_portfolio::WalletAddress,
 };
 
 const MAX_PROMPT_CHARS: usize = 1_000;
@@ -141,6 +142,30 @@ impl StrategyComposerService {
         Ok(selection)
     }
 
+    /// Reads what a draft is resolved against.
+    ///
+    /// Neither read depends on the other, and the catalogue alone is a provider
+    /// round trip the composer would otherwise wait out twice.
+    async fn read_context(
+        &self,
+        wallet: Option<WalletAddress>,
+    ) -> Result<(RecipeCatalog, Option<BorrowingAccount>), StrategyComposerError> {
+        let catalog = async {
+            self.recipes
+                .catalog()
+                .await
+                .map_err(StrategyComposerError::from)
+        };
+        let account = async {
+            match wallet {
+                Some(wallet) => self.borrowing.account(wallet).await.map(Some),
+                None => Ok(None),
+            }
+            .map_err(StrategyComposerError::from)
+        };
+        futures_util::future::try_join(catalog, account).await
+    }
+
     /// Drafts a strategy with the model, then resolves and validates it as a recipe.
     ///
     /// Model mistakes are fed back for repair. Questions only the user can answer,
@@ -158,24 +183,10 @@ impl StrategyComposerService {
         if prompt.is_empty() || prompt.chars().count() > MAX_PROMPT_CHARS {
             return Err(StrategyComposerError::InvalidPrompt);
         }
-        // Neither read depends on the other, and the catalogue alone is a
-        // provider round trip the composer would otherwise wait out twice.
-        let catalog = async {
-            self.recipes
-                .catalog()
-                .await
-                .map_err(StrategyComposerError::from)
-        };
-        let account = async {
-            match request.wallet {
-                Some(wallet) => self.borrowing.account(wallet).await.map(Some),
-                None => Ok(None),
-            }
-            .map_err(StrategyComposerError::from)
-        };
-        let (catalog, account) = futures_util::future::try_join(catalog, account).await?;
+        let (catalog, account) = self.read_context(request.wallet).await?;
         let resolver = Resolver::new(
             &catalog.bstocks,
+            &catalog.baskets,
             &self.settlement_tokens,
             &catalog.borrow_policy.debt_tokens,
             catalog
@@ -296,6 +307,15 @@ fn describe(diagnostic: &RecipeDiagnostic) -> String {
 
 #[cfg(test)]
 mod tests {
+    fn test_baskets() -> std::sync::Arc<crate::baskets::BasketService> {
+        std::sync::Arc::new(crate::baskets::BasketService::new(
+            crate::baskets::test_support::no_baskets(),
+            std::sync::Arc::new(Unused),
+            TradePolicy::new([USDT], 100, 50, SettlementPairs::Rejected)
+                .unwrap_or_else(|error| panic!("test policy is invalid: {error}")),
+        ))
+    }
+
     use std::sync::Mutex;
 
     use alloy_primitives::{Address, B256};
@@ -328,7 +348,6 @@ mod tests {
             EarnRedemptionClaimCommand, EarnWithdrawalCommand,
         },
         strategy_composer::{StrategyIntent, StrategyStep},
-        wallet_portfolio::WalletAddress,
     };
 
     const USDT: Address = Address::with_last_byte(1);
@@ -573,6 +592,7 @@ mod tests {
         let recipes = Arc::new(RecipeService::new(
             market,
             trade,
+            test_baskets(),
             borrowing.clone(),
             carry.clone(),
             vec![SettlementTokenMetadata {

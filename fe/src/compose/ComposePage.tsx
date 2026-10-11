@@ -51,6 +51,13 @@ const templates: {
     name: "Borrow & earn",
     flow: "Supplied → Borrow USDT → Earn",
     chain: ["supplied", "borrow", "earn"],
+    prompt: "Borrow 1 USDT against my supplied Tesla collateral and earn on it",
+  },
+  {
+    name: "Buy an index basket",
+    flow: "Wallet USDT → Basket",
+    chain: ["wallet", "liquidity"],
+    prompt: "Invest 5 USDT in the CoinMarketCap 20 index",
   },
   {
     name: "Repay & reclaim",

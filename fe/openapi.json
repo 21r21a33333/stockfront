@@ -7,6 +7,120 @@
     "version": "0.1.0"
   },
   "paths": {
+    "/v1/baskets": {
+      "get": {
+        "tags": ["super::handlers::baskets"],
+        "operationId": "listBaskets",
+        "parameters": [
+          {
+            "name": "search",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "category",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "integer", "minimum": 0 }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Response_List_BasketSummary"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Response" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/baskets/trades/orders": {
+      "post": {
+        "tags": ["super::handlers::baskets"],
+        "operationId": "submitBasketOrder",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/SubmitOrderRequest" }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Response_SubmittedOrder"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Response" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/baskets/trades/orders/{order_id}": {
+      "get": {
+        "tags": ["super::handlers::baskets"],
+        "operationId": "basketOrderStatus",
+        "parameters": [
+          {
+            "name": "order_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Response_TradeOrderStatus"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Response" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/bstock-trades/orders": {
       "post": {
         "tags": ["super::handlers::trades"],
@@ -313,6 +427,40 @@
         }
       }
     },
+    "/v1/wallets/{address}/basket-positions": {
+      "get": {
+        "tags": ["super::handlers::baskets"],
+        "operationId": "basketPositions",
+        "parameters": [
+          {
+            "name": "address",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Response_BasketAccount"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Response" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/wallets/{address}/carry-positions": {
       "get": {
         "tags": ["super::handlers::carry"],
@@ -425,6 +573,103 @@
       "AssetKind": {
         "type": "string",
         "enum": ["stock", "preIpo", "etf", "unknown"]
+      },
+      "BasketAccount": {
+        "type": "object",
+        "required": ["chainId", "positions", "totalValueUsd", "observedAtMs"],
+        "properties": {
+          "chainId": { "type": "integer", "format": "int64", "minimum": 0 },
+          "observedAtMs": { "type": "integer", "format": "int64" },
+          "positions": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/BasketPosition" }
+          },
+          "totalValueUsd": { "type": "string" }
+        }
+      },
+      "BasketAssetAllocation": {
+        "type": "object",
+        "required": ["contract", "symbol", "name", "weightPercent"],
+        "properties": {
+          "contract": { "type": "string", "format": "evm-address" },
+          "name": { "type": "string" },
+          "symbol": { "type": "string" },
+          "weightPercent": { "type": "string" }
+        }
+      },
+      "BasketId": {
+        "type": "object",
+        "required": ["chainId", "contract"],
+        "properties": {
+          "chainId": { "type": "integer", "format": "int64", "minimum": 0 },
+          "contract": { "type": "string", "format": "evm-address" }
+        }
+      },
+      "BasketKind": {
+        "type": "string",
+        "enum": ["INDEX_TOKEN", "MANAGED_PORTFOLIO"]
+      },
+      "BasketPosition": {
+        "allOf": [
+          { "$ref": "#/components/schemas/BasketId" },
+          {
+            "type": "object",
+            "required": [
+              "kind",
+              "providerId",
+              "providerName",
+              "name",
+              "symbol",
+              "tokenAmount",
+              "valueUsd"
+            ],
+            "properties": {
+              "kind": { "$ref": "#/components/schemas/BasketKind" },
+              "name": { "type": "string" },
+              "providerId": { "type": "string" },
+              "providerName": { "type": "string" },
+              "symbol": { "type": "string" },
+              "tokenAmount": { "type": "string" },
+              "valueUsd": { "type": "string" }
+            }
+          }
+        ]
+      },
+      "BasketSummary": {
+        "allOf": [
+          { "$ref": "#/components/schemas/BasketId" },
+          {
+            "type": "object",
+            "required": [
+              "kind",
+              "providerId",
+              "providerName",
+              "name",
+              "symbol",
+              "assets",
+              "categories"
+            ],
+            "properties": {
+              "annualFeePercent": { "type": ["string", "null"] },
+              "assets": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/BasketAssetAllocation"
+                }
+              },
+              "categories": { "type": "array", "items": { "type": "string" } },
+              "description": { "type": ["string", "null"] },
+              "imageUrl": { "type": ["string", "null"] },
+              "kind": { "$ref": "#/components/schemas/BasketKind" },
+              "marketCapUsd": { "type": ["string", "null"] },
+              "name": { "type": "string" },
+              "priceUsd": { "type": ["string", "null"] },
+              "providerId": { "type": "string" },
+              "providerName": { "type": "string" },
+              "symbol": { "type": "string" }
+            }
+          }
+        ]
       },
       "BorrowCapability": {
         "type": "object",
@@ -930,6 +1175,15 @@
             "type": "object",
             "required": ["nodeId", "action", "kind"],
             "properties": {
+              "action": { "$ref": "#/components/schemas/PreparedTrade" },
+              "kind": { "type": "string", "enum": ["BASKET_TRADE"] },
+              "nodeId": { "type": "string", "format": "uuid" }
+            }
+          },
+          {
+            "type": "object",
+            "required": ["nodeId", "action", "kind"],
+            "properties": {
               "action": {
                 "$ref": "#/components/schemas/PreparedBorrowingAction"
               },
@@ -1120,6 +1374,7 @@
           "primitives",
           "settlementTokens",
           "bstocks",
+          "baskets",
           "tradePolicy",
           "supplyPolicy",
           "withdrawalPolicy",
@@ -1128,6 +1383,10 @@
           "earnDepositPolicy"
         ],
         "properties": {
+          "baskets": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/BasketSummary" }
+          },
           "borrowPolicy": { "$ref": "#/components/schemas/RecipeBorrowPolicy" },
           "bstocks": {
             "type": "array",
@@ -1533,7 +1792,8 @@
           "SUPPLIED_POSITIONS",
           "BORROWED_POSITIONS",
           "EARN_OPPORTUNITIES",
-          "EARN_POSITIONS"
+          "EARN_POSITIONS",
+          "BASKETS"
         ]
       },
       "RecipePortDescriptor": {
@@ -1862,6 +2122,32 @@
           "status": { "$ref": "#/components/schemas/Status" }
         }
       },
+      "Response_BasketAccount": {
+        "type": "object",
+        "required": ["status"],
+        "properties": {
+          "error": { "$ref": "#/components/schemas/Error" },
+          "result": {
+            "type": "object",
+            "required": [
+              "chainId",
+              "positions",
+              "totalValueUsd",
+              "observedAtMs"
+            ],
+            "properties": {
+              "chainId": { "type": "integer", "format": "int64", "minimum": 0 },
+              "observedAtMs": { "type": "integer", "format": "int64" },
+              "positions": {
+                "type": "array",
+                "items": { "$ref": "#/components/schemas/BasketPosition" }
+              },
+              "totalValueUsd": { "type": "string" }
+            }
+          },
+          "status": { "$ref": "#/components/schemas/Status" }
+        }
+      },
       "Response_BorrowingAccount": {
         "type": "object",
         "required": ["status"],
@@ -1949,6 +2235,62 @@
                   { "type": "null" },
                   { "$ref": "#/components/schemas/RecipeValidationReport" }
                 ]
+              }
+            }
+          },
+          "status": { "$ref": "#/components/schemas/Status" }
+        }
+      },
+      "Response_List_BasketSummary": {
+        "type": "object",
+        "required": ["status"],
+        "properties": {
+          "error": { "$ref": "#/components/schemas/Error" },
+          "result": {
+            "type": "object",
+            "required": ["items"],
+            "properties": {
+              "items": {
+                "type": "array",
+                "items": {
+                  "allOf": [
+                    { "$ref": "#/components/schemas/BasketId" },
+                    {
+                      "type": "object",
+                      "required": [
+                        "kind",
+                        "providerId",
+                        "providerName",
+                        "name",
+                        "symbol",
+                        "assets",
+                        "categories"
+                      ],
+                      "properties": {
+                        "annualFeePercent": { "type": ["string", "null"] },
+                        "assets": {
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/components/schemas/BasketAssetAllocation"
+                          }
+                        },
+                        "categories": {
+                          "type": "array",
+                          "items": { "type": "string" }
+                        },
+                        "description": { "type": ["string", "null"] },
+                        "imageUrl": { "type": ["string", "null"] },
+                        "kind": { "$ref": "#/components/schemas/BasketKind" },
+                        "marketCapUsd": { "type": ["string", "null"] },
+                        "name": { "type": "string" },
+                        "priceUsd": { "type": ["string", "null"] },
+                        "providerId": { "type": "string" },
+                        "providerName": { "type": "string" },
+                        "symbol": { "type": "string" }
+                      }
+                    }
+                  ]
+                }
               }
             }
           },
@@ -2045,6 +2387,7 @@
               "primitives",
               "settlementTokens",
               "bstocks",
+              "baskets",
               "tradePolicy",
               "supplyPolicy",
               "withdrawalPolicy",
@@ -2053,6 +2396,10 @@
               "earnDepositPolicy"
             ],
             "properties": {
+              "baskets": {
+                "type": "array",
+                "items": { "$ref": "#/components/schemas/BasketSummary" }
+              },
               "borrowPolicy": {
                 "$ref": "#/components/schemas/RecipeBorrowPolicy"
               },

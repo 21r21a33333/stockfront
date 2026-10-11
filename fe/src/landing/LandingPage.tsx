@@ -86,13 +86,23 @@ const blocks: {
     kind: "earn",
     name: "Earn",
     line: "Put borrowed stablecoins to work on a reviewed protocol.",
-    venue: "Coming soon",
-    example: "Earn on borrowed USDT",
-    detail: "Coming soon",
+    venue: "Lista",
+    example: "Earn 6.14% on 1 USDT",
+    detail: "Checked against your borrow rate",
     takes: "USDT",
     gives: "Earn position",
-    next: ["Repay"],
-    soon: true,
+    next: ["Withdraw"],
+  },
+  {
+    kind: "liquidity",
+    name: "Baskets",
+    line: "Buy a whole index of tokenized assets as one token.",
+    venue: "Reserve",
+    example: "Buy the CoinMarketCap 20 index for 5 USDT",
+    detail: "Rebalanced by the issuer",
+    takes: "USDT",
+    gives: "Index token",
+    next: ["Trade"],
   },
 ];
 
@@ -466,7 +476,7 @@ export function LandingPage() {
           <div className={styles.sectionTitle}>
             <span className="eyebrow">The blocks · [06]</span>
             <h2 className="disp">
-              Six blocks.
+              Seven blocks.
               <br />
               Countless strategies.
             </h2>

@@ -1,6 +1,7 @@
 import { createContext, useContext } from "react";
 import type { Address } from "viem";
 import type {
+  BasketPosition,
   BorrowingAccount,
   CarryPosition,
   PreparedRecipe,
@@ -59,6 +60,8 @@ export interface RecipeSessionValue {
     position: { venue: "venus"; pool: Address; token: Address },
     action: "BORROW" | "WITHDRAW" | "REPAY",
   ): void;
+  basketPositions: BasketPosition[];
+  startBasketSale(position: BasketPosition): void;
   earnPositions: CarryPosition[];
   refetchEarnPositions(): void;
   startEarnWithdrawal(position: CarryPosition): void;

@@ -22,7 +22,14 @@ export function compatibleTradeAssets(
 }
 
 function groupFor(asset: AssetOption): RecipeOptionSource {
-  return asset.kind === "settlement" ? "SETTLEMENT_TOKENS" : "BSTOCKS";
+  switch (asset.kind) {
+    case "settlement":
+      return "SETTLEMENT_TOKENS";
+    case "basket":
+      return "BASKETS";
+    case "bstock":
+      return "BSTOCKS";
+  }
 }
 
 function sameAddress(left: Address, right: Address | undefined): boolean {

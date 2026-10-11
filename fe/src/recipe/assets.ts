@@ -59,7 +59,17 @@ export function useRecipeAssets(catalog?: RecipeCatalog): {
       kind: "bstock" as const,
       logoUrl: asset.tokenLogoUrl,
     }));
-    return [...settlements, ...bstocks];
+    // A DTF is a token the builder has to name like any other, or its amount
+    // reads as "undefined".
+    const baskets = catalog.baskets.map((basket) => ({
+      address: basket.contract,
+      symbol: basket.symbol,
+      name: basket.name,
+      decimals: 18,
+      kind: "basket" as const,
+      logoUrl: basket.imageUrl ?? undefined,
+    }));
+    return [...settlements, ...bstocks, ...baskets];
   }, [catalog, settlementMetadata.data]);
 
   const balanceContracts = useMemo(

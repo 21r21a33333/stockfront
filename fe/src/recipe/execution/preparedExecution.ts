@@ -4,7 +4,7 @@ import type {
   SubmitOrderRequest,
 } from "@/api/generated";
 import type { Address, Hex, WalletClient } from "viem";
-import { ExecutionMessage } from "./model";
+import { ExecutionMessage, type OrderMarket } from "./model";
 import {
   hasSufficientAllowance,
   simulatePreparedTransaction,
@@ -53,6 +53,7 @@ export type PreparedExecution =
       action: "TRADE";
       executionMode: "RFQ";
       steps: ["TRADE"];
+      market: OrderMarket;
       order: Omit<SubmitOrderRequest, "signature"> & { typedData: string };
     };
 
@@ -76,6 +77,9 @@ export async function preparedExecution(
 
   const approval = prepared.steps.find((step) => step.kind === "APPROVAL");
   const trade = prepared.steps.find((step) => step.kind === "TRADE");
+  const basketTrade = prepared.steps.find(
+    (step) => step.kind === "BASKET_TRADE",
+  );
   const supply = prepared.steps.find((step) => step.kind === "SUPPLY");
   const earn = prepared.steps.find((step) => step.kind === "EARN_DEPOSIT");
   const withdrawal = prepared.steps.find((step) => step.kind === "WITHDRAW");
@@ -224,7 +228,17 @@ export async function preparedExecution(
     ? !(await hasSufficientAllowance(client, owner, approval.action))
     : false;
 
-  if (trade?.kind === "TRADE" && trade.action.executionMode === "RFQ") {
+  // A DTF trade is the same prepared shape as a bStock one, so it reuses this
+  // path and only carries where its order belongs.
+  const rfq =
+    trade?.kind === "TRADE" && trade.action.executionMode === "RFQ"
+      ? { action: trade.action, market: "BSTOCK" as const }
+      : basketTrade?.kind === "BASKET_TRADE" &&
+          basketTrade.action.executionMode === "RFQ"
+        ? { action: basketTrade.action, market: "BASKET" as const }
+        : undefined;
+
+  if (rfq) {
     if (needsApproval && approval?.kind === "APPROVAL")
       return {
         kind: "CALL_BATCH",
@@ -241,11 +255,12 @@ export async function preparedExecution(
       action: "TRADE",
       executionMode: "RFQ",
       steps: ["TRADE"],
+      market: rfq.market,
       order: {
-        submissionId: trade.action.submissionId,
-        routeQuoteId: trade.action.routeQuoteId,
-        venue: trade.action.venue,
-        typedData: trade.action.typedData,
+        submissionId: rfq.action.submissionId,
+        routeQuoteId: rfq.action.routeQuoteId,
+        venue: rfq.action.venue,
+        typedData: rfq.action.typedData,
       },
     };
   }

@@ -35,6 +35,22 @@ export const recipesApi = {
         params: { path: { address } },
       }),
     ),
+  submitBasketOrder: (body: SubmitOrderRequest) =>
+    apiResult(api.POST("/v1/baskets/trades/orders", { body })),
+  basketOrderStatus: (orderId: string, signal?: AbortSignal) =>
+    apiResult(
+      api.GET("/v1/baskets/trades/orders/{order_id}", {
+        params: { path: { order_id: orderId } },
+        signal,
+      }),
+    ),
+  baskets: () => apiResult(api.GET("/v1/baskets", {})),
+  basketPositions: (address: string) =>
+    apiResult(
+      api.GET("/v1/wallets/{address}/basket-positions", {
+        params: { path: { address } },
+      }),
+    ),
   submitOrder: (body: SubmitOrderRequest) =>
     apiResult(api.POST("/v1/bstock-trades/orders", { body })),
   orderStatus: (orderId: string, signal?: AbortSignal) =>

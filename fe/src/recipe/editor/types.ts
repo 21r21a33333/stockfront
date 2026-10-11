@@ -6,7 +6,7 @@ export interface AssetOption {
   symbol: string;
   name: string;
   decimals: number;
-  kind: "settlement" | "bstock";
+  kind: "settlement" | "bstock" | "basket";
   logoUrl?: string;
   balanceRaw?: bigint;
 }

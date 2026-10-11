@@ -131,10 +131,13 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .settlement_token_metadata(&trade_settlement_tokens)
         .await?;
     let recipes = recipe_routes(
-        market.clone(),
-        trades.clone(),
-        borrowing.clone(),
-        carry.clone(),
+        RecipeVenues {
+            market: market.clone(),
+            trades: trades.clone(),
+            baskets: baskets.clone(),
+            borrowing: borrowing.clone(),
+            carry: carry.clone(),
+        },
         settlement_metadata,
         venus_comptroller,
         ai,
@@ -152,21 +155,35 @@ async fn main() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-/// Builds the recipe API and the AI composer that drafts recipes for it.
-fn recipe_routes(
+/// The venues a recipe can act on.
+struct RecipeVenues {
     market: Arc<BstockMarketService>,
     trades: Arc<BstockTradeService>,
+    baskets: Arc<BasketService>,
     borrowing: Arc<BorrowingService>,
     carry: Arc<CarryService>,
+}
+
+/// Builds the recipe API and the AI composer that drafts recipes for it.
+fn recipe_routes(
+    venues: RecipeVenues,
     settlement_metadata: Vec<SettlementTokenMetadata>,
     pool: Address,
     ai: AiSettings,
 ) -> Result<axum::Router, Box<dyn Error>> {
     let model = strategy_model(&ai)?;
     drop(ai);
+    let RecipeVenues {
+        market,
+        trades,
+        baskets,
+        borrowing,
+        carry,
+    } = venues;
     let recipes = Arc::new(RecipeService::new(
         market,
         trades,
+        baskets,
         borrowing.clone(),
         carry.clone(),
         settlement_metadata.clone(),

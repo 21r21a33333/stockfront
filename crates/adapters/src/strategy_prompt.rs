@@ -53,6 +53,12 @@ return no steps and explain why in assumptions.
 /// What a TRADE may move between, which the deployment can widen.
 const STOCK_PAIRS_ONLY: &str =
     "A TRADE goes stablecoin to stock, or stock to stablecoin. Never stablecoin to stablecoin.";
+/// What a basket is, told only when the catalog has any.
+const BASKETS: &str = "A basket is an index token holding many assets at once. Use one when the \
+user names an index or asks for broad exposure rather than a single company. A basket is only \
+ever traded: it cannot be supplied, borrowed against or deposited into earn, so a basket TRADE \
+always ends the chain.";
+
 const SETTLEMENT_PAIRS: &str = "A TRADE goes stablecoin to stock, stock to stablecoin, or one \
 stablecoin to another. Use a stablecoin-to-stablecoin TRADE to convert between stablecoins \
 directly; never route one through a stock to do it.";
@@ -63,10 +69,19 @@ pub(crate) fn instructions(context: &ComposeContext) -> String {
     } else {
         STOCK_PAIRS_ONLY
     };
-    let mut text = format!("{INSTRUCTIONS}\n{pairs}\n\nAssets:\n");
+    let mut text = format!("{INSTRUCTIONS}\n{pairs}\n");
+    if context
+        .assets
+        .iter()
+        .any(|asset| asset.kind == ComposerAssetKind::Basket)
+    {
+        let _ = writeln!(text, "{BASKETS}");
+    }
+    text.push_str("\nAssets:\n");
     for asset in &context.assets {
         let kind = match asset.kind {
             ComposerAssetKind::Stock => "stock",
+            ComposerAssetKind::Basket => "index basket",
             ComposerAssetKind::Stablecoin { borrowable: true } => "stablecoin, borrowable",
             ComposerAssetKind::Stablecoin { borrowable: false } => "stablecoin",
         };
