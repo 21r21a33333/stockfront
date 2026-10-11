@@ -27,6 +27,8 @@ const catalog = {
     allowedInputs: [{ input: "BORROWED_POSITIONS", venue: "venus", pool }],
     debtTokens: [usdt],
   },
+  earnDepositPolicy: { allowedInputs: ["BORROW"], depositTokens: [usdt] },
+  baskets: [],
   bstocks: [
     {
       chainId: 56,

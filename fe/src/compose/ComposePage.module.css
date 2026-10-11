@@ -9,7 +9,7 @@
   width: 100%;
   max-width: 1080px;
   margin: 0 auto;
-  padding: 72px 24px 120px;
+  padding: 72px 24px 56px;
   display: flex;
   flex-direction: column;
   gap: 40px;
@@ -43,7 +43,8 @@
 
 .prompt {
   display: flex;
-  align-items: center;
+  /* Icon and button stay on the last line as the prompt grows. */
+  align-items: flex-end;
   gap: 12px;
   padding: 10px 10px 10px 14px;
   border-radius: 22px;
@@ -66,20 +67,28 @@
   flex: none;
   width: 40px;
   height: 40px;
+  /* Centred on the last line beside the 52px button. */
+  margin-bottom: 6px;
   border-radius: 12px;
   background: var(--lime);
   display: grid;
   place-items: center;
 }
 
-.prompt input {
+.prompt textarea {
   flex: 1;
   min-width: 0;
-  height: 52px;
+  /* One line is 52px tall; the field grows with the text up to six lines. */
+  min-height: 52px;
+  max-height: 182px;
+  padding: 13px 0;
   border: 0;
   outline: none;
+  resize: none;
+  overflow-y: auto;
   background: transparent;
   font-size: 18px;
+  line-height: 26px;
 }
 
 .compose {
@@ -164,13 +173,11 @@
   gap: 22px;
   min-height: 200px;
   transition:
-    transform 0.25s var(--ease),
     box-shadow 0.25s ease,
     border-color 0.25s ease;
 }
 
 .template:hover:not(:disabled) {
-  transform: translateY(-4px);
   box-shadow: 0 22px 40px -24px rgba(15, 17, 14, 0.3);
   border-color: #c9cdc2;
 }
@@ -760,16 +767,12 @@
 }
 
 .footnote {
-  position: sticky;
-  bottom: 16px;
   display: flex;
   justify-content: center;
-  pointer-events: none;
-  padding: 0 16px 24px;
+  padding: 0 16px 32px;
 }
 
 .footnote > span {
-  pointer-events: auto;
   display: inline-flex;
   align-items: center;
   gap: 10px;
@@ -795,7 +798,7 @@
 
 @media (max-width: 640px) {
   .main {
-    padding: 40px 16px 96px;
+    padding: 40px 16px 48px;
   }
 
   .prompt {
@@ -872,7 +875,7 @@
 
 .strategyHead {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 10px;
 }
@@ -881,10 +884,14 @@
   margin: 0;
   font-size: 21px;
   font-weight: 600;
+  line-height: 1.2;
+  text-wrap: balance;
 }
 
 .risk {
   flex: none;
+  /* Centres the badge on the title's first line when the name wraps. */
+  margin-top: 2px;
   font-size: 10px;
   letter-spacing: 0.06em;
   padding: 4px 8px;
@@ -936,12 +943,23 @@
 /* The tier badge compares the three cards; this names what can actually
    go wrong, so neither reads as a safety guarantee on its own. */
 .riskNote {
+  position: relative;
   margin: 0;
   font-size: 12px;
   line-height: 1.5;
   color: var(--muted-2);
-  padding-left: 12px;
-  border-left: 2px solid var(--line-2);
+  padding-left: 14px;
+}
+
+.riskNote::before {
+  content: "";
+  position: absolute;
+  left: 1px;
+  top: 0.6em;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--zone-caution);
 }
 
 .strategyRun {

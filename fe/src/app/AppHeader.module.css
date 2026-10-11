@@ -108,7 +108,8 @@
     gap: 10px;
   }
 
-  .chain {
+  .chain,
+  .divider {
     display: none;
   }
 

@@ -44,7 +44,8 @@ a:hover {
 
 button,
 input,
-select {
+select,
+textarea {
   font: inherit;
   color: inherit;
 }
@@ -58,7 +59,7 @@ button:disabled {
 }
 
 /* :where keeps this at zero specificity so components can replace the ring. */
-:where(button, input, select, a, summary):focus-visible {
+:where(button, input, select, textarea, a, summary):focus-visible {
   outline: 2px solid var(--ink);
   outline-offset: 2px;
 }
@@ -89,15 +90,16 @@ button:disabled {
   white-space: nowrap;
 }
 
+/* Hover feedback stays in place: controls never shift under the pointer. */
 .lift {
   transition:
-    transform 0.2s ease,
+    filter 0.2s ease,
     background-color 0.2s ease,
     box-shadow 0.2s ease;
 }
 
 .lift:hover:not(:disabled) {
-  transform: translateY(-1px);
+  filter: brightness(0.94);
 }
 
 @keyframes fadeUp {

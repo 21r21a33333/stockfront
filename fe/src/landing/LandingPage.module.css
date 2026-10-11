@@ -181,7 +181,8 @@
   margin-top: 14px;
   width: min(720px, 100%);
   display: flex;
-  align-items: center;
+  /* Icon and button stay on the last line as the prompt grows. */
+  align-items: flex-end;
   gap: 12px;
   padding: 10px 10px 10px 14px;
   border-radius: 22px;
@@ -203,20 +204,28 @@
   flex: none;
   width: 40px;
   height: 40px;
+  /* Centred on the last line beside the 52px button. */
+  margin-bottom: 6px;
   border-radius: 12px;
   background: var(--lime);
   display: grid;
   place-items: center;
 }
 
-.heroPrompt input {
+.heroPrompt textarea {
   flex: 1;
   min-width: 0;
+  /* One line is 52px tall; the field grows with the text up to six lines. */
+  min-height: 52px;
+  max-height: 182px;
+  padding: 13px 0;
   border: 0;
   outline: none;
-  font-size: 18px;
+  resize: none;
+  overflow-y: auto;
   background: transparent;
-  height: 48px;
+  font-size: 18px;
+  line-height: 26px;
 }
 
 .promptGo {
@@ -246,14 +255,11 @@
   background: rgba(255, 255, 255, 0.5);
   backdrop-filter: blur(10px);
   font-size: 14px;
-  transition:
-    background-color 0.2s ease,
-    transform 0.2s ease;
+  transition: background-color 0.2s ease;
 }
 
 .heroChip:hover {
   background: #ffffff;
-  transform: translateY(-1px);
 }
 
 .marqueeWrap {
@@ -823,20 +829,25 @@
   color: var(--ink-3);
 }
 
+/* Shares the 1320px column with the trust row and footer so all three edges line up. */
 .cta {
   position: relative;
+  width: calc(100% - 48px);
+  max-width: 1272px;
+  margin: 0 auto;
   border-radius: 32px;
   background: var(--lime);
   overflow: hidden;
-  padding: 72px clamp(24px, 5vw, 72px);
+  padding: clamp(40px, 6vw, 72px);
   display: flex;
   flex-wrap: wrap;
   align-items: flex-end;
   justify-content: space-between;
-  gap: 40px;
-  min-height: 460px;
+  gap: 40px 56px;
+  min-height: 420px;
 }
 
+/* Bleeds off the top-right corner; the card's overflow crops it. */
 .ctaShapes {
   position: absolute;
   right: -40px;
@@ -873,27 +884,8 @@
   font-weight: 600;
 }
 
-.ctaActions {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  align-items: flex-start;
-}
-
-.ctaActions > div {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-  align-items: center;
-}
-
-.ctaActions > .mono {
-  font-size: 12px;
-  color: #2a3020;
-}
-
 .ctaPrimary {
+  position: relative;
   height: 56px;
   display: inline-flex;
   align-items: center;
@@ -974,6 +966,15 @@
 
   .blockRowText .disp {
     font-size: 26px;
+  }
+  .cta {
+    width: calc(100% - 32px);
+    border-radius: 24px;
+  }
+
+  /* No free corner on a phone; the tiles would sit on the headline. */
+  .ctaShapes {
+    display: none;
   }
 }
 

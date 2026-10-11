@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import type { RecipePrimitiveKind } from "@/api/generated";
 import { AppHeader } from "@/app/AppHeader";
 import { navigate } from "@/app/route";
@@ -47,11 +47,28 @@ const palette: {
   },
 ];
 
+/** Width of the zigzag stage the blocks are laid out on. */
+const STAGE_WIDTH = 760;
+const MIN_ZOOM = 0.45;
+
 export function BuilderPage() {
   const session = useRecipeSession();
   const editor = useRecipeEditor();
   const [paletteOpen, setPaletteOpen] = useState(true);
   const [zoom, setZoom] = useState(1);
+  const canvas = useRef<HTMLElement | null>(null);
+  const fittedZoom = () => {
+    const width = canvas.current?.clientWidth;
+    return width
+      ? Math.min(1, Math.max(MIN_ZOOM, (width - 32) / STAGE_WIDTH))
+      : 1;
+  };
+  // Phones get the whole chain in view instead of a sideways-scrolling stage.
+  const attachCanvas = useCallback((node: HTMLElement | null) => {
+    canvas.current = node;
+    if (node && node.clientWidth < STAGE_WIDTH + 32)
+      setZoom(Math.max(MIN_ZOOM, (node.clientWidth - 32) / STAGE_WIDTH));
+  }, []);
   const [debug, setDebug] = useState(false);
 
   const ctx: DescribeContext = useMemo(
@@ -183,15 +200,14 @@ export function BuilderPage() {
               }}
             >
               Run
-              <svg
-                width="12"
-                height="12"
-                viewBox="0 0 24 24"
-                fill="#D5F56B"
-                aria-hidden="true"
-              >
-                <path d="M6 4l14 8-14 8z" />
-              </svg>
+              <span className={styles.runIcon} aria-hidden="true">
+                <svg width="13" height="13" viewBox="0 0 24 24">
+                  <path
+                    d="M8 5.6v12.8a1 1 0 0 0 1.5.86l10.4-6.4a1 1 0 0 0 0-1.72L9.5 4.74A1 1 0 0 0 8 5.6z"
+                    fill="currentColor"
+                  />
+                </svg>
+              </span>
             </button>
           </>
         }
@@ -282,189 +298,200 @@ export function BuilderPage() {
         </aside>
 
         <section aria-label="Strategy canvas" className={styles.canvas}>
-          {session.ordered.length === 0 ? (
-            <div className={styles.empty}>
-              <h2 className="disp">Start a strategy</h2>
-              <p>
-                Pick where the money comes from, or ask the AI to draft one.
-              </p>
-              <div className={styles.emptyActions}>
-                {palette[0]!.items.map((item) => (
-                  <button
-                    type="button"
-                    key={item.name}
-                    className={`lift ${styles.ghostBlock}`}
-                    onClick={() => item.primitive && add(item.primitive)}
-                  >
-                    <BlockIcon kind={item.kind} size={30} radius={9} />
-                    {item.name}
-                  </button>
-                ))}
-                <a
-                  href="#/compose"
-                  className={`lift ${styles.askAi} ${styles.askAiBlock}`}
-                >
-                  <Sparkle size={15} />
-                  Ask AI
-                </a>
-              </div>
-            </div>
-          ) : (
-            <div
-              className={styles.stage}
-              style={{ transform: `scale(${zoom})` }}
-            >
-              {session.ordered.map((node, index) => {
-                const description = descriptions[index]!;
-                const selected = node.id === editor.selectedNodeId;
-                const left = index % 2 === 0 ? 168 : 328;
-                const top = 24 + index * 128;
-                const next = session.ordered[index + 1];
-                const hot = selected || next?.id === editor.selectedNodeId;
-                return (
-                  <div key={node.id}>
-                    {next ? (
-                      <>
-                        <svg
-                          className={styles.link}
-                          style={{ left: 292, top: top + 76 }}
-                          width="176"
-                          height="52"
-                          viewBox="0 0 176 52"
-                          fill="none"
-                          aria-hidden="true"
-                        >
-                          <path
-                            d={
-                              index % 2 === 0
-                                ? "M8 0C8 30 168 22 168 52"
-                                : "M168 0C168 30 8 22 8 52"
-                            }
-                            stroke="#C3C7BD"
-                            strokeWidth="6"
-                            strokeLinecap="round"
-                            opacity=".35"
-                          />
-                          <path
-                            className={styles.linkFlow}
-                            d={
-                              index % 2 === 0
-                                ? "M8 0C8 30 168 22 168 52"
-                                : "M168 0C168 30 8 22 8 52"
-                            }
-                            stroke={hot ? "#0F110E" : "#7D8278"}
-                            strokeWidth="2"
-                            strokeLinecap="round"
-                          />
-                        </svg>
-                        {description.output ? (
-                          <span
-                            className={`mono ${styles.linkLabel} ${hot ? styles.linkLabelHot : ""}`}
-                            style={{ top: top + 102 }}
-                          >
-                            {description.output}
-                          </span>
-                        ) : null}
-                      </>
-                    ) : null}
+          <div ref={attachCanvas} className={styles.canvasScroll}>
+            {session.ordered.length === 0 ? (
+              <div className={styles.empty}>
+                <h2 className="disp">Start a strategy</h2>
+                <p>
+                  Pick where the money comes from, or ask the AI to draft one.
+                </p>
+                <div className={styles.emptyActions}>
+                  {palette[0]!.items.map((item) => (
                     <button
                       type="button"
-                      className={`${styles.node} ${selected ? styles.nodeSelected : ""} ${description.bad ? styles.nodeBad : ""}`}
-                      style={{ left, top }}
-                      aria-pressed={selected}
-                      onClick={() => editor.selectNode(node.id)}
+                      key={item.name}
+                      className={`lift ${styles.ghostBlock}`}
+                      onClick={() => item.primitive && add(item.primitive)}
                     >
-                      <BlockIcon
-                        kind={blockKind(node.data.kind)}
-                        size={42}
-                        radius={12}
-                      />
-                      <span className={styles.nodeText}>
-                        <span className={styles.nodeName}>
-                          {description.name}
-                        </span>
-                        <span className={`mono ${styles.nodeDetail}`}>
-                          {description.detail}
-                        </span>
-                      </span>
-                      <span
-                        className={styles.nodeDot}
-                        style={{
-                          background: description.bad
-                            ? "#D9705D"
-                            : "var(--good)",
-                        }}
-                      />
+                      <BlockIcon kind={item.kind} size={30} radius={9} />
+                      {item.name}
                     </button>
-                  </div>
-                );
-              })}
-              {allowed.length > 0 ? (
-                <>
-                  <svg
-                    className={styles.link}
-                    style={{
-                      left: 292,
-                      top: 24 + (session.ordered.length - 1) * 128 + 76,
-                    }}
-                    width="176"
-                    height="52"
-                    viewBox="0 0 176 52"
-                    fill="none"
-                    aria-hidden="true"
+                  ))}
+                  <a
+                    href="#/compose"
+                    className={`lift ${styles.askAi} ${styles.askAiBlock}`}
                   >
-                    <path
-                      d={
-                        (session.ordered.length - 1) % 2 === 0
-                          ? "M8 0C8 30 168 22 168 52"
-                          : "M168 0C168 30 8 22 8 52"
-                      }
-                      stroke="#B5BAAE"
-                      strokeWidth="2"
-                      strokeDasharray="3 6"
-                      strokeLinecap="round"
-                    />
-                  </svg>
-                  <div
-                    className={styles.ghostRow}
-                    style={{
-                      top: 24 + session.ordered.length * 128,
-                      left: session.ordered.length % 2 === 0 ? 168 : 328,
-                    }}
-                  >
-                    {allowed.map((kind) => (
+                    <Sparkle size={15} />
+                    Ask AI
+                  </a>
+                </div>
+              </div>
+            ) : (
+              <div
+                className={styles.stage}
+                style={{
+                  zoom,
+                  // Room below the last block for the add buttons and the pinned controls.
+                  minHeight: Math.max(
+                    760,
+                    24 + session.ordered.length * 128 + 180,
+                  ),
+                }}
+              >
+                {session.ordered.map((node, index) => {
+                  const description = descriptions[index]!;
+                  const selected = node.id === editor.selectedNodeId;
+                  const left = index % 2 === 0 ? 168 : 328;
+                  const top = 24 + index * 128;
+                  const next = session.ordered[index + 1];
+                  const hot = selected || next?.id === editor.selectedNodeId;
+                  return (
+                    <div key={node.id}>
+                      {next ? (
+                        <>
+                          <svg
+                            className={styles.link}
+                            style={{ left: 292, top: top + 76 }}
+                            width="176"
+                            height="52"
+                            viewBox="0 0 176 52"
+                            fill="none"
+                            aria-hidden="true"
+                          >
+                            <path
+                              d={
+                                index % 2 === 0
+                                  ? "M8 0C8 30 168 22 168 52"
+                                  : "M168 0C168 30 8 22 8 52"
+                              }
+                              stroke="#C3C7BD"
+                              strokeWidth="6"
+                              strokeLinecap="round"
+                              opacity=".35"
+                            />
+                            <path
+                              className={styles.linkFlow}
+                              d={
+                                index % 2 === 0
+                                  ? "M8 0C8 30 168 22 168 52"
+                                  : "M168 0C168 30 8 22 8 52"
+                              }
+                              stroke={hot ? "#0F110E" : "#7D8278"}
+                              strokeWidth="2"
+                              strokeLinecap="round"
+                            />
+                          </svg>
+                          {description.output ? (
+                            <span
+                              className={`mono ${styles.linkLabel} ${hot ? styles.linkLabelHot : ""}`}
+                              style={{ top: top + 102 }}
+                            >
+                              {description.output}
+                            </span>
+                          ) : null}
+                        </>
+                      ) : null}
                       <button
                         type="button"
-                        key={kind}
-                        className={styles.ghost}
-                        onClick={() => add(kind)}
+                        className={`${styles.node} ${selected ? styles.nodeSelected : ""} ${description.bad ? styles.nodeBad : ""}`}
+                        style={{ left, top }}
+                        aria-pressed={selected}
+                        onClick={() => editor.selectNode(node.id)}
                       >
-                        <svg
-                          width="16"
-                          height="16"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="#0F110E"
-                          strokeWidth="2"
-                          strokeLinecap="round"
-                          aria-hidden="true"
-                        >
-                          <path d="M12 5v14M5 12h14" />
-                        </svg>
-                        Add <span className="mono">{label(kind)}</span>
+                        <BlockIcon
+                          kind={blockKind(node.data.kind)}
+                          size={42}
+                          radius={12}
+                        />
+                        <span className={styles.nodeText}>
+                          <span className={styles.nodeName}>
+                            {description.name}
+                          </span>
+                          <span className={`mono ${styles.nodeDetail}`}>
+                            {description.detail}
+                          </span>
+                        </span>
+                        <span
+                          className={styles.nodeDot}
+                          style={{
+                            background: description.bad
+                              ? "#D9705D"
+                              : "var(--good)",
+                          }}
+                        />
                       </button>
-                    ))}
-                  </div>
-                </>
-              ) : null}
-            </div>
-          )}
+                    </div>
+                  );
+                })}
+                {allowed.length > 0 ? (
+                  <>
+                    <svg
+                      className={styles.link}
+                      style={{
+                        left: 292,
+                        top: 24 + (session.ordered.length - 1) * 128 + 76,
+                      }}
+                      width="176"
+                      height="52"
+                      viewBox="0 0 176 52"
+                      fill="none"
+                      aria-hidden="true"
+                    >
+                      <path
+                        d={
+                          (session.ordered.length - 1) % 2 === 0
+                            ? "M8 0C8 30 168 22 168 52"
+                            : "M168 0C168 30 8 22 8 52"
+                        }
+                        stroke="#B5BAAE"
+                        strokeWidth="2"
+                        strokeDasharray="3 6"
+                        strokeLinecap="round"
+                      />
+                    </svg>
+                    <div
+                      className={styles.ghostRow}
+                      style={{
+                        top: 24 + session.ordered.length * 128,
+                        left: session.ordered.length % 2 === 0 ? 168 : 328,
+                      }}
+                    >
+                      {allowed.map((kind) => (
+                        <button
+                          type="button"
+                          key={kind}
+                          className={styles.ghost}
+                          onClick={() => add(kind)}
+                        >
+                          <svg
+                            width="16"
+                            height="16"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="#0F110E"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            aria-hidden="true"
+                          >
+                            <path d="M12 5v14M5 12h14" />
+                          </svg>
+                          Add <span className="mono">{label(kind)}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                ) : null}
+              </div>
+            )}
+          </div>
 
           <div className={styles.zoom}>
             <button
               type="button"
               aria-label="Zoom out"
-              onClick={() => setZoom((value) => Math.max(0.6, value - 0.1))}
+              onClick={() =>
+                setZoom((value) => Math.max(MIN_ZOOM, value - 0.1))
+              }
             >
               <svg
                 width="14"
@@ -499,7 +526,11 @@ export function BuilderPage() {
               </svg>
             </button>
             <span className={styles.zoomDivider} />
-            <button type="button" className="mono" onClick={() => setZoom(1)}>
+            <button
+              type="button"
+              className="mono"
+              onClick={() => setZoom(fittedZoom())}
+            >
               Fit
             </button>
           </div>

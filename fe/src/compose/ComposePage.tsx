@@ -17,6 +17,7 @@ import { ArrowUpRight, BlockIcon, Check, Sparkle } from "@/ui/BlockIcon";
 import { blockKind, blockTints, type BlockKind } from "@/ui/blocks";
 import { formatHealth, healthZone } from "@/ui/health";
 import { marketNote } from "@/ui/market";
+import { PromptInput } from "@/ui/PromptInput";
 import { TokenDot } from "@/ui/TokenDot";
 import { useComposeStore } from "./composeStore";
 import { planBlocks, planTitle } from "./plan";
@@ -252,11 +253,11 @@ export function ComposePage() {
             <label htmlFor="composePrompt" className="srOnly">
               Describe your strategy
             </label>
-            <input
+            <PromptInput
               id="composePrompt"
               value={store.prompt}
               maxLength={1000}
-              onChange={(event) => store.setPrompt(event.target.value)}
+              onChange={store.setPrompt}
               placeholder="e.g. Buy $6 of Nvidia and supply it to Venus"
             />
             <button
