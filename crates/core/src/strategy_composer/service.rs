@@ -5,18 +5,19 @@ use thiserror::Error;
 
 use super::{
     ComposeContext, ComposeStrategyRequest, ComposedStrategy, RejectedDraft, StrategyDraft,
-    StrategyModel, StrategyModelError,
+    StrategyIntent, StrategyModel, StrategyModelError,
     resolve::{Resolution, Resolver, step_index},
 };
 use crate::{
     bstock_borrowing::{BorrowingAccount, BorrowingService, BorrowingServiceError},
+    bstock_market::{BNB_CHAIN_ID, BstockId},
     bstock_trade::SettlementTokenMetadata,
     carry::{CarryOpportunityQuery, CarryQualification, CarryService, CarryServiceError},
     recipes::{
         RecipeCatalog, RecipeDefinition, RecipeDiagnostic, RecipeDiagnosticLocation,
         RecipeDiagnosticSeverity, RecipeError, RecipeOptionSource, RecipePrimitive, RecipeService,
     },
-    wallet_portfolio::WalletAddress,
+    wallet_portfolio::{BstockBalance, BstockBalanceReader, WalletAddress},
 };
 
 const MAX_PROMPT_CHARS: usize = 1_000;
@@ -41,8 +42,72 @@ pub struct StrategyComposerService {
     recipes: Arc<RecipeService>,
     borrowing: Arc<BorrowingService>,
     carry: Arc<CarryService>,
+    balances: Arc<dyn BstockBalanceReader>,
     model: Arc<dyn StrategyModel>,
     settlement_tokens: Vec<SettlementTokenMetadata>,
+}
+
+/// Everything a draft is resolved against, read in one pass.
+struct ComposeInputs {
+    catalog: RecipeCatalog,
+    account: Option<BorrowingAccount>,
+    /// `None` when no wallet is connected, or when the balance provider was
+    /// unreachable. The model then asks for an amount, as it did before.
+    balances: Option<Vec<BstockBalance>>,
+}
+
+/// What the model is told before it drafts.
+fn model_context(
+    prompt: &str,
+    catalog: &RecipeCatalog,
+    resolver: &Resolver,
+    previous: Option<&StrategyIntent>,
+) -> ComposeContext {
+    ComposeContext {
+        prompt: prompt.to_owned(),
+        // The catalog already states what a trade may move between, so the
+        // model is told the same grammar the compiler will hold it to.
+        settlement_pairs: catalog
+            .trade_policy
+            .allowed_transitions
+            .iter()
+            .any(|transition| {
+                transition.sell == RecipeOptionSource::SettlementTokens
+                    && transition.buy == RecipeOptionSource::SettlementTokens
+            }),
+        assets: resolver.assets(),
+        positions: resolver.positions(),
+        previous: previous.cloned(),
+        // Re-resolving the strategy being refined recovers the questions the
+        // user is answering, which the model otherwise never sees.
+        asked: previous
+            .map(|intent| match resolver.resolve(intent) {
+                Resolution::NeedsInput(questions) => questions,
+                Resolution::Recipe(_) | Resolution::Rejected(_) => Vec::new(),
+            })
+            .unwrap_or_default(),
+        rejected: None,
+    }
+}
+
+/// Every token the model can name, so one balance read covers the catalogue.
+fn catalog_token_ids(
+    catalog: &RecipeCatalog,
+    settlement_tokens: &[SettlementTokenMetadata],
+) -> Vec<BstockId> {
+    catalog
+        .bstocks
+        .iter()
+        .map(|bstock| bstock.id)
+        .chain(settlement_tokens.iter().map(|token| BstockId {
+            chain_id: BNB_CHAIN_ID,
+            contract: token.address,
+        }))
+        .chain(catalog.baskets.iter().map(|basket| BstockId {
+            chain_id: basket.id.chain_id,
+            contract: basket.id.contract,
+        }))
+        .collect()
 }
 
 /// What filling in the earn opportunities told the user.
@@ -57,6 +122,7 @@ impl StrategyComposerService {
         recipes: Arc<RecipeService>,
         borrowing: Arc<BorrowingService>,
         carry: Arc<CarryService>,
+        balances: Arc<dyn BstockBalanceReader>,
         model: Arc<dyn StrategyModel>,
         settlement_tokens: Vec<SettlementTokenMetadata>,
     ) -> Self {
@@ -64,6 +130,7 @@ impl StrategyComposerService {
             recipes,
             borrowing,
             carry,
+            balances,
             model,
             settlement_tokens,
         }
@@ -149,7 +216,7 @@ impl StrategyComposerService {
     async fn read_context(
         &self,
         wallet: Option<WalletAddress>,
-    ) -> Result<(RecipeCatalog, Option<BorrowingAccount>), StrategyComposerError> {
+    ) -> Result<ComposeInputs, StrategyComposerError> {
         let catalog = async {
             self.recipes
                 .catalog()
@@ -163,7 +230,26 @@ impl StrategyComposerService {
             }
             .map_err(StrategyComposerError::from)
         };
-        futures_util::future::try_join(catalog, account).await
+        let (catalog, account) = futures_util::future::try_join(catalog, account).await?;
+        // Holdings only enrich the prompt, so a blip here costs the model one
+        // amount rather than the whole composition.
+        let balances = match wallet {
+            Some(wallet) => self
+                .balances
+                .read_balances(
+                    wallet,
+                    &catalog_token_ids(&catalog, &self.settlement_tokens),
+                )
+                .await
+                .ok()
+                .map(|snapshot| snapshot.balances),
+            None => None,
+        };
+        Ok(ComposeInputs {
+            catalog,
+            account,
+            balances,
+        })
     }
 
     /// Drafts a strategy with the model, then resolves and validates it as a recipe.
@@ -183,7 +269,11 @@ impl StrategyComposerService {
         if prompt.is_empty() || prompt.chars().count() > MAX_PROMPT_CHARS {
             return Err(StrategyComposerError::InvalidPrompt);
         }
-        let (catalog, account) = self.read_context(request.wallet).await?;
+        let ComposeInputs {
+            catalog,
+            account,
+            balances,
+        } = self.read_context(request.wallet).await?;
         let resolver = Resolver::new(
             &catalog.bstocks,
             &catalog.baskets,
@@ -195,25 +285,9 @@ impl StrategyComposerService {
                 .first()
                 .map(|rule| rule.pool),
             account.as_ref(),
+            balances.as_deref(),
         );
-        // The catalog already states what a trade may move between, so the model
-        // is told the same grammar the compiler will hold it to.
-        let settlement_pairs = catalog
-            .trade_policy
-            .allowed_transitions
-            .iter()
-            .any(|transition| {
-                transition.sell == RecipeOptionSource::SettlementTokens
-                    && transition.buy == RecipeOptionSource::SettlementTokens
-            });
-        let mut context = ComposeContext {
-            prompt: prompt.to_owned(),
-            settlement_pairs,
-            assets: resolver.assets(),
-            positions: resolver.positions(),
-            previous: request.previous.clone(),
-            rejected: None,
-        };
+        let mut context = model_context(prompt, &catalog, &resolver, request.previous.as_ref());
 
         let mut calls = 0;
         loop {
@@ -323,6 +397,7 @@ mod tests {
     use rust_decimal::Decimal;
 
     use super::*;
+    use crate::wallet_portfolio::{BalanceReaderError, BstockBalanceSnapshot};
     use crate::{
         bstock_borrowing::{
             BorrowCapability, BorrowCapabilityRequest, BorrowingAccount, BorrowingActionGateway,
@@ -606,6 +681,7 @@ mod tests {
             recipes,
             borrowing,
             carry,
+            Arc::new(Unused),
             model,
             vec![SettlementTokenMetadata {
                 address: USDT,
@@ -696,6 +772,17 @@ mod tests {
 
     /// Composition must never quote, prepare or read capabilities.
     struct Unused;
+
+    #[async_trait]
+    impl BstockBalanceReader for Unused {
+        async fn read_balances(
+            &self,
+            _: WalletAddress,
+            _: &[BstockId],
+        ) -> Result<BstockBalanceSnapshot, BalanceReaderError> {
+            Err(BalanceReaderError::Unavailable)
+        }
+    }
 
     #[async_trait]
     impl TradeGateway for Unused {

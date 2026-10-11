@@ -16,6 +16,7 @@
 
 use std::collections::HashMap;
 
+use alloy_primitives::U256;
 use uuid::Uuid;
 
 use super::{
@@ -96,12 +97,16 @@ fn validate_recipe_header(recipe: &RecipeDefinition) -> Vec<RecipeDiagnostic> {
 
 fn validate_node_fields(recipe: &RecipeDefinition, diagnostics: &mut Vec<RecipeDiagnostic>) {
     for node in &recipe.nodes {
-        if matches!(
-            &node.primitive,
-            RecipePrimitive::WalletAsset { raw_amount, .. }
-                | RecipePrimitive::Borrow { raw_amount, .. }
-                if raw_amount.is_zero()
-        ) {
+        let zero_amount = match &node.primitive {
+            RecipePrimitive::WalletAsset { raw_amount, .. } => raw_amount.is_zero(),
+            // An absent borrow amount asks for the safe maximum; only a stated
+            // one has to be positive.
+            RecipePrimitive::Borrow { raw_amount, .. } => {
+                raw_amount.is_some_and(|amount| amount.is_zero())
+            }
+            _ => false,
+        };
+        if zero_amount {
             diagnostics.push(RecipeDiagnostic::error(
                 RecipeDiagnosticCode::InvalidAmount,
                 RecipeDiagnosticLocation::Field {
@@ -265,7 +270,7 @@ fn lower_borrow(
     positions: &HashMap<(Uuid, String), PositionInput>,
     node_id: Uuid,
     debt_token: alloy_primitives::Address,
-    raw_amount: alloy_primitives::U256,
+    raw_amount: Option<U256>,
 ) -> Result<(LogicalStep, AssetRef), RecipeDiagnostic> {
     let collateral = input_position_on(graph, positions, node_id, "collateral")?;
     Ok((
@@ -699,7 +704,7 @@ mod tests {
             id: BORROW_ID,
             primitive: RecipePrimitive::Borrow {
                 debt_token: Address::with_last_byte(1),
-                raw_amount: U256::from(5),
+                raw_amount: Some(U256::from(5)),
             },
         });
         recipe.edges.push(RecipeEdge {
@@ -748,7 +753,7 @@ mod tests {
                     token: Address::with_last_byte(2),
                 },
                 debt_token: Address::with_last_byte(1),
-                raw_amount: U256::from(5),
+                raw_amount: Some(U256::from(5)),
             }
         );
     }
@@ -895,7 +900,7 @@ mod tests {
                     id: BORROW_ID,
                     primitive: RecipePrimitive::Borrow {
                         debt_token: debt,
-                        raw_amount: amount,
+                        raw_amount: Some(amount),
                     },
                 },
             ],
@@ -927,7 +932,7 @@ mod tests {
                     token: collateral,
                 },
                 debt_token: debt,
-                raw_amount: amount,
+                raw_amount: Some(amount),
             }
         );
     }

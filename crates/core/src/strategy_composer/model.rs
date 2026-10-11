@@ -60,6 +60,10 @@ pub enum StrategyStep {
         )]
         #[schema(value_type = Option<String>)]
         amount: Option<Decimal>,
+        /// The user asked for the most they can borrow. Only the venue can
+        /// size that, so no amount is stated and Venus decides at signing.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        maximum: bool,
     },
     Repay,
     EarnDeposit {
@@ -85,6 +89,9 @@ pub struct ComposeContext {
     pub assets: Vec<ComposerAsset>,
     pub positions: Vec<ComposerPosition>,
     pub previous: Option<StrategyIntent>,
+    /// What the user was last asked. A bare answer such as "1 USDT" means
+    /// nothing without the question it answers.
+    pub asked: Vec<String>,
     /// The model's rejected draft and the reasons, when repairing.
     pub rejected: Option<RejectedDraft>,
 }
@@ -100,6 +107,12 @@ pub struct ComposerAsset {
     pub symbol: String,
     pub name: String,
     pub kind: ComposerAssetKind,
+    /// What the wallet holds, so "all of it" resolves to a number instead of a
+    /// question. `None` when no wallet is connected.
+    pub balance: Option<Decimal>,
+    /// What the asset is for, in the provider's own words. Only a basket has
+    /// one; a stock is described well enough by its name.
+    pub detail: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

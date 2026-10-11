@@ -63,6 +63,7 @@ export type EarnWithdrawNodeData = {
 export type BorrowNodeData = {
   kind: "BORROW";
   debtToken?: Address;
+  /** Empty asks Venus for the most it will lend at the health floor. */
   amount: string;
 };
 

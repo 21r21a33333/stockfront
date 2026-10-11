@@ -50,7 +50,9 @@ const NODES: Record<
   TRADE: (node) => address(node.buyToken),
   SUPPLY: (node) => node.venue === "venus",
   WITHDRAW: () => true,
-  BORROW: (node) => address(node.debtToken) && unsigned(node.rawAmount),
+  BORROW: (node) =>
+    address(node.debtToken) &&
+    (node.rawAmount === undefined || unsigned(node.rawAmount)),
   REPAY: () => true,
   EARN_DEPOSIT: (node) =>
     address(node.collateralToken) && typeof node.investmentId === "string",

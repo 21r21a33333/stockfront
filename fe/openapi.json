@@ -2003,11 +2003,14 @@
           },
           {
             "type": "object",
-            "required": ["debtToken", "rawAmount", "kind"],
+            "required": ["debtToken", "kind"],
             "properties": {
               "debtToken": { "type": "string", "format": "evm-address" },
               "kind": { "type": "string", "enum": ["BORROW"] },
-              "rawAmount": { "type": "string" }
+              "rawAmount": {
+                "type": ["string", "null"],
+                "description": "Absent asks for the most Venus will lend while holding the\nconfigured health floor, read from the chain once the collateral is\nactually supplied rather than projected when the recipe is written."
+              }
             }
           },
           {
@@ -2787,6 +2790,10 @@
             "properties": {
               "amount": { "type": ["string", "null"] },
               "kind": { "type": "string", "enum": ["BORROW"] },
+              "maximum": {
+                "type": "boolean",
+                "description": "The user asked for the most they can borrow. Only the venue can\nsize that, so no amount is stated and Venus decides at signing."
+              },
               "symbol": { "type": "string" }
             }
           },

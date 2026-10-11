@@ -67,7 +67,9 @@ pub(super) enum RecipeAction {
     Borrow {
         collateral: SuppliedPositionRef,
         debt_token: Address,
-        raw_amount: U256,
+        /// `None` asks for the safe maximum, resolved against the chain when
+        /// the collateral behind it actually exists.
+        raw_amount: Option<U256>,
     },
     Repay {
         debt: BorrowedPositionRef,

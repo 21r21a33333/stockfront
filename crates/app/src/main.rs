@@ -25,7 +25,7 @@ use stockfront_core::{
     managed_portfolios::ManagedPortfolioService,
     recipes::RecipeService,
     strategy_composer::{StrategyComposerService, StrategyModel},
-    wallet_portfolio::WalletPortfolioService,
+    wallet_portfolio::{BstockBalanceReader, WalletPortfolioService},
 };
 
 #[tokio::main]
@@ -109,6 +109,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
         client.clone(),
         LiquidityPolicy::new(liquidity_investment_ids, liquidity_slippage_bps)?,
     ));
+    // The composer reads what the wallet holds so a request for "all of it"
+    // resolves to a number; the balance reader is the same client.
+    let balances = client.clone();
     let carry = Arc::new(CarryService::new(
         borrowing.clone(),
         client.clone(),
@@ -139,6 +142,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
             carry: carry.clone(),
         },
         settlement_metadata,
+        balances,
         venus_comptroller,
         ai,
     )?;
@@ -168,6 +172,7 @@ struct RecipeVenues {
 fn recipe_routes(
     venues: RecipeVenues,
     settlement_metadata: Vec<SettlementTokenMetadata>,
+    balances: Arc<dyn BstockBalanceReader>,
     pool: Address,
     ai: AiSettings,
 ) -> Result<axum::Router, Box<dyn Error>> {
@@ -193,6 +198,7 @@ fn recipe_routes(
         recipes.clone(),
         borrowing,
         carry,
+        balances,
         model,
         settlement_metadata,
     );

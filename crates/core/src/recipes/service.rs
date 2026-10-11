@@ -517,12 +517,60 @@ impl RecipeService {
         })
     }
 
+    /// Reads what Venus will lend against this collateral right now.
+    ///
+    /// An absent amount asks for the safe maximum, which only the venue can
+    /// size. It is read first, then read again at that amount, so the
+    /// capability the user reviews describes the borrow that will be signed
+    /// rather than the probe that discovered it.
+    async fn borrow_capability_for(
+        &self,
+        wallet: WalletAddress,
+        collateral: SuppliedPositionRef,
+        debt_token: Address,
+        raw_amount: Option<U256>,
+    ) -> Result<BorrowCapability, RecipeError> {
+        let requested = raw_amount.unwrap_or(U256::ZERO);
+        let capability = self
+            .borrowing
+            .borrow_capability(
+                wallet,
+                collateral.pool,
+                collateral.token,
+                debt_token,
+                requested,
+            )
+            .await?;
+        if raw_amount.is_some() {
+            return Ok(capability);
+        }
+        let safe_maximum = raw_from_decimal(
+            capability.conservative_max_amount,
+            capability.debt_token_decimals,
+        );
+        match safe_maximum.filter(|amount| !amount.is_zero()) {
+            // Nothing can be borrowed yet; the probe already carries the
+            // reasons, which is what the preview and the run should show.
+            None => Ok(capability),
+            Some(amount) => Ok(self
+                .borrowing
+                .borrow_capability(
+                    wallet,
+                    collateral.pool,
+                    collateral.token,
+                    debt_token,
+                    amount,
+                )
+                .await?),
+        }
+    }
+
     async fn preview_borrow(
         &self,
         step: &super::LogicalStep,
         collateral: SuppliedPositionRef,
         debt_token: Address,
-        raw_amount: U256,
+        raw_amount: Option<U256>,
         completed: &HashMap<Uuid, &RecipeCompletedNode>,
         wallet: WalletAddress,
     ) -> Result<RecipeNodePreview, RecipeError> {
@@ -536,14 +584,7 @@ impl RecipeService {
         }
         let node_id = step.node_id;
         let capability = self
-            .borrowing
-            .borrow_capability(
-                wallet,
-                collateral.pool,
-                collateral.token,
-                debt_token,
-                raw_amount,
-            )
+            .borrow_capability_for(wallet, collateral, debt_token, raw_amount)
             .await?;
         let state = if capability.unavailable_reasons.is_empty() {
             RecipeNodeState::Ready
@@ -730,14 +771,7 @@ impl RecipeService {
                     raw_amount,
                 } => {
                     let capability = self
-                        .borrowing
-                        .borrow_capability(
-                            wallet,
-                            collateral.pool,
-                            collateral.token,
-                            *debt_token,
-                            *raw_amount,
-                        )
+                        .borrow_capability_for(wallet, *collateral, *debt_token, *raw_amount)
                         .await?;
                     if capability.unavailable_reasons.is_empty() {
                         ready.push((step, ReadyInput::Borrow(Box::new(capability), *collateral)));
@@ -1179,6 +1213,21 @@ fn completed_preview(step: &super::LogicalStep) -> RecipeNodePreview {
     }
 }
 
+/// The venue sizes a safe maximum in token units; the chain needs raw ones.
+///
+/// Anything finer than the token can express is dropped rather than rounded,
+/// so the result stays inside the limit it came from.
+fn raw_from_decimal(amount: Decimal, decimals: u32) -> Option<U256> {
+    let truncated = amount
+        .round_dp_with_strategy(decimals, rust_decimal::RoundingStrategy::ToZero)
+        .normalize();
+    let mantissa = u128::try_from(truncated.mantissa()).ok()?;
+    let exponent = decimals.checked_sub(truncated.scale())?;
+    U256::from(10_u8)
+        .checked_pow(U256::from(exponent))
+        .and_then(|scale| U256::from(mantissa).checked_mul(scale))
+}
+
 fn decimal_from_raw(raw: U256, decimals: u32) -> Result<Decimal, RecipeError> {
     let digits = raw.to_string();
     let scale = usize::try_from(decimals).map_err(|_| invalid_provider_data())?;
@@ -1394,10 +1443,14 @@ fn validate_completed_context<'a>(
                 raw_amount,
                 ..
             } => {
+                // A safe maximum is sized by the venue, so only a stated
+                // amount can be held to the figure the recipe asked for.
+                let amount_matches =
+                    raw_amount.is_none_or(|amount| node.outputs[0].asset.amount == amount);
                 if node.outputs.len() != 1
                     || node.outputs[0].port != "borrowed"
                     || node.outputs[0].asset.token != *debt_token
-                    || node.outputs[0].asset.amount != *raw_amount
+                    || !amount_matches
                 {
                     return Err(RecipeError::InvalidContext);
                 }
@@ -1611,6 +1664,22 @@ fn selections_by_node(
 #[cfg(test)]
 mod tests {
     use std::sync::{Arc, Mutex};
+
+    #[test]
+    fn a_safe_maximum_never_rounds_up_past_the_limit_it_came_from() {
+        // Venus sizes the limit in token units at whatever precision it likes;
+        // rounding up would ask for more than it just said was safe.
+        assert_eq!(
+            super::raw_from_decimal("1.0912345678901234567".parse().expect("decimal"), 18),
+            Some(U256::from(1_091_234_567_890_123_456_u128))
+        );
+        assert_eq!(
+            super::raw_from_decimal("1.0999999".parse().expect("decimal"), 6),
+            Some(U256::from(1_099_999_u128))
+        );
+        // A limit of nothing stays nothing rather than becoming a borrow.
+        assert_eq!(super::raw_from_decimal(Decimal::ZERO, 18), Some(U256::ZERO));
+    }
 
     use alloy_primitives::{Address, B256, Bytes, U256};
     use async_trait::async_trait;
@@ -3240,7 +3309,7 @@ mod tests {
                     id: BORROW_ID,
                     primitive: RecipePrimitive::Borrow {
                         debt_token: SETTLEMENT,
-                        raw_amount,
+                        raw_amount: Some(raw_amount),
                     },
                 },
             ],

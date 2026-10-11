@@ -3,6 +3,8 @@
 //! Every address, raw amount, port and edge is derived here from live catalog
 //! and account data, so model output can only select among known values.
 
+use std::fmt::Write as _;
+
 use alloy_primitives::{Address, U256};
 use rust_decimal::Decimal;
 use uuid::Uuid;
@@ -19,6 +21,7 @@ use crate::{
     recipes::{
         RecipeDefinition, RecipeEdge, RecipeNode, RecipePortRef, RecipePrimitive, SCHEMA_VERSION,
     },
+    wallet_portfolio::BstockBalance,
 };
 
 /// Node IDs are stable per step so diagnostics can be mapped back to steps.
@@ -45,6 +48,7 @@ struct KnownToken {
     decimals: u8,
     aliases: Vec<String>,
     kind: ComposerAssetKind,
+    detail: Option<String>,
 }
 
 struct HeldPosition {
@@ -58,6 +62,46 @@ pub(super) struct Resolver {
     pool: Option<Address>,
     wallet_connected: bool,
     positions: Vec<HeldPosition>,
+    balances: Option<Vec<BstockBalance>>,
+}
+
+/// What a basket holds and what it is for, so "an AI fund" or "something
+/// diversified" can be matched against the catalogue instead of guessed from a
+/// ticker. Kept short: the whole catalogue goes into every prompt.
+fn basket_detail(basket: &BasketSummary) -> String {
+    let mut detail = String::new();
+    if let Some(about) = basket
+        .description
+        .as_deref()
+        .map(str::trim)
+        .filter(|about| !about.is_empty())
+    {
+        detail.push_str(&about.chars().take(220).collect::<String>());
+    }
+    if !basket.categories.is_empty() {
+        let _ = write!(detail, " Themes: {}.", basket.categories.join(", "));
+    }
+    let holdings = basket
+        .assets
+        .iter()
+        .take(4)
+        .map(|asset| {
+            format!(
+                "{} {}%",
+                asset.symbol,
+                asset.weight_percent.round_dp(1).normalize()
+            )
+        })
+        .collect::<Vec<_>>();
+    if !holdings.is_empty() {
+        let _ = write!(detail, " Holds {}", holdings.join(", "));
+        let rest = basket.assets.len().saturating_sub(holdings.len());
+        if rest > 0 {
+            let _ = write!(detail, " and {rest} more");
+        }
+        detail.push('.');
+    }
+    detail.trim().to_owned()
 }
 
 impl Resolver {
@@ -68,6 +112,7 @@ impl Resolver {
         debt_tokens: &[Address],
         pool: Option<Address>,
         account: Option<&BorrowingAccount>,
+        balances: Option<&[BstockBalance]>,
     ) -> Self {
         let mut tokens = settlement_tokens
             .iter()
@@ -80,6 +125,7 @@ impl Resolver {
                 kind: ComposerAssetKind::Stablecoin {
                     borrowable: debt_tokens.contains(&token.address),
                 },
+                detail: None,
             })
             .collect::<Vec<_>>();
         tokens.extend(bstocks.iter().map(|bstock| {
@@ -97,6 +143,7 @@ impl Resolver {
                 .map(|alias| alias.to_lowercase())
                 .collect(),
                 kind: ComposerAssetKind::Stock,
+                detail: None,
             }
         }));
         // An index basket is named by its symbol or its title, never a ticker.
@@ -111,6 +158,7 @@ impl Resolver {
                     .map(|alias| alias.to_lowercase())
                     .collect(),
                 kind: ComposerAssetKind::Basket,
+                detail: Some(basket_detail(basket)),
             }
         }));
 
@@ -147,7 +195,19 @@ impl Resolver {
             pool,
             wallet_connected: account.is_some(),
             positions,
+            balances: balances.map(<[BstockBalance]>::to_vec),
         }
+    }
+
+    /// What the wallet holds of `token`, or `None` when balances were not read.
+    fn balance_of(&self, token: Address) -> Option<Decimal> {
+        let balances = self.balances.as_ref()?;
+        Some(
+            balances
+                .iter()
+                .find(|balance| balance.id.contract == token)
+                .map_or(Decimal::ZERO, |balance| balance.amount),
+        )
     }
 
     pub(super) fn assets(&self) -> Vec<ComposerAsset> {
@@ -157,6 +217,8 @@ impl Resolver {
                 symbol: token.symbol.clone(),
                 name: token.name.clone(),
                 kind: token.kind,
+                balance: self.balance_of(token.address),
+                detail: token.detail.clone(),
             })
             .collect()
     }
@@ -284,17 +346,28 @@ impl Resolver {
                 venue: BorrowingVenue::Venus,
             }),
             StrategyStep::Withdraw => Ok(RecipePrimitive::Withdraw),
-            StrategyStep::Borrow { symbol, amount } => {
+            StrategyStep::Borrow {
+                symbol,
+                amount,
+                maximum,
+            } => {
                 let token = self.debt_token(symbol, label)?;
-                let amount = amount.ok_or_else(|| {
-                    StepProblem::NeedsInput(format!(
-                        "How much {} should be borrowed?",
-                        token.symbol
-                    ))
-                })?;
+                // Asking for the maximum leaves the amount to the venue, which
+                // is the only thing that can size it safely.
+                let raw = if *maximum {
+                    None
+                } else {
+                    let amount = amount.ok_or_else(|| {
+                        StepProblem::NeedsInput(format!(
+                            "How much {} should be borrowed?",
+                            token.symbol
+                        ))
+                    })?;
+                    Some(raw_amount(token, amount, label)?)
+                };
                 Ok(RecipePrimitive::Borrow {
                     debt_token: token.address,
-                    raw_amount: raw_amount(token, amount, label)?,
+                    raw_amount: raw,
                 })
             }
             StrategyStep::Repay => Ok(RecipePrimitive::Repay),
@@ -553,6 +626,7 @@ mod tests {
             StrategyStep::Borrow {
                 symbol: "USDT".to_owned(),
                 amount: Some(Decimal::from(5_u8)),
+                maximum: false,
             },
         ]));
 
@@ -583,6 +657,7 @@ mod tests {
             StrategyStep::Borrow {
                 symbol: "USDT".to_owned(),
                 amount: Some(Decimal::ONE),
+                maximum: false,
             },
         ]);
 
@@ -617,10 +692,53 @@ mod tests {
             StrategyStep::Borrow {
                 symbol: "TSLAB".to_owned(),
                 amount: Some(Decimal::ONE),
+                maximum: false,
             },
         ]));
 
         assert!(matches!(resolution, Resolution::Rejected(_)));
+    }
+
+    #[test]
+    fn a_basket_describes_what_it_holds_and_what_it_is_for() {
+        use crate::baskets::{BasketAssetAllocation, BasketId, BasketKind};
+
+        let holding = |symbol: &str, weight: i64| BasketAssetAllocation {
+            contract: Address::with_last_byte(7),
+            symbol: symbol.to_owned(),
+            name: symbol.to_owned(),
+            weight_percent: Decimal::new(weight, 1),
+        };
+        let basket = BasketSummary {
+            id: BasketId::bnb(Address::with_last_byte(5)),
+            kind: BasketKind::IndexToken,
+            provider_id: "reserve".to_owned(),
+            provider_name: "Reserve".to_owned(),
+            name: "CoinMarketCap 20".to_owned(),
+            symbol: "CMC20".to_owned(),
+            price_usd: None,
+            market_cap_usd: None,
+            annual_fee_percent: None,
+            assets: vec![
+                holding("BTC", 300),
+                holding("ETH", 200),
+                holding("BNB", 100),
+                holding("SOL", 50),
+                holding("XRP", 25),
+            ],
+            categories: vec!["Majors".to_owned(), "DeFi".to_owned()],
+            description: Some("  The twenty largest assets.  ".to_owned()),
+            image_url: None,
+        };
+
+        let detail = basket_detail(&basket);
+
+        // Only the largest holdings are named: the whole catalogue goes into
+        // every prompt, and the rest are summarised rather than listed.
+        assert_eq!(
+            detail,
+            "The twenty largest assets. Themes: Majors, DeFi. Holds BTC 30%, ETH 20%, BNB 10%, SOL 5% and 1 more."
+        );
     }
 
     fn resolver(account: Option<&BorrowingAccount>) -> Resolver {
@@ -635,6 +753,7 @@ mod tests {
             &[USDT],
             Some(POOL),
             account,
+            None,
         )
     }
 

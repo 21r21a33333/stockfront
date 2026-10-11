@@ -1035,7 +1035,12 @@ export interface components {
           debtToken: `0x${string}`;
           /** @enum {string} */
           kind: "BORROW";
-          rawAmount: string;
+          /**
+           * @description Absent asks for the most Venus will lend while holding the
+           *     configured health floor, read from the chain once the collateral is
+           *     actually supplied rather than projected when the recipe is written.
+           */
+          rawAmount?: string | null;
         }
       | {
           /** @enum {string} */
@@ -1406,6 +1411,11 @@ export interface components {
           amount?: string | null;
           /** @enum {string} */
           kind: "BORROW";
+          /**
+           * @description The user asked for the most they can borrow. Only the venue can
+           *     size that, so no amount is stated and Venus decides at signing.
+           */
+          maximum?: boolean;
           symbol: string;
         }
       | {

@@ -181,10 +181,12 @@ function nodeData(node: RecipeNode, assets: AssetOption[]): RecipeNodeData {
       return {
         kind: node.kind,
         debtToken: node.debtToken,
-        amount: formatUnits(
-          BigInt(node.rawAmount),
-          decimalsFor(node.debtToken, assets),
-        ),
+        amount: node.rawAmount
+          ? formatUnits(
+              BigInt(node.rawAmount),
+              decimalsFor(node.debtToken, assets),
+            )
+          : "",
       };
     case "WALLET_ASSET":
       return {

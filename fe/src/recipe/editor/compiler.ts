@@ -107,10 +107,16 @@ const PRIMITIVES: {
       ? {
           kind: data.kind,
           debtToken: data.debtToken,
-          rawAmount: parseAmount(
-            data.amount,
-            assets.get(data.debtToken.toLowerCase())?.decimals ?? 18,
-          ),
+          // Left blank, the amount is omitted and Venus sizes the safe
+          // maximum when the loan is actually prepared.
+          ...(data.amount.trim()
+            ? {
+                rawAmount: parseAmount(
+                  data.amount,
+                  assets.get(data.debtToken.toLowerCase())?.decimals ?? 18,
+                ),
+              }
+            : {}),
         }
       : undefined,
   REPAY: (data) => ({ kind: data.kind }),

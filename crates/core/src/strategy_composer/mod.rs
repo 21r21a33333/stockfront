@@ -5,6 +5,7 @@
 //! raw amount or edge that live data and recipe policy have not produced.
 
 mod model;
+mod playbook;
 mod ports;
 mod resolve;
 mod service;
@@ -14,5 +15,6 @@ pub use model::{
     ComposerPosition, ComposerPositionKind, RejectedDraft, StrategyDraft, StrategyIntent,
     StrategyStep,
 };
+pub use playbook::{HOUSE_STRATEGIES, HouseStrategy, HouseStrategyRisk};
 pub use ports::{StrategyModel, StrategyModelError};
 pub use service::{StrategyComposerError, StrategyComposerService};

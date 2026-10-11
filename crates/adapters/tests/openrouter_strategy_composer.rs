@@ -39,6 +39,7 @@ async fn drafts_a_buy_and_supply_chain_from_plain_english() {
         ],
         positions: Vec::new(),
         previous: None,
+        asked: Vec::new(),
         rejected: None,
     };
 
@@ -68,5 +69,7 @@ fn asset(symbol: &str, name: &str, kind: ComposerAssetKind) -> ComposerAsset {
         symbol: symbol.to_owned(),
         name: name.to_owned(),
         kind,
+        balance: None,
+        detail: None,
     }
 }

@@ -89,9 +89,12 @@ mod tests {
                 symbol: "TSLAB".to_owned(),
                 name: "Tesla".to_owned(),
                 kind: ComposerAssetKind::Stock,
+                balance: None,
+                detail: None,
             }],
             positions: Vec::new(),
             previous: None,
+            asked: Vec::new(),
             rejected: Some(RejectedDraft {
                 intent: StrategyIntent {
                     steps: vec![StrategyStep::Supply],

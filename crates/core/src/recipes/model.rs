@@ -80,7 +80,10 @@ use crate::{
     bstock_market::BstockSummary,
     bstock_trade::{PreparedApproval, PreparedTrade, TokenAmount, TradeQuote},
     carry::{CarryActionPlan, CarryOpportunity, CarryPosition, PreparedCarryDeposit},
-    serialization::{deserialize_from_string, serialize_all_as_strings, serialize_as_string},
+    serialization::{
+        deserialize_from_string, deserialize_optional_from_string, serialize_all_as_strings,
+        serialize_as_string, serialize_optional_as_string,
+    },
     wallet_portfolio::WalletAddress,
 };
 
@@ -605,13 +608,18 @@ pub enum RecipePrimitive {
         )]
         #[schema(value_type = String, format = "evm-address")]
         debt_token: Address,
+        /// Absent asks for the most Venus will lend while holding the
+        /// configured health floor, read from the chain once the collateral is
+        /// actually supplied rather than projected when the recipe is written.
         #[serde(
             rename = "rawAmount",
-            deserialize_with = "deserialize_from_string",
-            serialize_with = "serialize_as_string"
+            default,
+            deserialize_with = "deserialize_optional_from_string",
+            serialize_with = "serialize_optional_as_string",
+            skip_serializing_if = "Option::is_none"
         )]
-        #[schema(value_type = String)]
-        raw_amount: U256,
+        #[schema(value_type = Option<String>)]
+        raw_amount: Option<U256>,
     },
     Repay,
     EarnDeposit {

@@ -648,6 +648,7 @@ function BorrowFields({
             id={`borrow-${node.id}`}
             className="mono"
             inputMode="decimal"
+            placeholder="Safe maximum"
             value={data.amount}
             onChange={(event) =>
               editor.updateNode(node.id, { amount: event.target.value })

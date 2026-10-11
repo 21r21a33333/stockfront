@@ -1256,7 +1256,10 @@ function stepTitle(
       return `Deposit ${assetFor(assets, inputToken)?.symbol ?? ""} into earn`;
     case "BORROW": {
       const debt = assetFor(assets, node.debtToken);
-      return `${step.collateralEnabled ? "" : "Enable collateral, then "}Borrow ${amountText(node.rawAmount, debt)} ${debt?.symbol ?? ""}`;
+      const amount = node.rawAmount
+        ? amountText(node.rawAmount, debt)
+        : "the safe maximum";
+      return `${step.collateralEnabled ? "" : "Enable collateral, then "}Borrow ${amount} ${debt?.symbol ?? ""}`;
     }
     case "REPAY":
       return "Repay full debt";
