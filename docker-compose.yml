@@ -1,0 +1,67 @@
+# Production stack for Coolify (Docker Compose build pack).
+# Only `web` gets a domain; it serves the app and proxies /api to `backend`.
+# Secrets marked :? must be set in Coolify's environment variables or the
+# deploy stops. Everything else defaults to the values in .env.example.
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      STOCKFRONT_BIND_ADDRESS: 0.0.0.0:3100
+
+      BINANCE_WEB3_API_KEY: ${BINANCE_WEB3_API_KEY:?set BINANCE_WEB3_API_KEY}
+      BINANCE_WEB3_API_SECRET: ${BINANCE_WEB3_API_SECRET:?set BINANCE_WEB3_API_SECRET}
+      GLIDER_API_KEY: ${GLIDER_API_KEY:?set GLIDER_API_KEY}
+
+      AI_PROVIDER: ${AI_PROVIDER:-openrouter}
+      AI_REQUEST_TIMEOUT_SECONDS: ${AI_REQUEST_TIMEOUT_SECONDS:-60}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      OPENROUTER_BASE_URL: ${OPENROUTER_BASE_URL:-https://openrouter.ai/api/v1}
+      OPENROUTER_MODEL: ${OPENROUTER_MODEL:-google/gemini-2.5-flash}
+      OPENROUTER_REQUIRE_PARAMETERS: ${OPENROUTER_REQUIRE_PARAMETERS:-false}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_API_BASE_URL: ${GEMINI_API_BASE_URL:-https://generativelanguage.googleapis.com/v1beta}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-flash-latest}
+
+      BSC_RPC_URL: ${BSC_RPC_URL:-https://bsc-dataseed.bnbchain.org}
+      BINANCE_WEB3_BASE_URL: ${BINANCE_WEB3_BASE_URL:-https://web3.binance.com/build}
+      VENUS_API_BASE_URL: ${VENUS_API_BASE_URL:-https://api.venus.io}
+      VENUS_COMPTROLLER_ADDRESS: ${VENUS_COMPTROLLER_ADDRESS:-0xfD36E2c2a6789Db23113685031d7F16329158384}
+      RESERVE_API_BASE_URL: ${RESERVE_API_BASE_URL:-https://api.reserve.org}
+      GLIDER_API_BASE_URL: ${GLIDER_API_BASE_URL:-https://api.glider.fi/v2}
+
+      STOCKFRONT_CARRY_INVESTMENT_IDS: ${STOCKFRONT_CARRY_INVESTMENT_IDS:-dfeb150e81cf3b1b5861b30db363ae824853a6fb3beb7fa4a83885dd0f414654}
+      STOCKFRONT_MIN_CARRY_SPREAD_BPS: ${STOCKFRONT_MIN_CARRY_SPREAD_BPS:-100}
+      STOCKFRONT_LIQUIDITY_INVESTMENT_IDS: ${STOCKFRONT_LIQUIDITY_INVESTMENT_IDS:-72e73da9afc69f6b257f59eda4982815ca9c0ff6a0098267547c92e0c29f7761}
+      STOCKFRONT_LIQUIDITY_SLIPPAGE_BPS: ${STOCKFRONT_LIQUIDITY_SLIPPAGE_BPS:-100}
+      STOCKFRONT_TRADE_SETTLEMENT_TOKENS: ${STOCKFRONT_TRADE_SETTLEMENT_TOKENS:-0x55d398326f99059ff775485246999027b3197955,0x8ac76a51cc950d9822d68b83fe1ad97b32cd580d,0x0782b6d8c4551B9760e74c0545a9bCD90bdc41E5}
+      STOCKFRONT_TRADE_SETTLEMENT_PAIRS: ${STOCKFRONT_TRADE_SETTLEMENT_PAIRS:-true}
+      STOCKFRONT_MAX_TRADE_PRICE_IMPACT_BPS: ${STOCKFRONT_MAX_TRADE_PRICE_IMPACT_BPS:-100}
+      STOCKFRONT_TRADE_SLIPPAGE_BPS: ${STOCKFRONT_TRADE_SLIPPAGE_BPS:-50}
+      STOCKFRONT_BORROW_DEBT_TOKENS: ${STOCKFRONT_BORROW_DEBT_TOKENS:-0x55d398326f99059fF775485246999027B3197955}
+    # Every API route calls a provider, so liveness is the open port.
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/3100"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  web:
+    build:
+      context: ./fe
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    expose:
+      - "80"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1/"]
+      interval: 15s
+      timeout: 5s
+      retries: 5

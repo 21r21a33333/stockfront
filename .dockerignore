@@ -1,0 +1,10 @@
+# Backend build context: only Cargo.toml, Cargo.lock and crates/ are needed.
+.git
+.env
+.env.*
+target
+fe
+docs
+openapi
+scripts
+.claude
