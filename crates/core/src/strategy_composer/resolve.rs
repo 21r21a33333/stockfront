@@ -104,16 +104,34 @@ fn basket_detail(basket: &BasketSummary) -> String {
     detail.trim().to_owned()
 }
 
+/// Everything a resolver is built from: the catalogue the model may name, the
+/// policy that limits it, and the wallet it is drafting against.
+#[derive(Clone, Copy)]
+pub(super) struct ResolverInputs<'a> {
+    pub bstocks: &'a [BstockSummary],
+    pub baskets: &'a [BasketSummary],
+    pub settlement_tokens: &'a [SettlementTokenMetadata],
+    pub debt_tokens: &'a [Address],
+    /// Stocks the lending venue will take as collateral today. A stock outside
+    /// this list can be traded but never supplied or borrowed against.
+    pub collateral_tokens: &'a [Address],
+    pub pool: Option<Address>,
+    pub account: Option<&'a BorrowingAccount>,
+    pub balances: Option<&'a [BstockBalance]>,
+}
+
 impl Resolver {
-    pub(super) fn new(
-        bstocks: &[BstockSummary],
-        baskets: &[BasketSummary],
-        settlement_tokens: &[SettlementTokenMetadata],
-        debt_tokens: &[Address],
-        pool: Option<Address>,
-        account: Option<&BorrowingAccount>,
-        balances: Option<&[BstockBalance]>,
-    ) -> Self {
+    pub(super) fn new(inputs: ResolverInputs<'_>) -> Self {
+        let ResolverInputs {
+            bstocks,
+            baskets,
+            settlement_tokens,
+            debt_tokens,
+            collateral_tokens,
+            pool,
+            account,
+            balances,
+        } = inputs;
         let mut tokens = settlement_tokens
             .iter()
             .map(|token| KnownToken {
@@ -142,7 +160,9 @@ impl Resolver {
                 .iter()
                 .map(|alias| alias.to_lowercase())
                 .collect(),
-                kind: ComposerAssetKind::Stock,
+                kind: ComposerAssetKind::Stock {
+                    collateral: collateral_tokens.contains(&bstock.id.contract),
+                },
                 detail: None,
             }
         }));
@@ -317,7 +337,7 @@ impl Resolver {
             }
             StrategyStep::SuppliedPosition { symbol } => {
                 let token = self.token(symbol, label)?;
-                if token.kind != ComposerAssetKind::Stock {
+                if !matches!(token.kind, ComposerAssetKind::Stock { .. }) {
                     return Err(StepProblem::Invalid(format!(
                         "{label}: only stocks can be supplied positions, not {}",
                         token.symbol
@@ -373,7 +393,7 @@ impl Resolver {
             StrategyStep::Repay => Ok(RecipePrimitive::Repay),
             StrategyStep::EarnDeposit { symbol } => {
                 let token = self.token(symbol, label)?;
-                if token.kind != ComposerAssetKind::Stock {
+                if !matches!(token.kind, ComposerAssetKind::Stock { .. }) {
                     return Err(StepProblem::Invalid(format!(
                         "{label}: the earn benchmark must be a stock, not {}",
                         token.symbol
@@ -742,19 +762,20 @@ mod tests {
     }
 
     fn resolver(account: Option<&BorrowingAccount>) -> Resolver {
-        Resolver::new(
-            &[tesla()],
-            &[],
-            &[SettlementTokenMetadata {
+        Resolver::new(ResolverInputs {
+            bstocks: &[tesla()],
+            baskets: &[],
+            settlement_tokens: &[SettlementTokenMetadata {
                 address: USDT,
                 symbol: "USDT".to_owned(),
                 decimals: 18,
             }],
-            &[USDT],
-            Some(POOL),
+            debt_tokens: &[USDT],
+            collateral_tokens: &[TSLAB],
+            pool: Some(POOL),
             account,
-            None,
-        )
+            balances: None,
+        })
     }
 
     fn intent(steps: Vec<StrategyStep>) -> StrategyIntent {

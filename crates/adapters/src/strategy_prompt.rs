@@ -24,7 +24,7 @@ Sources:
 - BORROWED_POSITION {symbol}: an existing Venus debt listed below. Outputs the debt.
 Actions:
 - TRADE {buySymbol}: swaps the incoming tokens. The input must be tokens, from a WALLET_ASSET or a BORROW; a supplied or borrowed position can never feed a TRADE. Outputs the bought tokens.
-- SUPPLY: supplies the incoming stock to Venus as collateral. Only stocks. Outputs the new collateral position, which a BORROW or WITHDRAW may use.
+- SUPPLY: supplies the incoming stock to Venus as collateral. Only a stock marked usable as collateral. Outputs the new collateral position, which a BORROW or WITHDRAW may use.
 - EARN_DEPOSIT {symbol}: deposits the incoming stablecoin into a reviewed earn product. symbol is the stock the earn rate is compared against, so use the collateral behind the loan that funded it. Stockfront picks the product. Only stablecoins. Ends the chain.
 - BORROW {symbol, amount}: input must be a supplied position, either one listed below or one a SUPPLY step earlier in the same chain just created; borrows a borrowable stablecoin. Outputs the borrowed tokens.
 - REPAY: input must be a borrowed position; repays the whole debt. Ends the chain.
@@ -44,6 +44,9 @@ Rules:
 - Pick the source from what the user holds, not from the verb. Tokens the user owns are WALLET_ASSET. Use SUPPLIED_POSITION or BORROWED_POSITION only for a position that appears in the position list below; when that list says none, you must not use them at all.
 - Selling, swapping back or cashing out a stock means TRADE into a stablecoin starting from WALLET_ASSET, unless the user says the stock is supplied or used as collateral. Withdrawing, unsupplying or taking back collateral means WITHDRAW from a supplied position.
 - Use only symbols from the asset list. Map company names and tickers to their bStock symbol.
+- Only a stock marked usable as collateral can be supplied or borrowed against. Every other stock can still be bought and sold. \
+When a strategy needs collateral and the user did not name a stock, choose one marked usable as collateral; \
+when the user named one that is not, say so in assumptions and use the closest one that is.
 - A dollar amount means that many USDT; say so in assumptions.
 - Amounts are decimal strings in token units. Never invent an amount.
 - How much may be borrowed depends on live collateral prices and Venus risk limits that are not shown here. \
@@ -126,7 +129,8 @@ being refined and return that strategy complete, changing nothing else.",
     text.push_str("\nAssets:\n");
     for asset in &context.assets {
         let kind = match asset.kind {
-            ComposerAssetKind::Stock => "stock",
+            ComposerAssetKind::Stock { collateral: true } => "stock, usable as collateral",
+            ComposerAssetKind::Stock { collateral: false } => "stock, not accepted as collateral",
             ComposerAssetKind::Basket => "index basket",
             ComposerAssetKind::Stablecoin { borrowable: true } => "stablecoin, borrowable",
             ComposerAssetKind::Stablecoin { borrowable: false } => "stablecoin",
@@ -272,7 +276,7 @@ mod tests {
         ComposerAsset {
             symbol: symbol.to_owned(),
             name: "Tesla, Inc.".to_owned(),
-            kind: ComposerAssetKind::Stock,
+            kind: ComposerAssetKind::Stock { collateral: true },
             balance: balance.map(|value| value.parse().expect("test balance is a decimal")),
             detail: detail.map(ToOwned::to_owned),
         }
@@ -283,7 +287,9 @@ mod tests {
         let text = instructions(&context(vec![asset("TSLAB", Some("0.018270"), None)]));
 
         // Trailing zeros would read as precision the balance does not have.
-        assert!(text.contains("- TSLAB: Tesla, Inc. (stock, you hold 0.01827)"));
+        assert!(
+            text.contains("- TSLAB: Tesla, Inc. (stock, usable as collateral, you hold 0.01827)")
+        );
         assert!(text.contains("an asset with no holding is one you do not own"));
     }
 
@@ -294,8 +300,8 @@ mod tests {
             asset("NVDAB", None, None),
         ]));
 
-        assert!(text.contains("- TSLAB: Tesla, Inc. (stock)\n"));
-        assert!(text.contains("- NVDAB: Tesla, Inc. (stock)\n"));
+        assert!(text.contains("- TSLAB: Tesla, Inc. (stock, usable as collateral)\n"));
+        assert!(text.contains("- NVDAB: Tesla, Inc. (stock, usable as collateral)\n"));
     }
 
     #[test]
@@ -306,7 +312,25 @@ mod tests {
             Some("Themes: Majors, DeFi. Holds BTC 30%."),
         )]));
 
-        assert!(text.contains("- CMC20: Tesla, Inc. (stock)\n    Themes: Majors, DeFi."));
+        assert!(text.contains(
+            "- CMC20: Tesla, Inc. (stock, usable as collateral)\n    Themes: Majors, DeFi."
+        ));
+    }
+
+    #[test]
+    fn a_stock_the_venue_will_not_take_says_so() {
+        let mut usable = asset("TSLAB", None, None);
+        let mut refused = asset("SPYB", None, None);
+        refused.kind = ComposerAssetKind::Stock { collateral: false };
+        usable.kind = ComposerAssetKind::Stock { collateral: true };
+
+        let text = instructions(&context(vec![usable, refused]));
+
+        // Four of forty-six stocks are collateral, so a model told only "stock"
+        // picks one it cannot supply and the strategy dies at resolution.
+        assert!(text.contains("- TSLAB: Tesla, Inc. (stock, usable as collateral)"));
+        assert!(text.contains("- SPYB: Tesla, Inc. (stock, not accepted as collateral)"));
+        assert!(text.contains("Only a stock marked usable as collateral can be supplied"));
     }
 
     #[test]

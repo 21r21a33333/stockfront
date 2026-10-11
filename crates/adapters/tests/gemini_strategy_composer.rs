@@ -28,8 +28,16 @@ async fn drafts_a_buy_and_supply_chain_from_plain_english() {
                 "USDT",
                 ComposerAssetKind::Stablecoin { borrowable: true },
             ),
-            asset("NVDAB", "NVIDIA", ComposerAssetKind::Stock),
-            asset("TSLAB", "Tesla", ComposerAssetKind::Stock),
+            asset(
+                "NVDAB",
+                "NVIDIA",
+                ComposerAssetKind::Stock { collateral: true },
+            ),
+            asset(
+                "TSLAB",
+                "Tesla",
+                ComposerAssetKind::Stock { collateral: true },
+            ),
         ],
         positions: Vec::new(),
         previous: None,

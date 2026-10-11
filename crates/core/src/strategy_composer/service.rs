@@ -6,10 +6,12 @@ use thiserror::Error;
 use super::{
     ComposeContext, ComposeStrategyRequest, ComposedStrategy, RejectedDraft, StrategyDraft,
     StrategyIntent, StrategyModel, StrategyModelError,
-    resolve::{Resolution, Resolver, step_index},
+    resolve::{Resolution, Resolver, ResolverInputs, step_index},
 };
 use crate::{
-    bstock_borrowing::{BorrowingAccount, BorrowingService, BorrowingServiceError},
+    bstock_borrowing::{
+        BorrowingAccount, BorrowingMarketQuery, BorrowingService, BorrowingServiceError,
+    },
     bstock_market::{BNB_CHAIN_ID, BstockId},
     bstock_trade::SettlementTokenMetadata,
     carry::{CarryOpportunityQuery, CarryQualification, CarryService, CarryServiceError},
@@ -54,6 +56,10 @@ struct ComposeInputs {
     /// `None` when no wallet is connected, or when the balance provider was
     /// unreachable. The model then asks for an amount, as it did before.
     balances: Option<Vec<BstockBalance>>,
+    /// Stocks the lending venue will take as collateral right now. Without
+    /// these the model picks a stock it cannot supply, and the strategy fails
+    /// at resolution rather than at drafting.
+    collateral: Vec<Address>,
 }
 
 /// What the model is told before it drafts.
@@ -245,10 +251,25 @@ impl StrategyComposerService {
                 .map(|snapshot| snapshot.balances),
             None => None,
         };
+        // Which stocks can be supplied is live venue policy, not catalogue
+        // data, so it is read rather than inferred.
+        let collateral = self
+            .borrowing
+            .markets(BorrowingMarketQuery::default())
+            .await
+            .map(|markets| {
+                markets
+                    .into_iter()
+                    .filter(|market| market.supply_available)
+                    .map(|market| market.collateral.contract)
+                    .collect()
+            })
+            .unwrap_or_default();
         Ok(ComposeInputs {
             catalog,
             account,
             balances,
+            collateral,
         })
     }
 
@@ -273,20 +294,22 @@ impl StrategyComposerService {
             catalog,
             account,
             balances,
+            collateral,
         } = self.read_context(request.wallet).await?;
-        let resolver = Resolver::new(
-            &catalog.bstocks,
-            &catalog.baskets,
-            &self.settlement_tokens,
-            &catalog.borrow_policy.debt_tokens,
-            catalog
+        let resolver = Resolver::new(ResolverInputs {
+            bstocks: &catalog.bstocks,
+            baskets: &catalog.baskets,
+            settlement_tokens: &self.settlement_tokens,
+            debt_tokens: &catalog.borrow_policy.debt_tokens,
+            collateral_tokens: &collateral,
+            pool: catalog
                 .borrow_policy
                 .allowed_inputs
                 .first()
                 .map(|rule| rule.pool),
-            account.as_ref(),
-            balances.as_deref(),
-        );
+            account: account.as_ref(),
+            balances: balances.as_deref(),
+        });
         let mut context = model_context(prompt, &catalog, &resolver, request.previous.as_ref());
 
         let mut calls = 0;

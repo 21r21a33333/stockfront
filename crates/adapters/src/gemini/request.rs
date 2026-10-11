@@ -88,7 +88,7 @@ mod tests {
             assets: vec![ComposerAsset {
                 symbol: "TSLAB".to_owned(),
                 name: "Tesla".to_owned(),
-                kind: ComposerAssetKind::Stock,
+                kind: ComposerAssetKind::Stock { collateral: true },
                 balance: None,
                 detail: None,
             }],
@@ -116,7 +116,7 @@ mod tests {
         assert!(
             body["systemInstruction"]["parts"][0]["text"]
                 .as_str()
-                .is_some_and(|text| text.contains("- TSLAB: Tesla (stock)"))
+                .is_some_and(|text| text.contains("- TSLAB: Tesla (stock, usable as collateral)"))
         );
         assert_eq!(
             body["generationConfig"]["responseMimeType"],
