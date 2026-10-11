@@ -6,7 +6,55 @@ Stockfront is a non-custodial strategy engine for onchain finance. You describe 
 
 Underneath the chat box is the part that makes it work: **a strategy language and a compiler for it.**
 
-For the strategies themselves — what they earn, what they cost and what they risk — see [PRODUCT.md](PRODUCT.md).
+---
+
+## Strategies
+
+Live readings from the running deployment on BNB Chain, 2026-10-11. Rates move; the engine re-reads them on every composition.
+
+### Earn
+
+**USD Carry** · *live* · **+1.11% net spread**
+
+Collateralize a tokenized stock, borrow USDT at **5.12% APY**, deploy into the reviewed Lista USDT product at **6.23% APY**, keep the difference. Stock exposure is retained the whole time and the position unwinds through a prepared exit.
+
+The engine ranks **9 discovered earn products** on every composition — currently spanning **2.18% to 11.22%** across Plume, Lista, Venus, Venus Flux and Aave V3. Only reviewed products can be deposited into, so the executable spread is the conservative one; as products clear review the same strategy routes to them with no change to the user's intent. Borrow sizing holds a **1.5 health-factor floor** and comes from the venue, never an estimate.
+
+**Leveraged Stock** · *live* · **1.60× exposure per run**
+
+Buy a stock, post it as collateral, borrow against it, buy more, post that too — one strategy, one review, one signing session. Repeating the run compounds the exposure. Every borrow is gated on the venue confirming the amount holds the health floor, so an overextended loop is refused rather than liquidated.
+
+Collateral terms today: **0.60 CF / 0.70 LT** on majors, **0.50 CF / 0.65 LT** on the rest.
+
+**Index Baskets** · *live* · **0.30%–0.60% annual fee**
+
+One token holding an entire index, backed by its assets and rebalanced onchain. A broad market-cap index at **0.30%** across **17 holdings**, and five thematic onchain folios at **0.60%** covering AI infrastructure, AI power, photonics, neocloud capacity and robotics, **8 to 25 holdings** each. No debt, no liquidation — market risk only.
+
+**Basis trades, covered calls, collars** · *roadmap* — unlocked as perpetual and options venues are adapted.
+
+### Borrow
+
+**Floating-Rate Borrowing** · *live* · **5.12% APY on USDT**
+
+Borrow against tokenized stock collateral without selling it. Collateral factors, liquidation thresholds, oracle validity and health factors are read directly from the lending market rather than from an index. **$40.9M** of borrow liquidity available.
+
+**Venue-Sized Maximums** · *live*
+
+Ask for the most you can safely borrow and no number is written into the strategy at all. The venue states its own limit once the collateral exists, and that figure is what you review before signing.
+
+### Trade
+
+**Spot, aggregated** · *live* · **46 tokenized stocks, 6 index baskets, stablecoin pairs**
+
+Routed across venues, with price impact on every quote and a minimum-received figure on every trade. Approvals and actions batch into a single wallet prompt where EIP-5792 allows.
+
+**Perpetuals and hedging** · *roadmap*
+
+### Exit
+
+Every position carries a prepared exit — repay, withdraw, redeem, sell — and exits stay available even when an entry is no longer offered, so a policy change cannot trap a position.
+
+The full breakdown, including market context and roadmap, is in [PRODUCT.md](PRODUCT.md).
 
 ---
 
@@ -112,7 +160,9 @@ Onchain reads sit alongside the APIs wherever a number decides solvency: collate
 
 ---
 
-## What is live today
+## The interface
+
+The strategies above are reachable three ways, and all three produce the same artifact through the same compiler.
 
 **The composer** turns plain language into a validated recipe, and it is situated in your actual portfolio. It knows what you hold, so *"sell all my Tesla"* resolves to an exact balance instead of a question — and *"sell my Apple stock"* answers that you do not hold any rather than drafting something that cannot settle. It knows what each basket contains and what it is for, so *"something diversified"*, *"AI infrastructure"* and *"a risk-adjusted fund"* all find the right one. It knows the strategies the product offers and rebuilds them against whichever asset suits the request.
 
@@ -123,8 +173,6 @@ Onchain reads sit alongside the APIs wherever a number decides solvency: collate
 **Curated strategies** lead the compose page with live figures — net carry after borrow cost, exposure per run, trailing index performance — each naming the specific risk it carries rather than wearing a score.
 
 **Positions** brings wallet holdings, collateral, debt with health factor, earn deposits and basket holdings into one view, each with a prepared exit.
-
-**Venues wired today:** aggregated trading across stocks, stablecoins and index baskets; collateralised lending with onchain health verification; and reviewed earn products discovered through Binance Web3. Running on BNB Chain.
 
 ---
 
