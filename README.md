@@ -9,8 +9,6 @@ Users simply specify their financial intent, and Stockfront automatically recomm
 - **Transparent Risk.** Health factor before and after every borrow, liquidation distance, and named risk per strategy.
 - **Verified Execution.** Every strategy is compiled, validated against live chain state, and user-signed.
 
-*All figures are live readings from the BNB Chain deployment, 2026-10-11. Rates are re-read on every composition.*
-
 ---
 
 ## Problem
