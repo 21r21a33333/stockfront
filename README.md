@@ -1,15 +1,15 @@
 # Stockfront
 
-**Say what you want your money to do. Stockfront turns it into transactions you review and sign.**
+**Yield, leverage and liquidity from stocks you never have to sell.**
 
-Stockfront is a non-custodial strategy engine for onchain finance. It gives holders of tokenized stocks the strategies a prime brokerage would run for them — and the returns on each one before they commit.
+Stockfront is a non-custodial prime brokerage for tokenized equities: proven yield strategies with their live returns attached, risk measured and shown at every step, and an AI that composes any of it from a sentence — all of it type-checked before a single transaction reaches a wallet.
 
-- **Proven strategies, ready to run.** Carry, leverage and index exposure are the shapes institutions have run for decades. Stockfront packages them as curated strategies with their **live rate on the card** — the net spread after borrow cost, the exposure each leverage turn buys, the fee and holdings behind an index — so the return is known before anything is signed, not discovered afterwards.
-- **Reusable against any asset.** A strategy is a shape, not a fixed product. The same carry runs against whichever stock and earn venue price best today, and re-routes as rates move. Run one as it stands, or adapt it by saying what to change.
-- **Or describe your own.** State an outcome in plain language — *"buy Nvidia, post it as collateral, borrow against it and earn on the loan"* — and Stockfront composes it from the same blocks, sized to what the wallet actually holds.
-- **Checked before it is signed.** Every strategy, curated or composed, goes through the same compiler and is prepared against live chain state. Every transaction is signed by the user and nothing runs on its own.
+- **Yield strategies, ready to run.** Carry, leverage and index exposure are shapes institutions have run for decades. Each ships with its **live rate on the card** — the net spread after borrow cost, the exposure a leverage turn buys, the fee and holdings behind an index — so the return is known before anything is signed. And each is a shape rather than a fixed product: the same carry runs against whichever stock and earn venue price best today, and re-routes as rates move.
+- **Risk measured, not buried.** Health factor before and after every borrow, distance to liquidation on a three-zone scale, and the specific thing that can cost money named on every strategy. Borrow limits come from the venue at a **1.5 health floor** rather than an estimate, collateral terms and oracle validity are read onchain, deposits are restricted to reviewed products, and every quote carries price impact and a minimum received.
+- **AI that does the work.** State an outcome — *"the safest way to earn yield"*, *"sell all my Tesla and buy an AI index"* — and Stockfront picks the strategy, the assets and the amounts from what the wallet actually holds, explains what it assumed, and says what it will not do.
+- **Checked before it is signed.** Curated or composed, every strategy goes through the same compiler and is prepared against live chain state, one step at a time. Every transaction is signed by the user and nothing runs on its own.
 
-Underneath the chat box is the part that makes it work: **a strategy language and a compiler for it.**
+Underneath all of it is the part that makes it safe: **a strategy language and a compiler for it.**
 
 ---
 
@@ -54,6 +54,12 @@ Ask for the most you can safely borrow and no number is written into the strateg
 Routed across venues, with price impact on every quote and a minimum-received figure on every trade. Approvals and actions batch into a single wallet prompt where EIP-5792 allows.
 
 **Perpetuals and hedging** · *roadmap*
+
+### Risk
+
+Every borrow reports **health factor before and after**, scored against a **1.5 floor** on a three-zone scale. Collateral factors, liquidation thresholds and oracle validity come from direct onchain reads, so a safety check never depends on a stale feed.
+
+Each strategy names the specific thing that can cost money — liquidation if the collateral falls, losses amplified per leverage turn, market risk with no debt at all — rather than a single score that hides which. Deposits reach only reviewed earn products, borrow sizing comes from the venue, every quote carries price impact and a minimum received, and a venue that cannot serve a step reports why by name.
 
 ### Exit
 

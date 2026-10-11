@@ -1,6 +1,8 @@
 # Stockfront
 
-**Onchain prime brokerage for tokenized equities, driven by intent.**
+**Yield, leverage and liquidity from stocks you never have to sell.**
+
+Proven yield strategies with their live returns attached, risk measured and shown at every step, and an AI that composes any of it from a sentence.
 
 Figures below are live readings from the running deployment on BNB Chain, taken 2026-10-11. Rates move.
 
@@ -12,8 +14,9 @@ Stockfront lets holders of tokenized stocks unlock yield, leverage and liquidity
 
 - **Proven strategies with their returns attached.** Carry, leverage and index exposure are the shapes institutions have run for decades. Each ships as a curated strategy showing its live rate — net spread after borrow cost, exposure per leverage turn, fee and holdings behind an index — so the return is known before anything is signed.
 - **Reusable, not fixed products.** A strategy is a shape. The same carry runs against whichever stock and earn venue price best today and re-routes as rates move, so one strategy covers a catalog of **46 stocks and 6 index baskets** rather than a single pair.
-- **One interface** across earn, borrow, trade and exit against tokenized equities and index baskets.
-- **Or state an intent** — *"earn on my idle USDT"*, *"the best APY, I can take risk"* — and Stockfront composes the strategy from the same blocks, sizes it against live venue limits, and walks the user through signing it.
+- **Risk measured at every step.** Health factor before and after each borrow, liquidation distance, venue-sized limits at a 1.5 floor, onchain collateral terms and oracle validity, reviewed-only deposits, and price impact on every quote.
+- **One interface** across earn, borrow, trade, risk and exit.
+- **Or state an intent** — *"earn on my idle USDT"*, *"the best APY, I can take risk"* — and Stockfront picks the strategy, the assets and the amounts from what the wallet holds, and says what it assumed.
 - **Advanced strategies for anyone with a wallet.** No minimum, no account approval, no desk.
 
 ---
@@ -65,6 +68,17 @@ Borrow stablecoins against tokenized stock collateral with onchain health verifi
 
 **Venue-Sized Maximums** — *Live.*
 Ask for the most you can safely borrow and no number is written into the strategy. The venue states its own limit once the collateral exists, and that figure is what the user reviews.
+
+### Risk
+
+**Position health** — *Live.*
+Every borrow reports health factor before and after, scored on a three-zone scale against a **1.5 floor**. Collateral factors, liquidation thresholds and oracle validity are read directly from the lending market rather than from an index, so a safety check never depends on a stale feed.
+
+**Named risk per strategy** — *Live.*
+Each curated strategy states the specific thing that can cost money — liquidation if the collateral falls, losses amplified per leverage turn, market risk with no debt at all — rather than a single score that hides which.
+
+**Policy gates** — *Live.*
+Deposits reach only reviewed earn products. Borrow sizing comes from the venue, never an estimate. Trades carry price impact and a minimum received. A venue that cannot serve a step reports why, by name.
 
 ### Trade
 
