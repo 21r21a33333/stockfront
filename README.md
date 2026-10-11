@@ -117,6 +117,22 @@ Health factor **before and after** every borrow, scored on a three-zone scale ag
 
 ---
 
+## The interface
+
+The strategies above are reachable three ways, and all three produce the same artifact through the same compiler.
+
+**The composer** turns plain language into a validated recipe, situated in your actual portfolio.
+
+**The builder** is the same recipe on a canvas: a block palette, typed connections, a live inspector with health-factor previews, and route selection per trade.
+
+**The run screen** prepares one step at a time, batches calls into a single wallet prompt where EIP-5792 allows, follows a signed order to the venue that quoted it, and keeps a journal so a run resumes after a refresh.
+
+**Curated strategies** lead the compose page with live figures, each naming the risk it carries.
+
+**Positions** brings wallet holdings, collateral, debt with health factor, earn deposits and basket holdings into one view, each with a prepared exit.
+
+---
+
 ## The engine: why a compiler
 
 A language model can write a plausible DeFi strategy in a second. The distance between *plausible* and *executable* is where money is lost.
@@ -211,22 +227,6 @@ Onchain reads sit alongside the APIs wherever a number decides solvency: collate
 
 ---
 
-## The interface
-
-The strategies above are reachable three ways, and all three produce the same artifact through the same compiler.
-
-**The composer** turns plain language into a validated recipe, situated in your actual portfolio.
-
-**The builder** is the same recipe on a canvas: a block palette, typed connections, a live inspector with health-factor previews, and route selection per trade.
-
-**The run screen** prepares one step at a time, batches calls into a single wallet prompt where EIP-5792 allows, follows a signed order to the venue that quoted it, and keeps a journal so a run resumes after a refresh.
-
-**Curated strategies** lead the compose page with live figures, each naming the risk it carries.
-
-**Positions** brings wallet holdings, collateral, debt with health factor, earn deposits and basket holdings into one view, each with a prepared exit.
-
----
-
 ## Why this compounds
 
 **Discovery layer.** Nine earn products, four lending markets, six index baskets and forty-six stocks ranked and compared on every composition. No user reads four UIs.
@@ -262,6 +262,19 @@ The strategies above are reachable three ways, and all three produce the same ar
 
 ---
 
+## Safety
+
+- Non-custodial throughout. Positions live in your wallet and every transaction is signed by you.
+- The model proposes only; addresses, amounts and connections are derived from live data.
+- Borrowing holds a configured health-factor floor, with limits read from the venue rather than estimated.
+- Deposits are restricted to explicitly reviewed earn products.
+- Preparation re-reads live state, so a plan written minutes ago cannot execute against assumptions that have expired.
+- Exits stay available even when an entry is no longer offered.
+
+Returns are exposed to variable rates, protocol risk, price movement, liquidation and transaction costs. Nothing here is principal-protected.
+
+---
+
 ## Running it
 
 ```sh
@@ -284,24 +297,13 @@ The strategy model is pluggable — any OpenAI-compatible endpoint or Gemini, se
 
 ---
 
-## Safety
-
-- Non-custodial throughout. Positions live in your wallet and every transaction is signed by you.
-- The model proposes only; addresses, amounts and connections are derived from live data.
-- Borrowing holds a configured health-factor floor, with limits read from the venue rather than estimated.
-- Deposits are restricted to explicitly reviewed earn products.
-- Preparation re-reads live state, so a plan written minutes ago cannot execute against assumptions that have expired.
-- Exits stay available even when an entry is no longer offered.
-
-Returns are exposed to variable rates, protocol risk, price movement, liquidation and transaction costs. Nothing here is principal-protected.
-
----
-
 ## Architecture
 
 Vertical product slices over hexagonal architecture. The domain owns financial rules and ports; protocols, HTTP, chain access and model providers are adapters. Strategy logic stays testable and no single provider's shape leaks into the product.
 
 Contributors and coding agents should read [AGENTS.md](AGENTS.md) first — it defines the architecture boundaries, integration policy, testing standards, generated-code ownership and secret handling.
+
+---
 
 ## License
 
