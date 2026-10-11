@@ -13,11 +13,11 @@ Users simply specify their financial intent, and Stockfront automatically recomm
 
 ## Problem
 
-- **Idle equity capital at enormous scale.** Global listed equities run to roughly $100T, and the retail share sits in brokerage accounts earning nothing beyond price appreciation.
-- **Prime brokerage is gated.** Portfolio margin, structured products and carry desks are institutional products behind capital minimums, account approval and jurisdictional limits.
-- **Where retail can borrow, it is expensive.** Margin sits in the mid-to-high single digits and above; leveraged ETFs layer an annual fee on top of financing.
-- **Onchain the opportunity exists but is unusable.** Tokenized stocks already trade, lend and earn across separate venues. Finding the best route means reading four protocol UIs, computing a spread by hand, and signing a different transaction at each — then unwinding the same way.
-- **And nobody tells you the risk.** The number that decides whether a position survives a drawdown is buried in a protocol dashboard, if it is shown at all.
+- **Massive idle equity capital.** ~$100T in listed equities, with the retail share earning nothing beyond price appreciation.
+- **Advanced strategies are gated.** Portfolio margin, carry, and structured products sit behind capital minimums, account approval, and jurisdictional limits.
+- **Prime brokerage is costly.** Retail margin runs mid-to-high single digits; leveraged ETFs layer an annual fee on top of financing.
+- **Onchain, the research burden falls on the user.** Comparing rates across separate protocol UIs, computing spreads by hand, signing at each venue, then unwinding the same way.
+- **Risk is invisible.** The number that decides whether a position survives a drawdown sits in a protocol dashboard, if it is shown at all.
 
 The primitives are live. The strategy layer is missing.
 
