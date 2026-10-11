@@ -6,6 +6,8 @@ Stockfront is a non-custodial strategy engine for onchain finance. You describe 
 
 Underneath the chat box is the part that makes it work: **a strategy language and a compiler for it.**
 
+For the strategies themselves — what they earn, what they cost and what they risk — see [PRODUCT.md](PRODUCT.md).
+
 ---
 
 ## Why a compiler

@@ -145,7 +145,12 @@ export function ComposePage() {
         earn,
         leverage,
         basket,
-        carry: carry.data?.items[0],
+        // Only a reviewed product can actually be deposited into, so the
+        // headline rate has to come from one. The best rate on the market may
+        // belong to a product the policy will not let the user enter.
+        carry: carry.data?.items.find(
+          (item) => item.qualification === "ELIGIBLE",
+        ),
       }),
     [earn, leverage, basket, carry.data],
   );
