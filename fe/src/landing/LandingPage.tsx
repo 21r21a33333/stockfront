@@ -3,6 +3,7 @@ import { navigate } from "@/app/route";
 import { useComposeStore } from "@/compose/composeStore";
 import { ArrowUpRight, Check, Logo, Sparkle } from "@/ui/BlockIcon";
 import { blockIcons, blockTints, type BlockKind } from "@/ui/blocks";
+import { PromptInput } from "@/ui/PromptInput";
 import { WalletButton } from "@/wallet/WalletButton";
 import styles from "./LandingPage.module.css";
 
@@ -264,10 +265,11 @@ export function LandingPage() {
             <label htmlFor="heroPrompt" className="srOnly">
               Describe your strategy
             </label>
-            <input
+            <PromptInput
               id="heroPrompt"
               value={prompt}
-              onChange={(event) => setPrompt(event.target.value)}
+              maxLength={1000}
+              onChange={setPrompt}
               placeholder="What do you want your stocks to do?"
             />
             <button
@@ -630,22 +632,16 @@ export function LandingPage() {
             Your stocks are sitting still. Put them to work.
           </h2>
         </div>
-        <div className={styles.ctaActions}>
-          <div>
-            <button
-              type="button"
-              className={`lift ${styles.ctaPrimary}`}
-              onClick={() => start()}
-            >
-              Start building
-              <span>
-                <ArrowUpRight size={16} />
-              </span>
-            </button>
-            <WalletButton variant="glass" />
-          </div>
-          <span className="mono">AI proposes. You review and sign.</span>
-        </div>
+        <button
+          type="button"
+          className={`lift ${styles.ctaPrimary}`}
+          onClick={() => start()}
+        >
+          Start building
+          <span>
+            <ArrowUpRight size={16} />
+          </span>
+        </button>
       </section>
 
       <footer className={styles.footer}>

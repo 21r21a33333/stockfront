@@ -31,6 +31,8 @@
 
 .name {
   width: 230px;
+  min-width: 120px;
+  max-width: 320px;
   height: 36px;
   padding: 0 10px;
   border-radius: 9px;
@@ -38,6 +40,14 @@
   background: transparent;
   font-size: 15px;
   font-weight: 600;
+}
+
+/* Sizing the field to its text keeps the status pill beside the name. */
+@supports (field-sizing: content) {
+  .name {
+    width: auto;
+    field-sizing: content;
+  }
 }
 
 .name:hover,
@@ -113,6 +123,16 @@
 
 .run:disabled {
   background: #c9ccc4;
+  color: var(--muted);
+}
+
+.runIcon {
+  display: grid;
+  place-items: center;
+  color: var(--lime);
+}
+
+.run:disabled .runIcon {
   color: var(--muted);
 }
 
@@ -217,14 +237,21 @@
   color: var(--muted-2);
 }
 
+/* A fixed frame: the stage scrolls inside it while the controls stay pinned. */
 .canvas {
   flex: 1;
   min-width: 0;
   position: relative;
-  overflow: auto;
+  overflow: hidden;
   background-color: var(--bg);
   background-image: radial-gradient(#c9cdc2 1.1px, transparent 1.1px);
   background-size: 20px 20px;
+}
+
+.canvasScroll {
+  position: absolute;
+  inset: 0;
+  overflow: auto;
 }
 
 .stage {
@@ -232,8 +259,6 @@
   width: 760px;
   min-height: 760px;
   margin: 0 auto;
-  transform-origin: top center;
-  transition: transform 0.3s var(--ease);
 }
 
 .empty {
@@ -321,13 +346,11 @@
   gap: 12px;
   text-align: left;
   animation: blockPop 0.45s var(--ease) both;
-  transition:
-    box-shadow 0.25s ease,
-    transform 0.25s var(--ease);
+  transition: box-shadow 0.25s ease;
 }
 
 .node:hover {
-  transform: translateY(-2px);
+  box-shadow: 0 16px 30px -18px rgba(15, 17, 14, 0.45);
 }
 
 .nodeSelected {
@@ -402,11 +425,10 @@
 }
 
 .zoom {
-  position: sticky;
-  float: left;
+  position: absolute;
   left: 16px;
   bottom: 16px;
-  margin: 0 0 16px 16px;
+  z-index: 2;
   display: inline-flex;
   align-items: center;
   gap: 2px;
@@ -443,11 +465,10 @@
 }
 
 .counter {
-  position: sticky;
-  float: right;
+  position: absolute;
   right: 16px;
   bottom: 16px;
-  margin: 0 16px 16px 0;
+  z-index: 2;
   display: inline-flex;
   align-items: center;
   gap: 8px;
@@ -545,6 +566,18 @@
     margin-left: 0;
     padding-left: 0;
     border-left: 0;
+  }
+}
+
+@media (max-width: 640px) {
+  /* The header's connect button and the inspector already say this; on a
+     phone the canvas has no free edge left for it. */
+  .walletHint {
+    display: none;
+  }
+
+  .canvas {
+    min-height: 460px;
   }
 }
 
