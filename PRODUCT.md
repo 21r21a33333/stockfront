@@ -10,8 +10,10 @@ Figures below are live readings from the running deployment on BNB Chain, taken 
 
 Stockfront lets holders of tokenized stocks unlock yield, leverage and liquidity from a portfolio they never have to sell.
 
+- **Proven strategies with their returns attached.** Carry, leverage and index exposure are the shapes institutions have run for decades. Each ships as a curated strategy showing its live rate — net spread after borrow cost, exposure per leverage turn, fee and holdings behind an index — so the return is known before anything is signed.
+- **Reusable, not fixed products.** A strategy is a shape. The same carry runs against whichever stock and earn venue price best today and re-routes as rates move, so one strategy covers a catalog of **46 stocks and 6 index baskets** rather than a single pair.
 - **One interface** across earn, borrow, trade and exit against tokenized equities and index baskets.
-- **Users state a financial intent** — *"earn on my idle USDT"*, *"the best APY, I can take risk"* — and Stockfront composes the strategy, sizes it against live venue limits, and walks the user through signing it.
+- **Or state an intent** — *"earn on my idle USDT"*, *"the best APY, I can take risk"* — and Stockfront composes the strategy from the same blocks, sizes it against live venue limits, and walks the user through signing it.
 - **Advanced strategies for anyone with a wallet.** No minimum, no account approval, no desk.
 
 ---

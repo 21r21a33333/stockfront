@@ -2,7 +2,12 @@
 
 **Say what you want your money to do. Stockfront turns it into transactions you review and sign.**
 
-Stockfront is a non-custodial strategy engine for onchain finance. You describe an outcome in plain language — *"buy Nvidia, post it as collateral, borrow against it and earn on the loan"* — and Stockfront composes that into a typed, validated, executable plan. Every step is prepared against live chain state, every transaction is signed by you, and nothing runs on its own.
+Stockfront is a non-custodial strategy engine for onchain finance. It gives holders of tokenized stocks the strategies a prime brokerage would run for them — and the returns on each one before they commit.
+
+- **Proven strategies, ready to run.** Carry, leverage and index exposure are the shapes institutions have run for decades. Stockfront packages them as curated strategies with their **live rate on the card** — the net spread after borrow cost, the exposure each leverage turn buys, the fee and holdings behind an index — so the return is known before anything is signed, not discovered afterwards.
+- **Reusable against any asset.** A strategy is a shape, not a fixed product. The same carry runs against whichever stock and earn venue price best today, and re-routes as rates move. Run one as it stands, or adapt it by saying what to change.
+- **Or describe your own.** State an outcome in plain language — *"buy Nvidia, post it as collateral, borrow against it and earn on the loan"* — and Stockfront composes it from the same blocks, sized to what the wallet actually holds.
+- **Checked before it is signed.** Every strategy, curated or composed, goes through the same compiler and is prepared against live chain state. Every transaction is signed by the user and nothing runs on its own.
 
 Underneath the chat box is the part that makes it work: **a strategy language and a compiler for it.**
 
@@ -10,7 +15,7 @@ Underneath the chat box is the part that makes it work: **a strategy language an
 
 ## Strategies
 
-Live readings from the running deployment on BNB Chain, 2026-10-11. Rates move; the engine re-reads them on every composition.
+The curated strategies and the rates behind them. Live readings from the running deployment on BNB Chain, 2026-10-11 — the engine re-reads them on every composition, and each one is reusable against any asset the catalog carries.
 
 ### Earn
 
