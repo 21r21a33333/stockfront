@@ -73,6 +73,7 @@ pub struct RecipeService {
     carry: Arc<CarryService>,
     settlement_tokens: Vec<Address>,
     settlement_decimals: HashMap<Address, u32>,
+    pool: Address,
     withdrawal_policy: RecipeWithdrawalPolicy,
     borrow_policy: RecipeBorrowPolicy,
     repay_policy: RecipeRepayPolicy,
@@ -126,6 +127,7 @@ impl RecipeService {
             carry,
             settlement_tokens,
             settlement_decimals,
+            pool: withdrawal_pool,
             withdrawal_policy: RecipeWithdrawalPolicy {
                 allowed_inputs: vec![borrowing_pool_rule],
             },
@@ -221,7 +223,7 @@ impl RecipeService {
     /// Runs the pure compiler without contacting a provider.
     #[must_use]
     pub fn validate(&self, recipe: &RecipeDefinition) -> RecipeValidationReport {
-        let compiled = compile(recipe);
+        let compiled = compile(recipe, self.pool);
         validate_action_policy(
             compiled.report,
             compiled.plan.as_ref(),
@@ -254,6 +256,7 @@ impl RecipeService {
             &self.withdrawal_policy,
             &self.borrow_policy,
             &self.repay_policy,
+            self.pool,
         )?;
         let completed = validate_completed_context(&plan, &request.context.completed_nodes)?;
         let mut nodes = Vec::with_capacity(plan.steps.len());
@@ -272,7 +275,7 @@ impl RecipeService {
                     self.preview_supply(step, asset, &completed).await?
                 }
                 RecipeAction::Withdraw { position } => {
-                    self.preview_withdrawal(step.node_id, *position, request.context.wallet)
+                    self.preview_withdrawal(step, *position, &completed, request.context.wallet)
                         .await?
                 }
                 RecipeAction::Borrow {
@@ -281,10 +284,11 @@ impl RecipeService {
                     raw_amount,
                 } => {
                     self.preview_borrow(
-                        step.node_id,
+                        step,
                         *collateral,
                         *debt_token,
                         *raw_amount,
+                        &completed,
                         request.context.wallet,
                     )
                     .await?
@@ -480,10 +484,21 @@ impl RecipeService {
 
     async fn preview_withdrawal(
         &self,
-        node_id: Uuid,
+        step: &super::LogicalStep,
         position: SuppliedPositionRef,
+        completed: &HashMap<Uuid, &RecipeCompletedNode>,
         wallet: WalletAddress,
     ) -> Result<RecipeNodePreview, RecipeError> {
+        if waits_for_upstream(step, completed) {
+            return Ok(RecipeNodePreview::Withdraw {
+                node_id: step.node_id,
+                state: RecipeNodeState::WaitingForUpstream,
+                position: None,
+                unavailable_reason: None,
+                waiting_for: step.dependencies.clone(),
+            });
+        }
+        let node_id = step.node_id;
         Ok(match self.resolve_withdrawal(wallet, position).await? {
             ResolvedWithdrawal::Ready(position) => RecipeNodePreview::Withdraw {
                 node_id,
@@ -504,12 +519,22 @@ impl RecipeService {
 
     async fn preview_borrow(
         &self,
-        node_id: Uuid,
+        step: &super::LogicalStep,
         collateral: SuppliedPositionRef,
         debt_token: Address,
         raw_amount: U256,
+        completed: &HashMap<Uuid, &RecipeCompletedNode>,
         wallet: WalletAddress,
     ) -> Result<RecipeNodePreview, RecipeError> {
+        if waits_for_upstream(step, completed) {
+            return Ok(RecipeNodePreview::Borrow {
+                node_id: step.node_id,
+                state: RecipeNodeState::WaitingForUpstream,
+                capability: None,
+                waiting_for: step.dependencies.clone(),
+            });
+        }
+        let node_id = step.node_id;
         let capability = self
             .borrowing
             .borrow_capability(
@@ -573,6 +598,7 @@ impl RecipeService {
             &self.withdrawal_policy,
             &self.borrow_policy,
             &self.repay_policy,
+            self.pool,
         )?;
         let completed = validate_completed_context(&plan, &request.context.completed_nodes)?;
         let ready = self
@@ -1281,6 +1307,18 @@ enum ResolvedWithdrawal {
     },
 }
 
+/// True while an earlier step in this run has yet to create what this one
+/// consumes. A position a `Supply` step is about to open does not exist on
+/// chain yet, so asking the venue about it would report it missing.
+fn waits_for_upstream(
+    step: &super::LogicalStep,
+    completed: &HashMap<Uuid, &RecipeCompletedNode>,
+) -> bool {
+    step.dependencies
+        .iter()
+        .any(|dependency| !completed.contains_key(dependency))
+}
+
 fn resolve_asset(
     asset: &AssetRef,
     completed: &HashMap<Uuid, &RecipeCompletedNode>,
@@ -1404,8 +1442,9 @@ fn compile_plan(
     withdrawal_policy: &RecipeWithdrawalPolicy,
     borrow_policy: &RecipeBorrowPolicy,
     repay_policy: &RecipeRepayPolicy,
+    pool: Address,
 ) -> Result<LogicalPlan, RecipeError> {
-    let compiled = compile(recipe);
+    let compiled = compile(recipe, pool);
     match compiled.plan {
         Some(plan) => {
             let report = validate_action_policy(

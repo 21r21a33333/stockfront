@@ -98,7 +98,9 @@ describe("nextKinds", () => {
       "BORROWED_POSITION",
       "EARN_POSITION",
     ]);
-    expect(nextKinds("SUPPLY")).toEqual([]);
+    // A supply hands back the position it created, so the same chain can
+    // borrow against a stock it has only just bought.
+    expect(nextKinds("SUPPLY")).toEqual(["BORROW", "WITHDRAW"]);
     expect(nextKinds("BORROWED_POSITION")).toEqual(["REPAY"]);
     expect(nextKinds("EARN_POSITION")).toEqual(["EARN_WITHDRAW"]);
     expect(nextKinds("EARN_WITHDRAW")).toEqual([]);

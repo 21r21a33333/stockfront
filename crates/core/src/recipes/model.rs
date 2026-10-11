@@ -405,7 +405,10 @@ fn supply_descriptor(kind: RecipePrimitiveKind) -> RecipePrimitiveDescriptor {
             required: true,
             option_sources: Vec::new(),
         }],
-        ports: vec![input_port("asset", RecipePortValueType::TokenAmount)],
+        ports: vec![
+            input_port("asset", RecipePortValueType::TokenAmount),
+            output_port("position", RecipePortValueType::SuppliedPosition),
+        ],
     }
 }
 

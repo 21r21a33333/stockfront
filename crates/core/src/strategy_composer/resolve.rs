@@ -408,14 +408,14 @@ const fn is_source(step: &StrategyStep) -> bool {
 const fn output_port(step: &StrategyStep) -> Option<&'static str> {
     match step {
         StrategyStep::WalletAsset { .. } => Some("asset"),
-        StrategyStep::SuppliedPosition { .. } => Some("position"),
+        // A supply hands back the collateral position it created, so it offers
+        // the same port as a position the wallet already holds, and a borrow or
+        // a withdrawal may follow it in the same chain.
+        StrategyStep::SuppliedPosition { .. } | StrategyStep::Supply => Some("position"),
         StrategyStep::BorrowedPosition { .. } => Some("debt"),
         StrategyStep::Trade { .. } => Some("buy"),
         StrategyStep::Borrow { .. } => Some("borrowed"),
-        StrategyStep::Supply
-        | StrategyStep::Withdraw
-        | StrategyStep::Repay
-        | StrategyStep::EarnDeposit { .. } => None,
+        StrategyStep::Withdraw | StrategyStep::Repay | StrategyStep::EarnDeposit { .. } => None,
     }
 }
 
@@ -532,11 +532,46 @@ mod tests {
             wallet("TSLAB", "1"),
             StrategyStep::Supply,
             StrategyStep::Withdraw,
+            StrategyStep::Trade {
+                buy_symbol: "USDT".to_owned(),
+            },
         ]));
 
         assert!(matches!(unknown, Resolution::Rejected(_)));
         assert!(matches!(action_first, Resolution::Rejected(_)));
         assert!(matches!(after_terminal, Resolution::Rejected(_)));
+    }
+
+    #[test]
+    fn a_borrow_may_take_its_collateral_from_a_supply_in_the_same_chain() {
+        let resolution = resolver(None).resolve(&intent(vec![
+            wallet("USDT", "20"),
+            StrategyStep::Trade {
+                buy_symbol: "Tesla".to_owned(),
+            },
+            StrategyStep::Supply,
+            StrategyStep::Borrow {
+                symbol: "USDT".to_owned(),
+                amount: Some(Decimal::from(5_u8)),
+            },
+        ]));
+
+        let Resolution::Recipe(recipe) = resolution else {
+            panic!("a supply may collateralise the borrow that follows it");
+        };
+        let ports = recipe
+            .edges
+            .iter()
+            .map(|edge| (edge.from.port.as_str(), edge.to.port.as_str()))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            ports,
+            [
+                ("asset", "sell"),
+                ("buy", "asset"),
+                ("position", "collateral")
+            ]
+        );
     }
 
     #[test]

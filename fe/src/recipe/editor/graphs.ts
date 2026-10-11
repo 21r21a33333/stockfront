@@ -48,7 +48,9 @@ const FOLLOWS: Record<RecipeNodeData["kind"], RecipePrimitiveKind[]> = {
   SUPPLIED_POSITION: ["BORROW", "WITHDRAW"],
   BORROWED_POSITION: ["REPAY"],
   EARN_POSITION: ["EARN_WITHDRAW"],
-  SUPPLY: [],
+  // A supply hands back the collateral position it created, so the chain can
+  // borrow against a stock it has only just bought.
+  SUPPLY: ["BORROW", "WITHDRAW"],
   WITHDRAW: [],
   REPAY: [],
   EARN_DEPOSIT: [],
@@ -76,7 +78,7 @@ const outputPort: Record<RecipeNodeData["kind"], string | undefined> = {
   SUPPLIED_POSITION: "position",
   BORROWED_POSITION: "debt",
   EARN_POSITION: "position",
-  SUPPLY: undefined,
+  SUPPLY: "position",
   WITHDRAW: undefined,
   REPAY: undefined,
   EARN_DEPOSIT: undefined,

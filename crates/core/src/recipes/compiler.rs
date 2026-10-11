@@ -34,14 +34,20 @@ pub(super) struct RecipeCompilation {
     pub plan: Option<LogicalPlan>,
 }
 
-pub(super) fn compile(recipe: &RecipeDefinition) -> RecipeCompilation {
+/// `pool` is the lending pool a `Supply` step deposits into. The compiler reads
+/// no configuration of its own, so the deployment's pool is passed in to name
+/// the position that supply creates.
+pub(super) fn compile(
+    recipe: &RecipeDefinition,
+    pool: alloy_primitives::Address,
+) -> RecipeCompilation {
     let mut diagnostics = validate_recipe_header(recipe);
     validate_node_fields(recipe, &mut diagnostics);
     let graph = RecipeGraph::check(recipe, &mut diagnostics);
 
     let mut report = RecipeValidationReport::new(diagnostics);
     let plan = if report.valid {
-        match lower(&graph) {
+        match lower(&graph, pool) {
             Ok(plan) => Some(plan),
             Err(diagnostic) => {
                 report.diagnostics.push(diagnostic);
@@ -121,9 +127,12 @@ fn validate_node_fields(recipe: &RecipeDefinition, diagnostics: &mut Vec<RecipeD
     }
 }
 
-fn lower(graph: &RecipeGraph<'_>) -> Result<LogicalPlan, RecipeDiagnostic> {
+fn lower(
+    graph: &RecipeGraph<'_>,
+    pool: alloy_primitives::Address,
+) -> Result<LogicalPlan, RecipeDiagnostic> {
     let mut values = HashMap::<(Uuid, String), AssetRef>::new();
-    let mut positions = HashMap::<(Uuid, String), SuppliedPositionRef>::new();
+    let mut positions = HashMap::<(Uuid, String), PositionInput>::new();
     let mut debts = HashMap::<(Uuid, String), BorrowedPositionRef>::new();
     let mut earn = HashMap::<(Uuid, String), EarnPositionRef>::new();
     let mut borrow_collateral = HashMap::<Uuid, alloy_primitives::Address>::new();
@@ -155,14 +164,18 @@ fn lower(graph: &RecipeGraph<'_>) -> Result<LogicalPlan, RecipeDiagnostic> {
                 values.insert((node_id, "buy".to_owned()), output);
             }
             RecipePrimitive::Supply { venue } => {
-                steps.push(lower_supply(graph, &values, node_id, *venue)?);
+                let supply = lower_supply(graph, &values, node_id, *venue, pool)?;
+                steps.push(supply.step);
+                positions.insert((node_id, "position".to_owned()), supply.position);
             }
             RecipePrimitive::Withdraw => {
                 let position = input_position(graph, &positions, node_id)?;
                 steps.push(LogicalStep {
                     node_id,
-                    dependencies: Vec::new(),
-                    action: RecipeAction::Withdraw { position },
+                    dependencies: position.created_by.into_iter().collect(),
+                    action: RecipeAction::Withdraw {
+                        position: position.position,
+                    },
                 });
             }
             RecipePrimitive::Borrow {
@@ -209,8 +222,17 @@ fn lower(graph: &RecipeGraph<'_>) -> Result<LogicalPlan, RecipeDiagnostic> {
     Ok(LogicalPlan { steps })
 }
 
+/// A supplied position reached through a port, and whether this recipe creates
+/// it. A position the wallet already holds is ready immediately; one a `Supply`
+/// step creates can only be used after that step executes.
+#[derive(Clone, Copy)]
+struct PositionInput {
+    position: SuppliedPositionRef,
+    created_by: Option<Uuid>,
+}
+
 fn register_supplied_position(
-    positions: &mut HashMap<(Uuid, String), SuppliedPositionRef>,
+    positions: &mut HashMap<(Uuid, String), PositionInput>,
     node_id: Uuid,
     venue: crate::bstock_borrowing::BorrowingVenue,
     pool: alloy_primitives::Address,
@@ -218,7 +240,10 @@ fn register_supplied_position(
 ) {
     positions.insert(
         (node_id, "position".to_owned()),
-        SuppliedPositionRef { venue, pool, token },
+        PositionInput {
+            position: SuppliedPositionRef { venue, pool, token },
+            created_by: None,
+        },
     );
 }
 
@@ -237,7 +262,7 @@ fn register_borrowed_position(
 
 fn lower_borrow(
     graph: &RecipeGraph<'_>,
-    positions: &HashMap<(Uuid, String), SuppliedPositionRef>,
+    positions: &HashMap<(Uuid, String), PositionInput>,
     node_id: Uuid,
     debt_token: alloy_primitives::Address,
     raw_amount: alloy_primitives::U256,
@@ -246,9 +271,9 @@ fn lower_borrow(
     Ok((
         LogicalStep {
             node_id,
-            dependencies: Vec::new(),
+            dependencies: collateral.created_by.into_iter().collect(),
             action: RecipeAction::Borrow {
-                collateral,
+                collateral: collateral.position,
                 debt_token,
                 raw_amount,
             },
@@ -351,18 +376,18 @@ fn input_asset(
 
 fn input_position(
     graph: &RecipeGraph<'_>,
-    positions: &HashMap<(Uuid, String), SuppliedPositionRef>,
+    positions: &HashMap<(Uuid, String), PositionInput>,
     node_id: Uuid,
-) -> Result<SuppliedPositionRef, RecipeDiagnostic> {
+) -> Result<PositionInput, RecipeDiagnostic> {
     input_position_on(graph, positions, node_id, "position")
 }
 
 fn input_position_on(
     graph: &RecipeGraph<'_>,
-    positions: &HashMap<(Uuid, String), SuppliedPositionRef>,
+    positions: &HashMap<(Uuid, String), PositionInput>,
     node_id: Uuid,
     port: &str,
-) -> Result<SuppliedPositionRef, RecipeDiagnostic> {
+) -> Result<PositionInput, RecipeDiagnostic> {
     let edge = graph
         .incoming(node_id, port)
         .ok_or_else(|| missing_input(node_id, port))?;
@@ -376,12 +401,19 @@ fn input_position_on(
     })
 }
 
+/// A supply step and the position it creates once it has executed.
+struct LoweredSupply {
+    step: LogicalStep,
+    position: PositionInput,
+}
+
 fn lower_supply(
     graph: &RecipeGraph<'_>,
     values: &HashMap<(Uuid, String), AssetRef>,
     node_id: Uuid,
     venue: crate::bstock_borrowing::BorrowingVenue,
-) -> Result<LogicalStep, RecipeDiagnostic> {
+    pool: alloy_primitives::Address,
+) -> Result<LoweredSupply, RecipeDiagnostic> {
     let (asset, dependency) = input_asset(
         graph,
         values,
@@ -389,13 +421,22 @@ fn lower_supply(
         "asset",
         "the supply input is not available before this step",
     )?;
-    Ok(LogicalStep {
-        node_id,
-        dependencies: matches!(asset, AssetRef::NodeOutput { .. })
-            .then_some(dependency)
-            .into_iter()
-            .collect(),
-        action: RecipeAction::Supply { asset, venue },
+    let token = match &asset {
+        AssetRef::Wallet { token, .. } | AssetRef::NodeOutput { token, .. } => *token,
+    };
+    Ok(LoweredSupply {
+        step: LogicalStep {
+            node_id,
+            dependencies: matches!(asset, AssetRef::NodeOutput { .. })
+                .then_some(dependency)
+                .into_iter()
+                .collect(),
+            action: RecipeAction::Supply { asset, venue },
+        },
+        position: PositionInput {
+            position: SuppliedPositionRef { venue, pool, token },
+            created_by: Some(node_id),
+        },
     })
 }
 
@@ -512,6 +553,8 @@ mod tests {
     use crate::bstock_borrowing::BorrowingVenue;
     use crate::recipes::{RecipeEdge, RecipeNode, RecipePortRef};
 
+    const POOL: Address = Address::with_last_byte(9);
+
     const SOURCE_ID: Uuid = Uuid::from_u128(1);
     const TRADE_ID: Uuid = Uuid::from_u128(2);
     const SUPPLY_ID: Uuid = Uuid::from_u128(6);
@@ -523,7 +566,7 @@ mod tests {
 
     #[test]
     fn compiles_wallet_asset_trade_into_a_logical_plan() {
-        let compiled = compile(&recipe());
+        let compiled = compile(&recipe(), POOL);
 
         assert!(compiled.report.valid);
         let plan = compiled
@@ -552,7 +595,7 @@ mod tests {
             *raw_amount = U256::ZERO;
         }
 
-        let compiled = compile(&recipe);
+        let compiled = compile(&recipe, POOL);
         let codes = compiled
             .report
             .diagnostics
@@ -590,7 +633,7 @@ mod tests {
             },
         });
 
-        let compiled = compile(&recipe);
+        let compiled = compile(&recipe, POOL);
 
         assert!(
             compiled
@@ -622,7 +665,7 @@ mod tests {
             },
         });
 
-        let compiled = compile(&recipe);
+        let compiled = compile(&recipe, POOL);
         let plan = compiled
             .plan
             .unwrap_or_else(|| panic!("valid supply recipe did not produce a plan"));
@@ -639,6 +682,73 @@ mod tests {
                     token: Address::with_last_byte(2),
                 },
                 venue: BorrowingVenue::Venus,
+            }
+        );
+    }
+
+    #[test]
+    fn borrows_against_the_position_a_supply_step_creates() {
+        let mut recipe = recipe();
+        recipe.nodes.push(RecipeNode {
+            id: SUPPLY_ID,
+            primitive: RecipePrimitive::Supply {
+                venue: BorrowingVenue::Venus,
+            },
+        });
+        recipe.nodes.push(RecipeNode {
+            id: BORROW_ID,
+            primitive: RecipePrimitive::Borrow {
+                debt_token: Address::with_last_byte(1),
+                raw_amount: U256::from(5),
+            },
+        });
+        recipe.edges.push(RecipeEdge {
+            id: Uuid::from_u128(7),
+            from: RecipePortRef {
+                node_id: TRADE_ID,
+                port: "buy".to_owned(),
+            },
+            to: RecipePortRef {
+                node_id: SUPPLY_ID,
+                port: "asset".to_owned(),
+            },
+        });
+        recipe.edges.push(RecipeEdge {
+            id: Uuid::from_u128(10),
+            from: RecipePortRef {
+                node_id: SUPPLY_ID,
+                port: "position".to_owned(),
+            },
+            to: RecipePortRef {
+                node_id: BORROW_ID,
+                port: "collateral".to_owned(),
+            },
+        });
+
+        let compiled = compile(&recipe, POOL);
+        let plan = compiled
+            .plan
+            .unwrap_or_else(|| panic!("valid supply-then-borrow recipe did not produce a plan"));
+
+        assert!(compiled.report.valid);
+        let borrow = plan
+            .steps
+            .iter()
+            .find(|step| step.node_id == BORROW_ID)
+            .unwrap_or_else(|| panic!("the plan is missing the borrow step"));
+        // The borrow may only be prepared once the supply it collateralises has
+        // executed, so the supply has to appear as its dependency.
+        assert_eq!(borrow.dependencies, vec![SUPPLY_ID]);
+        assert_eq!(
+            borrow.action,
+            RecipeAction::Borrow {
+                collateral: SuppliedPositionRef {
+                    venue: BorrowingVenue::Venus,
+                    pool: POOL,
+                    token: Address::with_last_byte(2),
+                },
+                debt_token: Address::with_last_byte(1),
+                raw_amount: U256::from(5),
             }
         );
     }
@@ -673,7 +783,7 @@ mod tests {
             }],
         };
 
-        let compiled = compile(&recipe);
+        let compiled = compile(&recipe, POOL);
         let plan = compiled
             .plan
             .unwrap_or_else(|| panic!("valid earn withdrawal did not produce a plan"));
@@ -703,7 +813,7 @@ mod tests {
             edges: Vec::new(),
         };
 
-        let compiled = compile(&recipe);
+        let compiled = compile(&recipe, POOL);
 
         assert!(!compiled.report.valid);
         assert!(compiled.plan.is_none());
@@ -743,7 +853,7 @@ mod tests {
             }],
         };
 
-        let compiled = compile(&recipe);
+        let compiled = compile(&recipe, POOL);
         let plan = compiled
             .plan
             .unwrap_or_else(|| panic!("valid withdrawal recipe did not produce a plan"));
@@ -802,7 +912,7 @@ mod tests {
             }],
         };
 
-        let compiled = compile(&recipe);
+        let compiled = compile(&recipe, POOL);
         let plan = compiled
             .plan
             .unwrap_or_else(|| panic!("valid borrow recipe did not produce a plan"));
@@ -856,7 +966,7 @@ mod tests {
             }],
         };
 
-        let compiled = compile(&recipe);
+        let compiled = compile(&recipe, POOL);
         let plan = compiled
             .plan
             .unwrap_or_else(|| panic!("valid repayment recipe did not produce a plan"));
@@ -878,7 +988,7 @@ mod tests {
             token: debt,
         };
         recipe.edges[0].from.port = "position".to_owned();
-        let rejected = compile(&recipe);
+        let rejected = compile(&recipe, POOL);
         assert!(rejected.plan.is_none());
         assert!(
             rejected
@@ -920,7 +1030,7 @@ mod tests {
             }],
         };
 
-        let compiled = compile(&recipe);
+        let compiled = compile(&recipe, POOL);
 
         assert!(compiled.plan.is_none());
         assert!(
