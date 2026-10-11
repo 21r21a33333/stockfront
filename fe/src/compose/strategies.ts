@@ -87,6 +87,8 @@ export function curatedStrategies({
   return strategies;
 }
 
+const BORROW_AND_EARN_MAX_APY_PERCENT = 12;
+
 function borrowAndEarn(
   market: StrategyMarket,
   carry?: CarryOpportunity,
@@ -101,9 +103,13 @@ function borrowAndEarn(
     riskLabel: "Lower risk",
     risk: `Venus can liquidate the collateral if ${stock.symbol} falls far enough.`,
     prompt: `Buy $6 of ${stock.symbol}, supply it to Venus as collateral, then borrow 1 ${stable.symbol} against it and deposit that into earn`,
+    // The ceiling is a fixed product figure; the live net spread, when it
+    // loads, sits beside it so the card never presents 12% as today's rate.
     headline: {
-      value: percent(carry?.baseSpreadPercent),
-      label: "Net APY, after borrow cost",
+      value: `Up to ${BORROW_AND_EARN_MAX_APY_PERCENT}%`,
+      label: carry
+        ? `APY · live net now ${percent(carry.baseSpreadPercent)}`
+        : "APY · net rate varies with markets",
     },
   };
 }
