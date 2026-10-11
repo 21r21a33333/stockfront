@@ -15,6 +15,8 @@ export interface RunStep {
   state: StepState;
   /** Collateral activation finished but the borrow itself has not. */
   collateralEnabled: boolean;
+  /** A signed order is with a market maker rather than on chain. */
+  awaitingFill: boolean;
   error?: string;
 }
 
@@ -40,8 +42,10 @@ export function runSteps(
         (item) =>
           item.kind === "ENABLE_COLLATERAL" && item.phase === "complete",
       );
-      if (done) return { node, state: "done", collateralEnabled };
-      if (currentFound) return { node, state: "next", collateralEnabled };
+      const awaitingFill = latest?.reference?.kind === "RFQ_ORDER";
+      if (done) return { node, state: "done", collateralEnabled, awaitingFill };
+      if (currentFound)
+        return { node, state: "next", collateralEnabled, awaitingFill };
       currentFound = true;
       const state: StepState =
         !latest || latest.phase === "complete"
@@ -53,7 +57,13 @@ export function runSteps(
               : latest.phase === "attention" || !busy
                 ? "unknown"
                 : "waiting";
-      return { node, state, collateralEnabled, error: latest?.error };
+      return {
+        node,
+        state,
+        collateralEnabled,
+        awaitingFill,
+        error: latest?.error,
+      };
     });
 }
 

@@ -7,6 +7,7 @@ import type {
   SubmitOrderRequest,
 } from "@/api/generated";
 import { recipesApi } from "@/api/recipes";
+import { StockfrontApiError } from "@/api/client";
 import { stockfrontChain } from "@/wallet/config";
 import {
   createRun,
@@ -19,6 +20,7 @@ import {
   sameRecipe,
   ExecutionMessage,
   type ExecutionAttempt,
+  type OrderMarket,
   type ExecutionRun,
 } from "./model";
 import { readRun, runKey, writeRun } from "./journal";
@@ -45,6 +47,7 @@ export function useRecipeExecution({
   const memory = useRef(new Map<string, ExecutionRun>());
   const storageFaults = useRef(new Set<string>());
   const signedOrders = useRef(new Map<string, SubmitOrderRequest>());
+  const orderMarkets = useRef(new Map<string, OrderMarket>());
   const usedPreparations = useRef(new WeakSet<PreparedRecipe>());
   const currentPreparation = useRef(prepared);
   currentPreparation.current = prepared;
@@ -252,22 +255,27 @@ export function useRecipeExecution({
                 signature,
               };
               signedOrders.current.set(attempt.id, order);
+              orderMarkets.current.set(attempt.id, execution.market);
               active = patchAttempt(active, attempt, {
                 phase: "submitting",
                 firstSubmittedAtMs: Date.now(),
                 reference: {
                   kind: "RFQ_ORDER",
                   submissionId: order.submissionId,
+                  market: execution.market,
                 },
               });
               save(active);
-              const submitted = await recipesApi.submitOrder(order);
+              const submitted = await submitOrderTo(execution.market, order);
               active = patchAttempt(active, attempt, {
                 phase: "pending",
                 reference: {
                   kind: "RFQ_ORDER",
                   submissionId: order.submissionId,
                   orderId: submitted.orderId,
+                  // The reference is replaced whole, so the venue has to be
+                  // carried over or the order is polled at the wrong one.
+                  market: execution.market,
                 },
               });
               signedOrders.current.delete(attempt.id);
@@ -275,12 +283,17 @@ export function useRecipeExecution({
             save(active);
           } catch (cause) {
             const rejected = userRejected(cause);
+            // A venue that answers at all has answered: nothing was created, so
+            // the route can be refreshed rather than the wallet audited.
+            const refused = venueRefused(cause);
             save(
               patchAttempt(active, attempt, {
-                phase: rejected ? "failed" : "attention",
+                phase: rejected || refused ? "failed" : "attention",
                 error: rejected
                   ? "Wallet request rejected. Refresh the route to retry."
-                  : "Submission outcome is unknown. Check wallet activity before retrying.",
+                  : refused
+                    ? `${message(cause, "The venue refused this order.")} Refresh the route and sign again.`
+                    : "Submission outcome is unknown. Check wallet activity before retrying.",
               }),
             );
             throw cause;
@@ -288,7 +301,9 @@ export function useRecipeExecution({
         },
       );
     } catch (cause) {
-      setError(publicExecutionError(cause));
+      // A wallet rejection is already stated on the step itself; repeating it as
+      // a page-level failure reads as a second, worse problem.
+      if (!userRejected(cause)) setError(publicExecutionError(cause));
     } finally {
       running.current = false;
       setBusy(false);
@@ -314,7 +329,10 @@ export function useRecipeExecution({
     setBusy(true);
     try {
       await withRunLock(current, async (saved) => {
-        const submitted = await recipesApi.submitOrder(order);
+        const submitted = await submitOrderTo(
+          orderMarkets.current.get(attempt.id) ?? reference.market,
+          order,
+        );
         save(
           patchAttempt(saved, attempt, {
             phase: "pending",
@@ -327,8 +345,12 @@ export function useRecipeExecution({
         );
         signedOrders.current.delete(attempt.id);
       });
-    } catch {
-      setError("Submission outcome remains unknown. No new order was created.");
+    } catch (cause) {
+      setError(
+        venueRefused(cause)
+          ? `${message(cause, "The venue refused this order.")} Refresh the route and sign again.`
+          : "Submission outcome remains unknown. No new order was created.",
+      );
     } finally {
       running.current = false;
       setBusy(false);
@@ -454,6 +476,24 @@ export function useRecipeExecution({
     startNewRun,
     abandonRun,
   };
+}
+
+/// Submits a signed order to the venue that quoted it.
+async function submitOrderTo(
+  market: OrderMarket | undefined,
+  order: SubmitOrderRequest,
+) {
+  return market === "BASKET"
+    ? await recipesApi.submitBasketOrder(order)
+    : await recipesApi.submitOrder(order);
+}
+
+/// Whether the venue refused the order outright, which is an answer rather than
+/// a missing one: a refusal means no order exists to go looking for.
+function venueRefused(cause: unknown): boolean {
+  return (
+    cause instanceof StockfrontApiError && cause.code !== "provider_unavailable"
+  );
 }
 
 function userRejected(cause: unknown): boolean {

@@ -10,6 +10,7 @@ import {
 import type { PreparedRecipe, RecipeDefinition } from "@/api/generated";
 import { hash, recipe, token, wallet } from "./fixtures.test-support";
 import { createRun, readRun, writeRun } from "./journal";
+import { StockfrontApiError } from "@/api/client";
 import { useRecipeExecution } from "./useRecipeExecution";
 
 const mocks = vi.hoisted(() => ({
@@ -21,6 +22,8 @@ const mocks = vi.hoisted(() => ({
   sign: vi.fn(),
   submit: vi.fn(),
   order: vi.fn(),
+  submitBasket: vi.fn(),
+  basketOrder: vi.fn(),
   account: {
     address: "0x1111111111111111111111111111111111111111",
     chainId: 56,
@@ -47,6 +50,8 @@ vi.mock("@/api/recipes", () => ({
   recipesApi: {
     submitOrder: mocks.submit,
     orderStatus: mocks.order,
+    submitBasketOrder: mocks.submitBasket,
+    basketOrderStatus: mocks.basketOrder,
   },
 }));
 vi.mock("@/wallet/config", () => ({ stockfrontChain: { id: 56 } }));
@@ -81,6 +86,8 @@ beforeEach(() => {
     createdAtMs: 1,
   });
   mocks.order.mockResolvedValue({ state: "pendingVendor" });
+  mocks.submitBasket.mockResolvedValue({ orderId: "basket-order" });
+  mocks.basketOrder.mockResolvedValue({ state: "pendingVendor" });
   Object.defineProperty(navigator, "onLine", {
     configurable: true,
     value: true,
@@ -202,6 +209,114 @@ it("settles from the chain when the wallet has forgotten the batch", async () =>
   await waitFor(() => expect(result.current.completed).toBe(true));
   expect(mocks.getReceipt).toHaveBeenCalledWith({ hash });
   expect(mocks.sendCalls).toHaveBeenCalledTimes(1);
+});
+
+it("states a wallet cancellation once, on the step that was cancelled", async () => {
+  mocks.sendCalls.mockRejectedValue(
+    Object.assign(new Error("User rejected the request."), { code: 4001 }),
+  );
+  const { result } = renderHook(
+    () => useRecipeExecution({ recipe, prepared: preparedSwap() }),
+    { wrapper: Wrapper },
+  );
+
+  await act(() => result.current.execute());
+
+  // The step says it was cancelled and nothing was sent; a page-level error
+  // beside it would read as a second, worse problem.
+  await waitFor(() =>
+    expect(readRun(wallet, 56)?.attempts.at(-1)?.phase).toBe("failed"),
+  );
+  expect(result.current.error).toBeUndefined();
+});
+
+it("reports a refused order as refused, not as an unknown outcome", async () => {
+  mocks.submit.mockRejectedValue(
+    new StockfrontApiError("trade_rejected", "the venue rejected the trade"),
+  );
+  mocks.publicRequest.mockImplementation(async ({ params }) =>
+    params[0].data.startsWith("0xdd62ed3e") ? "0x64" : "0x",
+  );
+  const { result } = renderHook(
+    () => useRecipeExecution({ recipe, prepared: preparedRfq() }),
+    { wrapper: Wrapper },
+  );
+
+  await act(() => result.current.execute());
+
+  // The venue answered, so nothing was created and the wallet is not worth
+  // auditing; the route is what needs refreshing.
+  await waitFor(() =>
+    expect(readRun(wallet, 56)?.attempts.at(-1)?.phase).toBe("failed"),
+  );
+  expect(readRun(wallet, 56)?.attempts.at(-1)?.error).toContain(
+    "Refresh the route",
+  );
+});
+
+it("polls a basket order at the venue that quoted it", async () => {
+  const { result } = renderHook(
+    () => useRecipeExecution({ recipe, prepared: preparedBasketRfq() }),
+    { wrapper: Wrapper },
+  );
+
+  await act(() => result.current.execute());
+
+  // The reference is rewritten when the order id arrives, and losing the venue
+  // there sends every later poll to the wrong endpoint.
+  await waitFor(() =>
+    expect(readRun(wallet, 56)?.attempts.at(-1)?.reference).toMatchObject({
+      kind: "RFQ_ORDER",
+      orderId: "basket-order",
+      market: "BASKET",
+    }),
+  );
+  expect(mocks.submitBasket).toHaveBeenCalledTimes(1);
+  expect(mocks.submit).not.toHaveBeenCalled();
+
+  mocks.basketOrder.mockResolvedValue({
+    state: "filled",
+    filledBuyAmount: "23",
+    transactionHash: hash,
+  });
+  await act(() => result.current.checkStatus());
+
+  await waitFor(() => expect(result.current.completed).toBe(true));
+  expect(mocks.basketOrder).toHaveBeenCalled();
+  expect(mocks.order).not.toHaveBeenCalled();
+});
+
+it("waits out a venue that has not indexed the order yet", async () => {
+  mocks.submit.mockResolvedValue({ orderId: "order" });
+  mocks.order.mockRejectedValue(
+    new StockfrontApiError(
+      "trade_order_not_found",
+      "the trade order was not found",
+    ),
+  );
+  mocks.publicRequest.mockImplementation(async ({ params }) =>
+    params[0].data.startsWith("0xdd62ed3e") ? "0x64" : "0x",
+  );
+  const { result } = renderHook(
+    () => useRecipeExecution({ recipe, prepared: preparedRfq() }),
+    { wrapper: Wrapper },
+  );
+  await act(() => result.current.execute());
+
+  // The order filled or is about to; the venue simply cannot see it yet, which
+  // is not a reason to strand the run.
+  await act(() => result.current.checkStatus());
+  expect(result.current.error).toBeUndefined();
+  expect(readRun(wallet, 56)?.attempts.at(-1)?.phase).toBe("pending");
+
+  mocks.order.mockResolvedValue({
+    state: "filled",
+    filledBuyAmount: "23",
+    transactionHash: hash,
+  });
+  await act(() => result.current.checkStatus());
+
+  await waitFor(() => expect(result.current.completed).toBe(true));
 });
 
 it("skips a proven allowance and simulates before sending one swap call", async () => {
@@ -489,6 +604,38 @@ it("lets a finished run for another draft out of the way", async () => {
   expect(mocks.sendCalls).toHaveBeenCalled();
   expect(readRun(wallet, 56)?.recipe.nodes).toEqual(recipe.nodes);
 });
+
+function preparedBasketRfq(): PreparedRecipe {
+  const rfq = preparedRfq();
+  return {
+    steps: rfq.steps.map((step) =>
+      step.kind === "TRADE" ? { ...step, kind: "BASKET_TRADE" as const } : step,
+    ),
+  };
+}
+
+function preparedRfq(): PreparedRecipe {
+  return {
+    steps: [
+      {
+        kind: "TRADE",
+        nodeId: "trade",
+        action: {
+          executionMode: "RFQ",
+          submissionId: "00000000-0000-4000-8000-000000000001",
+          routeQuoteId: "quote",
+          venue: "inchFusion",
+          typedData: JSON.stringify({
+            domain: {},
+            types: {},
+            primaryType: "Order",
+            message: {},
+          }),
+        },
+      },
+    ],
+  };
+}
 
 function preparedSwap(): PreparedRecipe {
   return {

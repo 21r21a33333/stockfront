@@ -233,7 +233,21 @@ async function readStatus({
   }
 
   if (reference.kind === "RFQ_ORDER" && reference.orderId) {
-    const result = await recipesApi.orderStatus(reference.orderId, signal);
+    // A venue that has not indexed the order yet answers "not found", which is
+    // the normal state for the first reads after submitting one.
+    const result = await (
+      reference.market === "BASKET"
+        ? recipesApi.basketOrderStatus(reference.orderId, signal)
+        : recipesApi.orderStatus(reference.orderId, signal)
+    ).catch((cause: unknown) => {
+      if (
+        cause instanceof StockfrontApiError &&
+        cause.code === "trade_order_not_found"
+      )
+        return undefined;
+      throw cause;
+    });
+    if (!result) return undefined;
     if (["failed", "expired", "cancelled"].includes(result.state))
       return {
         phase: "failed",
